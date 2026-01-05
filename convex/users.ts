@@ -1,8 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
+import bcrypt from "bcryptjs";
 
-// Fetch all users with pagination and search
+// Fetch all users with pagination and search (Paginated)
 export const list = query({
     args: {
         paginationOpts: paginationOptsValidator,
@@ -23,6 +24,14 @@ export const list = query({
         }
 
         return await usersQuery.order("desc").paginate(args.paginationOpts);
+    },
+});
+
+// Fetch all users (Client-side pagination support)
+export const listAll = query({
+    args: {},
+    handler: async (ctx) => {
+        return await ctx.db.query("users").order("desc").collect();
     },
 });
 
@@ -50,24 +59,114 @@ export const setRoles = mutation({
     },
 });
 
-// Update user profile
-export const updateProfile = mutation({
+// Universal Update User (combines profile and basic fields)
+export const update = mutation({
     args: {
         id: v.id("users"),
         first_name: v.optional(v.string()),
         middle_name: v.optional(v.string()),
         last_name: v.optional(v.string()),
         email: v.optional(v.string()),
+        // Profile fields
         address: v.optional(v.string()),
         phone_number: v.optional(v.string()),
         date_of_birth: v.optional(v.string()),
         gender: v.optional(v.string()),
         marital_status: v.optional(v.string()),
         nationality: v.optional(v.string()),
+        roles: v.optional(v.array(v.string())),
     },
     handler: async (ctx, args) => {
         const { id, ...rest } = args;
         await ctx.db.patch(id, rest);
+    },
+});
+
+// Login verification
+export const login = mutation({
+    args: {
+        email: v.string(),
+        password: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .unique();
+        if (!user) throw new Error("Invalid email or password");
+
+        const isValid = bcrypt.compareSync(args.password, user.password);
+        if (!isValid) throw new Error("Invalid email or password");
+
+        return user;
+    },
+});
+
+// Password reset request
+export const requestPasswordReset = mutation({
+    args: { email: v.string() },
+    handler: async (ctx, args) => {
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .unique();
+        if (!user) return { success: true }; // Don't leak user existence
+
+        // Generate a 6-digit code
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = Date.now() + 3600000; // 1 hour
+
+        // Clear existing resets for this email
+        const existing = await ctx.db
+            .query("passwordResets")
+            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .collect();
+        for (const r of existing) {
+            await ctx.db.delete(r._id);
+        }
+
+        await ctx.db.insert("passwordResets", {
+            email: args.email,
+            code,
+            expiresAt,
+        });
+
+        // In a real app, send an email here.
+        console.log(`Password reset code for ${args.email}: ${code}`);
+
+        return { success: true };
+    },
+});
+
+// Complete password reset
+export const resetPassword = mutation({
+    args: {
+        email: v.string(),
+        code: v.string(),
+        newPassword: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const reset = await ctx.db
+            .query("passwordResets")
+            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .filter((q) => q.eq(q.field("code"), args.code))
+            .unique();
+
+        if (!reset || reset.expiresAt < Date.now()) {
+            throw new Error("Invalid or expired reset code");
+        }
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .unique();
+        if (!user) throw new Error("User not found");
+
+        const hashedPassword = bcrypt.hashSync(args.newPassword, 10);
+        await ctx.db.patch(user._id, { password: hashedPassword });
+        await ctx.db.delete(reset._id);
+
+        return { success: true };
     },
 });
 
@@ -79,6 +178,7 @@ export const create = mutation({
         last_name: v.string(),
         email: v.string(),
         roles: v.array(v.string()),
+        password: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const existing = await ctx.db
@@ -87,12 +187,15 @@ export const create = mutation({
             .unique();
         if (existing) throw new Error("User with this email already exists");
 
-        // Set default temporary password
-        const password = "12345678"; // Hashed representation or clear for now as per original
+        // Use provided password or default
+        const passwordToHash = args.password || "password123";
+        const hashedPassword = bcrypt.hashSync(passwordToHash, 10);
+
+        const { password, ...userArgs } = args;
 
         return await ctx.db.insert("users", {
-            ...args,
-            password,
+            ...userArgs,
+            password: hashedPassword,
         });
     },
 });
@@ -124,5 +227,24 @@ export const remove = mutation({
     args: { id: v.id("users") },
     handler: async (ctx, args) => {
         await ctx.db.delete(args.id);
+    },
+});
+
+// Change Password (for logged-in users)
+export const changePassword = mutation({
+    args: {
+        userId: v.id("users"),
+        currentPassword: v.string(),
+        newPassword: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const user = await ctx.db.get(args.userId);
+        if (!user) throw new Error("User not found");
+
+        const isValid = bcrypt.compareSync(args.currentPassword, user.password);
+        if (!isValid) throw new Error("Incorrect current password");
+
+        const hashedPassword = bcrypt.hashSync(args.newPassword, 10);
+        await ctx.db.patch(args.userId, { password: hashedPassword });
     },
 });

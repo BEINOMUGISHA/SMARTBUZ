@@ -15,6 +15,13 @@ export const list = query({
     },
 });
 
+export const listAll = query({
+    args: {},
+    handler: async (ctx) => {
+        return await ctx.db.query("customers").order("desc").collect();
+    },
+});
+
 // Add customer
 export const add = mutation({
     args: {

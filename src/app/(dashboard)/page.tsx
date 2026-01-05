@@ -1,138 +1,214 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { DatePickerWithRange } from "@/components/date-range-picker";
-import { subMonths, startOfDay, endOfDay } from "date-fns";
-import { DateRange } from "react-day-picker";
 import {
     TrendingUp,
-    TrendingDown,
-    DollarSign,
+    Users,
     ShoppingCart,
-    Package,
-    BarChart3
+    AlertTriangle,
+    CreditCard,
+    ArrowUpRight,
+    Search
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DashboardPage() {
-    const [date, setDate] = useState<DateRange | undefined>({
-        from: subMonths(new Date(), 1),
-        to: new Date(),
-    });
+    const stats = useQuery(api.dashboard.getStats);
 
-    const reports = useQuery(api.reports.getSalesAndExpenses, {
-        startDate: date?.from?.toISOString() ?? subMonths(new Date(), 1).toISOString(),
-        endDate: date?.to?.toISOString() ?? new Date().toISOString(),
-    });
-
-    // Calculate totals from reports
-    const totalRevenue = reports?.sales.reduce((sum, s) => sum + s.total, 0) ?? 0;
-    const salesCount = reports?.sales.length ?? 0;
-    const totalExpenses = reports?.expenses.reduce((sum, e) => sum + e.amount, 0) ?? 0;
+    if (!stats) {
+        return <DashboardSkeleton />;
+    }
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-8">
+            {/* Header / Welcome Section */}
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Dashboard Overview</h1>
-                    <p className="text-muted-foreground text-sm">
-                        Monitor your business performance in real-time.
+                    <h1 className="text-3xl font-black tracking-tight text-foreground">Dashboard</h1>
+                    <p className="text-muted-foreground">
+                        Overview of your business performance.
                     </p>
                 </div>
-                <DatePickerWithRange date={date} setDate={setDate} />
+                {/* Optional: Add Date Range Picker here if needed later */}
             </div>
 
+            {/* KPI Cards Grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">UGX {totalRevenue.toLocaleString()}</div>
-                        <p className="text-xs text-muted-foreground">
-                            Across selected date range
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Sales Count</CardTitle>
-                        <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{salesCount}</div>
-                        <p className="text-xs text-muted-foreground">
-                            Total orders completed
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Expenses</CardTitle>
-                        <TrendingDown className="h-4 w-4 text-destructive" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">UGX {totalExpenses.toLocaleString()}</div>
-                        <p className="text-xs text-muted-foreground">
-                            Operational costs
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Net Growth</CardTitle>
-                        <TrendingUp className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">UGX {(totalRevenue - totalExpenses).toLocaleString()}</div>
-                        <p className="text-xs text-muted-foreground">
-                            Net profit for period
-                        </p>
-                    </CardContent>
-                </Card>
+                <KpiCard
+                    title="Total Revenue"
+                    value={`UGX ${stats.totalRevenue.toLocaleString()}`}
+                    icon={CreditCard}
+                    description="Total earnings to date"
+                    trend="+12.5%"
+                    trendUp={true}
+                    className="bg-gradient-to-br from-primary/90 to-primary text-primary-foreground"
+                    iconClassName="text-primary-foreground/80"
+                />
+                <KpiCard
+                    title="Total Orders"
+                    value={stats.totalOrders.toLocaleString()}
+                    icon={ShoppingCart}
+                    description="Completed transactions"
+                    trend="+4.3%"
+                    trendUp={true}
+                    className="bg-card"
+                    iconClassName="text-blue-500"
+                />
+                <KpiCard
+                    title="Total Customers"
+                    value={stats.totalCustomers.toLocaleString()}
+                    icon={Users}
+                    description="Registered clients"
+                    trend="+2.1%"
+                    trendUp={true}
+                    className="bg-card"
+                    iconClassName="text-purple-500"
+                />
+                <KpiCard
+                    title="Low Stock Items"
+                    value={stats.lowStockCount.toLocaleString()}
+                    icon={AlertTriangle}
+                    description="Products needing restock"
+                    trend={`${stats.lowStockCount > 0 ? "Action needed" : "Healthy"}`}
+                    trendUp={stats.lowStockCount === 0}
+                    className="bg-card"
+                    iconClassName="text-orange-500"
+                />
             </div>
 
+            {/* Main Content Grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <Card className="col-span-4">
+                {/* Revenue Chart Placeholder */}
+                <Card className="col-span-4 shadow-sm border-sidebar-border/50">
                     <CardHeader>
-                        <CardTitle>Recent Sales</CardTitle>
+                        <CardTitle>Revenue Overview</CardTitle>
+                        <CardDescription>Monthly revenue performance</CardDescription>
                     </CardHeader>
-                    <CardContent>
-                        {reports === undefined ? (
-                            <div className="h-[300px] animate-pulse rounded bg-muted" />
-                        ) : (
-                            <div className="space-y-4">
-                                {reports.sales.length === 0 ? (
-                                    <p className="text-center text-muted-foreground py-20">No sales found for this period.</p>
-                                ) : (
-                                    reports.sales.slice(0, 5).map((sale) => (
-                                        <div key={sale._id} className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
-                                            <div>
-                                                <p className="font-medium text-sm">{sale.clientType}</p>
-                                                <p className="text-xs text-muted-foreground">{new Date(sale.date).toLocaleDateString()}</p>
-                                            </div>
-                                            <p className="font-bold">UGX {sale.total.toLocaleString()}</p>
-                                        </div>
-                                    ))
-                                )}
+                    <CardContent className="pl-2">
+                        <div className="h-[300px] flex items-center justify-center rounded-xl bg-muted/20 border-2 border-dashed border-muted">
+                            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                                <TrendingUp className="h-8 w-8 opacity-50" />
+                                <span className="text-sm font-medium">Chart Visualization Coming Soon</span>
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
-                <Card className="col-span-3">
-                    <CardHeader>
-                        <CardTitle>Overview Statistics</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex h-[300px] flex-col items-center justify-center gap-4 text-center">
-                            <BarChart3 className="h-12 w-12 text-muted" />
-                            <p className="text-sm text-muted-foreground">Visual analytics will be integrated here using Recharts.</p>
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Recent Sales List */}
+                <Card className="col-span-3 shadow-sm border-sidebar-border/50">
+                    <CardHeader>
+                        <CardTitle>Recent Sales</CardTitle>
+                        <CardDescription>Latest transactions from shops</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-6">
+                            {stats.recentSales.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-8">No recent transactions</p>
+                            ) : (
+                                stats.recentSales.map((sale) => (
+                                    <div key={sale._id} className="flex items-center justify-between group">
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                                                <ArrowUpRight className="h-4 w-4 text-primary" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-medium leading-none">{sale.customerName}</p>
+                                                <p className="text-xs text-muted-foreground">{new Date(sale.date).toLocaleDateString()}</p>
+                                            </div>
+                                        </div>
+                                        <div className="font-bold text-sm">
+                                            +UGX {sale.amount.toLocaleString()}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+    );
+}
+
+function KpiCard({
+    title,
+    value,
+    icon: Icon,
+    description,
+    trend,
+    trendUp,
+    className,
+    iconClassName,
+}: {
+    title: string;
+    value: string;
+    icon: any;
+    description: string;
+    trend?: string;
+    trendUp?: boolean;
+    className?: string;
+    iconClassName?: string;
+}) {
+    return (
+        <Card className={`shadow-sm border-sidebar-border/50 overflow-hidden relative ${className}`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+                <CardTitle className={`text-sm font-medium ${className?.includes('text-primary-foreground') ? 'text-primary-foreground/90' : 'text-muted-foreground'}`}>
+                    {title}
+                </CardTitle>
+                <Icon className={`h-4 w-4 ${iconClassName}`} />
+            </CardHeader>
+            <CardContent className="relative z-10">
+                <div className="text-2xl font-bold tracking-tight">{value}</div>
+                <p className={`text-xs mt-1 ${className?.includes('text-primary-foreground') ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                    {description}
+                </p>
+                {trend && (
+                    <div className={`absolute bottom-4 right-4 text-xs font-medium flex items-center gap-1 
+                        ${className?.includes('text-primary-foreground')
+                            ? 'text-primary-foreground'
+                            : trendUp ? 'text-green-600' : 'text-red-500'
+                        }`}
+                    >
+                        {trend}
+                    </div>
+                )}
+            </CardContent>
+            {/* Background decoration for plain cards */}
+            {!className?.includes('bg-gradient') && (
+                <div className="absolute -right-6 -bottom-6 opacity-[0.03]">
+                    <Icon className="h-32 w-32" />
+                </div>
+            )}
+        </Card>
+    );
+}
+
+function DashboardSkeleton() {
+    return (
+        <div className="space-y-8">
+            <div className="space-y-2">
+                <Skeleton className="h-8 w-[200px]" />
+                <Skeleton className="h-4 w-[300px]" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {[...Array(4)].map((_, i) => (
+                    <Card key={i}>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <Skeleton className="h-4 w-[100px]" />
+                            <Skeleton className="h-4 w-4 rounded-full" />
+                        </CardHeader>
+                        <CardContent>
+                            <Skeleton className="h-8 w-[120px] mb-2" />
+                            <Skeleton className="h-3 w-[150px]" />
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+                <Skeleton className="col-span-4 h-[350px] rounded-xl" />
+                <Skeleton className="col-span-3 h-[350px] rounded-xl" />
             </div>
         </div>
     );

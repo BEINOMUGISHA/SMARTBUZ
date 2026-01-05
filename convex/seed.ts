@@ -1,5 +1,6 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
+import bcrypt from "bcryptjs";
 
 export const seed = mutation({
     args: {},
@@ -48,7 +49,11 @@ export const seed = mutation({
                 .withIndex("by_email", (q) => q.eq("email", user.email))
                 .unique();
             if (!existing) {
-                await ctx.db.insert("users", user);
+                const hashedPassword = bcrypt.hashSync(user.password, 10);
+                await ctx.db.insert("users", {
+                    ...user,
+                    password: hashedPassword,
+                });
             }
         }
 

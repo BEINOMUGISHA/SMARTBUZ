@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
+import { Id } from "./_generated/dataModel";
 
 // List sales with pagination
 export const list = query({
@@ -50,10 +51,61 @@ export const create = mutation({
     handler: async (ctx, args) => {
         const date = new Date().toISOString();
 
-        // 1. Record the sale
+        // Check if user is assigned to a shop
+        const shop = await ctx.db
+            .query("shops")
+            .withIndex("by_user", (q) => q.eq("userId", args.userId))
+            .first();
+
+        // Deduct Stock
+        if (shop) {
+            // SHOP SALE: Deduct from shop.issuedStocks
+            const updatedStocks = [...shop.issuedStocks];
+
+            for (const item of args.items) {
+                const stockIndex = updatedStocks.findIndex(s => s.stockId === item.stockId);
+                if (stockIndex === -1) {
+                    throw new Error(`Item ${item.name} not found in shop stock`);
+                }
+
+                const currentQty = updatedStocks[stockIndex].qty;
+                if (currentQty < item.quantity) {
+                    throw new Error(`Insufficient stock for ${item.name} in shop. Available: ${currentQty}`);
+                }
+
+                updatedStocks[stockIndex] = {
+                    ...updatedStocks[stockIndex],
+                    qty: currentQty - item.quantity
+                };
+            }
+
+            // Update shop stocks
+            await ctx.db.patch(shop._id, {
+                issuedStocks: updatedStocks
+            });
+
+        } else {
+            // HQ SALE: Deduct from main warehouse 'stocks'
+            for (const item of args.items) {
+                const stock = await ctx.db.get(item.stockId);
+                if (!stock) {
+                    throw new Error(`Item ${item.name} not found in warehouse`);
+                }
+
+                if (stock.qty < item.quantity) {
+                    throw new Error(`Insufficient stock for ${item.name} in warehouse. Available: ${stock.qty}`);
+                }
+
+                await ctx.db.patch(item.stockId, {
+                    qty: stock.qty - item.quantity,
+                });
+            }
+        }
+
+        // Record the sale
         const saleId = await ctx.db.insert("sales", {
             customerId: args.customerId,
-            shopId: args.shopId,
+            shopId: shop ? shop._id : args.shopId, // Prioritize found shop, else fallback to arg
             userId: args.userId,
             total: args.total,
             date,
@@ -61,48 +113,23 @@ export const create = mutation({
             items: args.items,
         });
 
-        // 2. Update stock quantities (Deduct)
-        for (const item of args.items) {
-            // Deduct from main stock
-            const stock = await ctx.db.get(item.stockId);
-            if (stock) {
-                await ctx.db.patch(item.stockId, {
-                    qty: Math.max(0, stock.qty - item.quantity),
-                });
-            }
-
-            // If shop sale, deduct from shop issuedStocks too
-            if (args.shopId) {
-                const shop = await ctx.db.get(args.shopId);
-                if (shop) {
-                    const issuedStocks = shop.issuedStocks.map((s) => {
-                        if (s.stockId === item.stockId) {
-                            return { ...s, qty: Math.max(0, s.qty - item.quantity) };
-                        }
-                        return s;
-                    });
-                    await ctx.db.patch(args.shopId, { issuedStocks });
-                }
-            }
-        }
-
-        // 3. Handle Loan
+        // Handle Loans
         if (args.isLoan && args.customerId && args.paymentDate) {
             await ctx.db.insert("loans", {
                 customerId: args.customerId,
                 salesId: saleId,
                 amount: args.total,
                 balance: args.total,
-                date: args.paymentDate,
+                date: new Date().toISOString(),
             });
         }
 
-        // 4. Log activity
+        // Log activity
         await ctx.db.insert("activityLogs", {
             userId: args.userId,
             action: "Create Sale",
-            details: `${args.clientType} sale of UGX ${args.total.toLocaleString()} created.`,
-            timestamp: date,
+            details: `${args.clientType} sale of UGX ${args.total.toLocaleString()} created at ${shop ? shop.name : "HQ"}.`,
+            timestamp: new Date().toISOString(),
         });
 
         return saleId;

@@ -8,13 +8,19 @@ export const list = query({
         paginationOpts: paginationOptsValidator,
         searchTerm: v.optional(v.string()),
         categoryId: v.optional(v.id("categories")),
+        halfPrice: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
         if (args.searchTerm) {
-            return await ctx.db
+            let searchQ = ctx.db
                 .query("stocks")
-                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!))
-                .paginate(args.paginationOpts);
+                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!));
+
+            if (args.halfPrice !== undefined) {
+                searchQ = searchQ.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
+            }
+
+            return await searchQ.paginate(args.paginationOpts);
         }
 
         let stocksQuery = ctx.db.query("stocks");
@@ -23,7 +29,80 @@ export const list = query({
             stocksQuery = stocksQuery.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
         }
 
+        if (args.halfPrice !== undefined) {
+            stocksQuery = stocksQuery.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
+        }
+
         return await stocksQuery.order("desc").paginate(args.paginationOpts);
+    },
+});
+
+
+export const getShopStock = query({
+    args: {
+        searchTerm: v.optional(v.string()),
+        halfPrice: v.optional(v.boolean()),
+        email: v.optional(v.string()), // Pass email explicitly because we don't use Convex Auth
+    },
+    handler: async (ctx, args) => {
+        if (!args.email) return { shop: null, stocks: [] };
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", args.email!))
+            .first();
+
+        if (!user) return { shop: null, stocks: [] };
+
+        const shop = await ctx.db
+            .query("shops")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .first();
+
+        // If no shop, user is HQ or unassigned
+        if (!shop) return { shop: null, stocks: [] };
+
+        let stocks = shop.issuedStocks || [];
+
+        // Filter by text
+        if (args.searchTerm) {
+            const lowerSearch = args.searchTerm.toLowerCase();
+            stocks = stocks.filter(s =>
+                s.name.toLowerCase().includes(lowerSearch) ||
+                s.productCode.toLowerCase().includes(lowerSearch)
+            );
+        }
+
+        // Filter by halfPrice
+        if (args.halfPrice !== undefined) {
+            stocks = stocks.filter(s => !!s.halfPrice === args.halfPrice);
+        }
+
+        // Map to match the shape of the main 'stocks' table for UI consistency if needed
+        // The array in 'shops' already has { stockId, name, qty... }
+        // We'll return it as is, but UI needs to handle accessing it.
+        return { shop, stocks };
+    },
+});
+
+export const listAll = query({
+    args: {
+        halfPrice: v.optional(v.boolean()),
+    },
+    handler: async (ctx, args) => {
+        let q = ctx.db.query("stocks");
+
+        // We can't easily chain filters if we don't know which index to use or if we just scan all.
+        // For "stocks", scanning all is fine for < 10k items.
+        // If we want to be strict, we can use an index if defined, but schema didn't show "by_halfPrice".
+
+        const all = await q.collect();
+
+        if (args.halfPrice !== undefined) {
+            return all.filter(s => !!s.halfPrice === args.halfPrice);
+        }
+
+        return all;
     },
 });
 

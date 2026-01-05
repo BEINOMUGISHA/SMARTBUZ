@@ -19,6 +19,7 @@ export const metadata: Metadata = {
 
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { AuthProvider } from "@/context/auth-context";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function RootLayout({
   children,
@@ -33,6 +34,7 @@ export default function RootLayout({
         <ConvexClientProvider>
           <AuthProvider>
             {children}
+            <Toaster />
           </AuthProvider>
         </ConvexClientProvider>
       </body>

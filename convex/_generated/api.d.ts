@@ -12,6 +12,8 @@ import type * as activityLogs from "../activityLogs.js";
 import type * as banking from "../banking.js";
 import type * as categories from "../categories.js";
 import type * as customers from "../customers.js";
+import type * as dashboard from "../dashboard.js";
+import type * as debug from "../debug.js";
 import type * as expenses from "../expenses.js";
 import type * as loans from "../loans.js";
 import type * as packages from "../packages.js";
@@ -35,6 +37,8 @@ declare const fullApi: ApiFromModules<{
   banking: typeof banking;
   categories: typeof categories;
   customers: typeof customers;
+  dashboard: typeof dashboard;
+  debug: typeof debug;
   expenses: typeof expenses;
   loans: typeof loans;
   packages: typeof packages;
