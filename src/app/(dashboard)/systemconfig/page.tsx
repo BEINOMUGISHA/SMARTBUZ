@@ -531,6 +531,7 @@ function DistributorManager() {
                 name: formData.get("name") as string,
                 phone: formData.get("phone") as string,
                 email: formData.get("email") as string,
+                distributorId: formData.get("distributorId") as string,
                 address: formData.get("address") as string,
                 packageId: formData.get("packageId") as Id<"packages"> || undefined,
             });
@@ -549,6 +550,7 @@ function DistributorManager() {
                 name: formData.get("name") as string,
                 phone: formData.get("phone") as string,
                 email: formData.get("email") as string,
+                distributorId: formData.get("distributorId") as string,
                 address: formData.get("address") as string,
                 packageId: formData.get("packageId") as Id<"packages"> || undefined,
             });
@@ -589,6 +591,7 @@ function DistributorManager() {
                             <TableHeader className="bg-muted/50">
                                 <TableRow>
                                     <TableHead>Name</TableHead>
+                                    <TableHead>ID NO</TableHead>
                                     <TableHead>Contact</TableHead>
                                     <TableHead>Package</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
@@ -598,6 +601,7 @@ function DistributorManager() {
                                 {!distributors ? <TableRow><TableCell colSpan={4}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((dist) => (
                                     <TableRow key={dist._id}>
                                         <TableCell className="font-medium">{dist.name}</TableCell>
+                                        <TableCell className="font-mono text-xs">{dist.distributorId || "-"}</TableCell>
                                         <TableCell>
                                             <div className="flex flex-col text-sm">
                                                 <span>{dist.phone}</span>
@@ -632,6 +636,7 @@ function DistributorManager() {
                     <DialogHeader><DialogTitle>Add Distributor</DialogTitle></DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4">
                         <div className="space-y-2"><Label>Name</Label><Input name="name" required /></div>
+                        <div className="space-y-2"><Label>Distributor ID</Label><Input name="distributorId" placeholder="Optional" /></div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2"><Label>Phone</Label><Input name="phone" required /></div>
                             <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" /></div>
@@ -658,6 +663,7 @@ function DistributorManager() {
                     {editingItem && (
                         <form onSubmit={handleUpdate} className="space-y-4">
                             <div className="space-y-2"><Label>Name</Label><Input name="name" defaultValue={editingItem.name} required /></div>
+                            <div className="space-y-2"><Label>Distributor ID</Label><Input name="distributorId" defaultValue={editingItem.distributorId} /></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2"><Label>Phone</Label><Input name="phone" defaultValue={editingItem.phone} required /></div>
                                 <div className="space-y-2"><Label>Email</Label><Input name="email" defaultValue={editingItem.email} type="email" /></div>

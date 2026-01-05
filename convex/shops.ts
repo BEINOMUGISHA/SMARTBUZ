@@ -191,56 +191,8 @@ export const returnShopStock = mutation({
             issuedStocks: updatedStocks
         });
     },
-});                // If warehouse stock deleted (rare), we still return? Ideally yes.
-if (warehouseStock) {
-    await ctx.db.patch(args.stockId, {
-        qty: warehouseStock.qty + Math.abs(delta)
-    });
-}
-            }
-
-// Update Shop Stock
-const updatedStocks = [...shop.issuedStocks];
-updatedStocks[stockIndex] = {
-    ...updatedStocks[stockIndex],
-    qty: args.newQty
-};
-
-await ctx.db.patch(args.shopId, {
-    issuedStocks: updatedStocks
 });
-        },
-    });
 
-// Return entire stock to warehouse
-export const returnShopStock = mutation({
-    args: {
-        shopId: v.id("shops"),
-        stockId: v.id("stocks"),
-    },
-    handler: async (ctx, args) => {
-        const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
-
-        const stockItem = shop.issuedStocks.find(s => s.stockId === args.stockId);
-        if (!stockItem) throw new Error("Item not found in shop");
-
-        // Return quantity to warehouse
-        const warehouseStock = await ctx.db.get(args.stockId);
-        if (warehouseStock) {
-            await ctx.db.patch(args.stockId, {
-                qty: warehouseStock.qty + stockItem.qty
-            });
-        }
-
-        // Remove from shop
-        const updatedStocks = shop.issuedStocks.filter(s => s.stockId !== args.stockId);
-        await ctx.db.patch(args.shopId, {
-            issuedStocks: updatedStocks
-        });
-    },
-});
-});
 
 export const transferStock = mutation({
     args: {

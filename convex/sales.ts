@@ -135,3 +135,129 @@ export const create = mutation({
         return saleId;
     },
 });
+
+// Get My Sales Stats (Total, Cash, HP, etc.) for a date range
+export const mySalesStats = query({
+    args: {
+        from: v.optional(v.string()),
+        to: v.optional(v.string()),
+        filterType: v.optional(v.string()), // "All", "Regular", "HP"
+        email: v.optional(v.string()), // Manual Auth
+    },
+    handler: async (ctx, args) => {
+        if (!args.email) throw new Error("Unauthorized");
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", args.email!))
+            .first();
+        if (!user) throw new Error("User not found");
+
+        // Find user's shop
+        const shop = await ctx.db
+            .query("shops")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .first();
+
+        // Base Query
+        let salesQuery = ctx.db.query("sales");
+
+        // Filter by Shop (if user has one)
+        if (shop) {
+            salesQuery = salesQuery.filter((q) => q.eq(q.field("shopId"), shop._id));
+        }
+        // If no shop, do we show ALL sales? Or just their own?
+        // User said "display sales for this shop". If HQ (no shop), maybe show all?
+        // Let's assume HQ sees all, Shop User sees Shop.
+
+        // Date Filter
+        if (args.from && args.to) {
+            const fromDate = args.from;
+            const toDate = args.to;
+            salesQuery = salesQuery.filter((q) =>
+                q.and(
+                    q.gte(q.field("date"), fromDate),
+                    q.lte(q.field("date"), toDate)
+                )
+            );
+        }
+
+        // Type Filter
+        if (args.filterType && args.filterType !== "All") {
+            if (args.filterType === "HP") {
+                salesQuery = salesQuery.filter((q) => q.eq(q.field("clientType"), "HP Client"));
+            } else {
+                salesQuery = salesQuery.filter((q) => q.neq(q.field("clientType"), "HP Client"));
+            }
+        }
+
+        const sales = await salesQuery.collect();
+
+        // Calculate Stats
+        const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
+        const totalHP = sales
+            .filter((s) => s.clientType === "HP Client")
+            .reduce((sum, s) => sum + s.total, 0);
+        // Assuming "regular" is non-HP
+        const totalRegular = totalSales - totalHP;
+
+        return {
+            totalSales,
+            totalRegular,
+            totalHP,
+            count: sales.length
+        };
+    },
+});
+
+// Paginated My Sales List
+export const mySales = query({
+    args: {
+        paginationOpts: paginationOptsValidator,
+        from: v.optional(v.string()),
+        to: v.optional(v.string()),
+        filterType: v.optional(v.string()), // "All", "Regular", "HP"
+        email: v.optional(v.string()), // Manual Auth
+    },
+    handler: async (ctx, args) => {
+        if (!args.email) throw new Error("Unauthorized");
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", args.email!))
+            .first();
+        if (!user) throw new Error("User not found");
+
+        const shop = await ctx.db
+            .query("shops")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .first();
+
+        let salesQuery = ctx.db.query("sales");
+
+        if (shop) {
+            salesQuery = salesQuery.filter((q) => q.eq(q.field("shopId"), shop._id));
+        }
+
+        if (args.from && args.to) {
+            const fromDate = args.from;
+            const toDate = args.to;
+            salesQuery = salesQuery.filter((q) =>
+                q.and(
+                    q.gte(q.field("date"), fromDate),
+                    q.lte(q.field("date"), toDate)
+                )
+            );
+        }
+
+        if (args.filterType && args.filterType !== "All") {
+            if (args.filterType === "HP") {
+                salesQuery = salesQuery.filter((q) => q.eq(q.field("clientType"), "HP Client"));
+            } else {
+                salesQuery = salesQuery.filter((q) => q.neq(q.field("clientType"), "HP Client"));
+            }
+        }
+
+        return await salesQuery.order("desc").paginate(args.paginationOpts);
+    },
+});

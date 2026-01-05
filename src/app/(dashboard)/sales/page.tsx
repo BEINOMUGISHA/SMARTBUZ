@@ -18,6 +18,8 @@ import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
+import { ReceiptModal } from "@/components/ReceiptModal";
+import { MySalesView } from "./my-sales-view";
 // Types
 type CartItem = {
     stockId: Id<"stocks">;
@@ -35,10 +37,11 @@ export default function SalesPage() {
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
             <SalesHeader />
             <Tabs defaultValue="regular" className="flex-1 flex flex-col">
-                <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+                <TabsList className="grid w-full grid-cols-4 lg:w-[540px]">
                     <TabsTrigger value="regular">Regular Sales</TabsTrigger>
                     <TabsTrigger value="hp">HP Sales</TabsTrigger>
                     <TabsTrigger value="packages">Packages</TabsTrigger>
+                    <TabsTrigger value="mysales">My Sales</TabsTrigger>
                 </TabsList>
 
                 <div className="flex-1 mt-4 overflow-hidden">
@@ -54,6 +57,9 @@ export default function SalesPage() {
                             <h3 className="text-xl font-semibold">Package Sales Module</h3>
                             <p className="mt-2 text-center max-w-sm">This module is currently under development. Please check back later for package selling capabilities.</p>
                         </div>
+                    </TabsContent>
+                    <TabsContent value="mysales" className="h-full m-0">
+                        <MySalesView />
                     </TabsContent>
                 </div>
             </Tabs>
@@ -109,6 +115,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [isLoan, setIsLoan] = useState(false);
     const [paymentDate, setPaymentDate] = useState<string>("");
     const [isLoading, setIsLoading] = useState(false);
+    const [receiptData, setReceiptData] = useState<any | null>(null);
 
     // Data Fetching: Shop Stock ONLY
     // We pass user.email because the app uses custom auth, not Convex Auth
@@ -214,7 +221,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
         try {
             setIsLoading(true);
-            await createSale({
+            const saleId = await createSale({
                 userId: user._id,
                 total: cartTotal,
                 clientType,
@@ -231,7 +238,39 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 paymentDate: isLoan ? paymentDate : undefined,
             });
 
-            toast.success(isLoan ? "Loan recorded successfully" : "Sale payment successful");
+            // Prepare Receipt Data
+            const selectedCustomer = customers?.find(c => c._id === selectedCustomerId);
+            const receipt = {
+                customer: selectedCustomer ? {
+                    name: selectedCustomer.name,
+                    phone: selectedCustomer.phone,
+                    email: selectedCustomer.email,
+                    distributorId: selectedCustomer.distributorId
+                } : undefined,
+                shop: {
+                    name: isShopUser ? shopData.shop.name : "Main Warehouse",
+                    location: isShopUser ? shopData.shop.location : "Headquarters",
+                    contact: isShopUser ? shopData.shop.contact : "N/A",
+                    serialNumber: isShopUser ? shopData.shop.serialNumber : "MAIN-001"
+                },
+                operator: {
+                    name: (user as any)?.name || user?.email || "Operator",
+                    email: user?.email
+                },
+                clientType,
+                paymentMode: isLoan ? "Loan/Credit" : paymentMethod,
+                date: new Date().toISOString(),
+                invoiceNumber: `INV-${Date.now()}`,
+                items: cart.map(item => ({
+                    ...item,
+                    price: item.price
+                })),
+                total: cartTotal,
+                totalPV: totalPV,
+                totalBV: totalBV,
+            };
+
+            setReceiptData(receipt);
             setCart([]);
             setPaymentDate("");
             setIsLoan(false);
@@ -249,7 +288,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Search usage server-side..."
+                        placeholder="Search products..."
                         className="pl-9 h-12 text-lg"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -310,8 +349,6 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             </TableBody>
                         </Table>
                     )}
-
-
                 </div>
             </div>
 
@@ -478,6 +515,13 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     </div>
                 </Card>
             </div>
+
+            {/* Receipt Modal */}
+            <ReceiptModal
+                isOpen={!!receiptData}
+                onClose={() => setReceiptData(null)}
+                data={receiptData}
+            />
         </div>
     );
 }

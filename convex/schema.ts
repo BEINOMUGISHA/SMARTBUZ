@@ -45,6 +45,7 @@ export default defineSchema({
         name: v.string(),
         phone: v.string(),
         email: v.optional(v.string()),
+        distributorId: v.optional(v.string()), // Custom ID for receipts
         address: v.optional(v.string()),
         packageId: v.optional(v.id("packages")),
     }).index("by_phone", ["phone"]),
