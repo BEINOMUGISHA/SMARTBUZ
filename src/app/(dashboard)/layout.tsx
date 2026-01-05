@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import Image from "next/image";
 import {
     Package2,
     LayoutDashboard,
@@ -44,22 +45,27 @@ export default function DashboardLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const { logout, user, isLoading } = useAuth(); // Modified line
-    const router = useRouter(); // Added line
+    const { logout, user, isLoading } = useAuth();
+    const router = useRouter();
 
-    useEffect(() => { // Added block
+    useEffect(() => {
         if (!isLoading && !user) {
             router.push("/auth/login");
         }
-    }, [user, isLoading, router]); // Added block
+    }, [user, isLoading, router]);
 
-    if (isLoading || !user) { // Added block
+    if (isLoading || !user) {
         return (
-            <div className="flex h-screen w-full items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <div className="flex h-screen w-full items-center justify-center bg-background">
+                <div className="flex flex-col items-center gap-4">
+                    <Image src="/logo.ico" alt="Loading" width={150} height={50} className="animate-pulse" />
+                    <div className="h-1 w-32 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-primary animate-loading-bar" style={{ width: '50%' }} />
+                    </div>
+                </div>
             </div>
         );
-    } // Added block
+    }
 
     return (
         <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -67,8 +73,7 @@ export default function DashboardLayout({
                 <div className="flex h-full max-h-screen flex-col gap-2">
                     <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
                         <Link href="/" className="flex items-center gap-2 font-semibold">
-                            <Package2 className="h-6 w-6" />
-                            <span className="">Jirah POS</span>
+                            <Image src="/logo.ico" alt="Tiens Logo" width={120} height={40} className="object-contain" />
                         </Link>
                     </div>
                     <div className="flex-1">
