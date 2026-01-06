@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Doc, Id } from "../../../../convex/_generated/dataModel";
+import { useAuth } from "@/context/auth-context";
 import {
     Table,
     TableBody,
@@ -80,29 +81,66 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingStock, setEditingStock] = useState<Doc<"stocks"> | null>(null);
     const [deletingId, setDeletingId] = useState<Id<"stocks"> | null>(null);
+    const { user } = useAuth();
 
-    // Client-side pagination state
+    // 1. Pagination State
     const [currentPage, setCurrentPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [rowsPerPage, setRowsPerPage] = useState(10); // Default items per page
 
-    const stocks = useQuery(api.stocks.listAll, { halfPrice });
+    // Persist rowsPerPage preference
+    useEffect(() => {
+        const saved = localStorage.getItem("pos_stock_rows_per_page");
+        if (saved) {
+            setRowsPerPage(Number(saved));
+        }
+    }, []);
+
+    // 2. Data Fetching
+    const { results, status, loadMore, isLoading } = usePaginatedQuery(
+        api.stocks.list,
+        { halfPrice, searchTerm: search || undefined },
+        { initialNumItems: rowsPerPage }
+    );
+
+    // Sync loaded items with rowsPerPage preference (e.g. on tab switch or pref change)
+    useEffect(() => {
+        if (status === "CanLoadMore" && results && results.length < rowsPerPage) {
+            loadMore(rowsPerPage - results.length);
+        }
+    }, [rowsPerPage, results, status, loadMore]);
+
+    // 3. Count Query for "Page X of Y"
+    const totalItems = useQuery(api.stocks.count, {
+        halfPrice,
+        searchTerm: search || undefined
+    }) || 0;
+
     const categories = useQuery(api.categories.get);
 
     const addStock = useMutation(api.stocks.add);
     const updateStock = useMutation(api.stocks.update);
     const deleteStock = useMutation(api.stocks.remove);
 
-    const filteredStocks = stocks?.filter(s =>
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.productCode.toLowerCase().includes(search.toLowerCase())
-    ) || [];
-
-    // Pagination Logic
-    const totalItems = filteredStocks.length;
+    // 4. Client-side Slicing for "Page View"
     const totalPages = Math.ceil(totalItems / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const endIndex = Math.min(startIndex + rowsPerPage, totalItems);
-    const currentStocks = filteredStocks.slice(startIndex, endIndex);
+
+    // Ensure we have enough data loaded
+    const loadedCount = results?.length || 0;
+    const currentView = results?.slice(startIndex, endIndex) || [];
+
+    // Handle "Next Page" - Load more if needed
+    const handleNextPage = () => {
+        if (currentPage < totalPages) {
+            const nextPageIndex = startIndex + rowsPerPage;
+            // If next page data isn't loaded yet, fetch it
+            if (nextPageIndex >= loadedCount && status === "CanLoadMore") {
+                loadMore(rowsPerPage);
+            }
+            setCurrentPage(p => p + 1);
+        }
+    };
 
     const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -177,9 +215,12 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 <div className="flex items-center gap-2 bg-card p-2 rounded-lg border shadow-sm w-full max-w-sm">
                     <Search className="h-4 w-4 text-muted-foreground ml-2" />
                     <Input
-                        placeholder="Search product name or code..."
+                        placeholder="Search product name..."
                         value={search}
-                        onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
+                        onChange={(e) => {
+                            setSearch(e.target.value);
+                            setCurrentPage(1); // Reset to page 1 on search
+                        }}
                         className="border-0 bg-transparent shadow-none focus-visible:ring-0 h-8"
                     />
                 </div>
@@ -204,20 +245,27 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {!stocks ? (
+                            {!results ? (
                                 <TableRow>
                                     <TableCell colSpan={8} className="h-24 text-center">
                                         <Loader2 className="h-4 w-4 animate-spin mx-auto" />
                                     </TableCell>
                                 </TableRow>
-                            ) : currentStocks.length === 0 ? (
+                            ) : currentView.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                                        No items found.
+                                        {status === "LoadingMore" || status === "LoadingFirstPage" ? (
+                                            <div className="flex items-center justify-center gap-2">
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                <span>Loading data...</span>
+                                            </div>
+                                        ) : (
+                                            "No items found."
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                currentStocks.map((stock) => (
+                                currentView.map((stock) => (
                                     <TableRow key={stock._id} className="hover:bg-muted/50">
                                         <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
                                         <TableCell className="font-medium">{stock.name}</TableCell>
@@ -256,14 +304,16 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                     </Table>
                 </div>
 
-                {/* Pagination Footer */}
+                {/* Full Pagination Footer */}
                 <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-6 lg:space-x-8">
                     <div className="flex items-center space-x-2">
                         <p className="text-sm font-medium">Rows per page</p>
                         <Select
                             value={`${rowsPerPage}`}
                             onValueChange={(value) => {
-                                setRowsPerPage(Number(value));
+                                const newSize = Number(value);
+                                setRowsPerPage(newSize);
+                                localStorage.setItem("pos_stock_rows_per_page", String(newSize));
                                 setCurrentPage(1);
                             }}
                         >
@@ -284,7 +334,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                     </div>
                     <div className="flex items-center space-x-2">
                         <span className="text-sm text-muted-foreground hidden md:inline-block mr-4">
-                            Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} items
+                            Showing {Math.min(startIndex + 1, totalItems)}-{Math.min(endIndex, totalItems)} of {totalItems} items
                         </span>
                         <Button
                             variant="outline"
@@ -307,8 +357,8 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                         <Button
                             variant="outline"
                             className="h-8 w-8 p-0"
-                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages || totalPages === 0}
+                            onClick={handleNextPage}
+                            disabled={currentPage >= totalPages || (currentPage === totalPages && status === "Exhausted")}
                         >
                             <span className="sr-only">Go to next page</span>
                             <ChevronRight className="h-4 w-4" />
@@ -316,8 +366,18 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                         <Button
                             variant="outline"
                             className="hidden h-8 w-8 p-0 lg:flex"
-                            onClick={() => setCurrentPage(totalPages)}
-                            disabled={currentPage === totalPages || totalPages === 0}
+                            onClick={() => {
+                                // For last page, ideally we need all data loaded. 
+                                // This is tricky with infinite scroll. 
+                                // Best effort: go to last calculated page, trigger loadMore loop? 
+                                // For now, just set page. User might see empty if not loaded.
+                                // We'll disable this button if we don't have all data?
+                                // Or we can implement partial jump logic.
+                                // Let's just set the page.
+                                setCurrentPage(totalPages);
+                                if (status === "CanLoadMore") loadMore(totalItems - loadedCount); // Attempt to load all
+                            }}
+                            disabled={currentPage >= totalPages}
                         >
                             <span className="sr-only">Go to last page</span>
                             <ChevronsRight className="h-4 w-4" />

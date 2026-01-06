@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { ReceiptTemplate, ReceiptData } from "./ReceiptTemplate";
@@ -32,16 +32,11 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                             /* Hide everything in the body by default */
                             body > * { display: none !important; }
                             
-                            /* FORCE visibility for our portal */
+                            /* Enable visibility for our portal */
                             #print-portal { 
                                 display: block !important;
-                                position: fixed;
-                                top: 0;
-                                left: 0;
                                 width: 100%;
-                                height: 100%;
                                 background: white;
-                                z-index: 99999;
                             }
                             #print-portal * { 
                                 visibility: visible !important; 
@@ -65,6 +60,7 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
             {/* MODAL VIEW - For on-screen viewing only */}
             <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
                 <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white text-black sm:max-w-[800px] print:hidden">
+                    <DialogTitle className="sr-only">Receipt Preview</DialogTitle>
                     <ReceiptTemplate data={data} />
 
                     {/* On-Screen Print Button */}

@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ShoppingCart, Trash2, Plus, Minus, Store, MoveRight, Loader2, PackageCheck } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Plus, Minus, Store, MoveRight, Loader2, PackageCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -100,9 +100,15 @@ function ShopStockViewer() {
 
     // Pagination
     const [page, setPage] = useState(1);
-    const pageSize = 15;
-    const totalPages = Math.ceil(filteredStocks.length / pageSize);
-    const paginatedStocks = filteredStocks.slice((page - 1) * pageSize, page * pageSize);
+    const [rowsPerPage, setRowsPerPage] = useState(15);
+
+    useEffect(() => {
+        const saved = localStorage.getItem("pos_shop_viewer_rows_per_page");
+        if (saved) setRowsPerPage(Number(saved));
+    }, []);
+
+    const totalPages = Math.ceil(filteredStocks.length / rowsPerPage);
+    const paginatedStocks = filteredStocks.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
     useEffect(() => { setPage(1); }, [search, selectedShopId, viewType]);
 
@@ -290,29 +296,52 @@ function ShopStockViewer() {
                             </Table>
                         </div>
 
-                        {/* Simple Pagination */}
-                        <div className="border-t p-4 flex items-center justify-between bg-muted/20">
-                            <div className="text-xs text-muted-foreground">
-                                Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, filteredStocks.length)} of {filteredStocks.length} items
-                            </div>
-                            <div className="flex gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={page === 1}
-                                    onClick={() => setPage(p => p - 1)}
+                        {/* Standard Pagination */}
+                        <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-2">
+                            <div className="flex items-center space-x-2 mr-auto">
+                                <p className="text-xs font-medium hidden sm:inline-block">Rows</p>
+                                <Select
+                                    value={`${rowsPerPage}`}
+                                    onValueChange={(value) => {
+                                        const newSize = Number(value);
+                                        setRowsPerPage(newSize);
+                                        localStorage.setItem("pos_shop_viewer_rows_per_page", String(newSize));
+                                        setPage(1);
+                                    }}
                                 >
-                                    Previous
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={page === totalPages}
-                                    onClick={() => setPage(p => p + 1)}
-                                >
-                                    Next
-                                </Button>
+                                    <SelectTrigger className="h-8 w-[65px]">
+                                        <SelectValue placeholder={rowsPerPage} />
+                                    </SelectTrigger>
+                                    <SelectContent side="top">
+                                        {[5, 10, 20, 30, 50, 100].map((pageSize) => (
+                                            <SelectItem key={pageSize} value={`${pageSize}`}>
+                                                {pageSize}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
+
+                            <div className="text-xs font-medium mr-2">
+                                {Math.min((page - 1) * rowsPerPage + 1, filteredStocks.length)}-{Math.min(page * rowsPerPage, filteredStocks.length)} of {filteredStocks.length}
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                className="h-8 w-8 p-0"
+                                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                disabled={page === 1}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="h-8 w-8 p-0"
+                                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                disabled={page === totalPages || totalPages === 0}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
                         </div>
                     </>
                 )}
@@ -360,10 +389,28 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
     const [selectedShopId, setSelectedShopId] = useState<Id<"shops"> | "">("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // 1. Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+
+    // Persist rowsPerPage
+    useEffect(() => {
+        const saved = localStorage.getItem("pos_stock_rows_per_page"); // Use same key for consistency across app? Or "pos_transfer_rows"? User said "consistent".
+        // Let's use the same key for a unified experience, or a similar valid one.
+        // Actually, user might want different view sizes. I'll use a specific one but generic naming style.
+        // "consistent localstorage" -> likely means "it should assume the same behavior".
+        // I will use "pos_transfer_rows_per_page" to avoid cross-page confusion if context differs.
+        const savedSpecific = localStorage.getItem("pos_transfer_rows_per_page");
+        if (savedSpecific) {
+            setRowsPerPage(Number(savedSpecific));
+        }
+    }, []);
+
     // Debounce search
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedSearch(search);
+            setCurrentPage(1); // Reset page on search
         }, 500);
         return () => clearTimeout(timer);
     }, [search]);
@@ -375,11 +422,43 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
             searchTerm: debouncedSearch || undefined,
             halfPrice: isHp,
         },
-        { initialNumItems: 20 }
+        { initialNumItems: rowsPerPage }
     );
+
+    // Tab/State Sync
+    useEffect(() => {
+        if (status === "CanLoadMore" && stocks && stocks.length < rowsPerPage) {
+            loadMore(rowsPerPage - stocks.length);
+        }
+    }, [rowsPerPage, stocks, status, loadMore]);
+
+    // Count Query
+    const totalItems = useQuery(api.stocks.count, {
+        halfPrice: isHp,
+        searchTerm: debouncedSearch || undefined
+    }) || 0;
 
     const shops = useQuery(api.shops.listAll);
     const transferStock = useMutation(api.shops.transferStock);
+
+    // Client-side Slicing
+    const totalPages = Math.ceil(totalItems / rowsPerPage);
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    const endIndex = Math.min(startIndex + rowsPerPage, totalItems);
+
+    // Loaded check
+    const loadedCount = stocks?.length || 0;
+    const currentView = stocks?.slice(startIndex, endIndex) || [];
+
+    const handleNextPage = () => {
+        if (currentPage < totalPages) {
+            const nextPageIndex = startIndex + rowsPerPage;
+            if (nextPageIndex >= loadedCount && status === "CanLoadMore") {
+                loadMore(rowsPerPage);
+            }
+            setCurrentPage(p => p + 1);
+        }
+    };
 
     // Queue Actions
     const addToQueue = (stock: Doc<"stocks">) => {
@@ -476,60 +555,104 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-0">
-                        {status === "LoadingFirstPage" ? (
-                            <div className="flex items-center justify-center h-40"><Loader2 className="animate-spin" /></div>
-                        ) : stocks.length === 0 ? (
-                            <div className="text-center py-10 text-muted-foreground">No stocks found matching your criteria</div>
+                    <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-0 flex flex-col">
+                        {!stocks ? (
+                            <div className="flex items-center justify-center flex-1 h-40"><Loader2 className="animate-spin" /></div>
+                        ) : currentView.length === 0 ? (
+                            <div className="text-center py-10 flex-1 text-muted-foreground flex flex-col items-center justify-center">
+                                {status === "LoadingMore" || status === "LoadingFirstPage" ? (
+                                    <div className="flex items-center gap-2"><Loader2 className="animate-spin h-4 w-4" /> Loading...</div>
+                                ) : "No stocks found matching your criteria"}
+                            </div>
                         ) : (
-                            <Table>
-                                <TableHeader className="sticky top-0 bg-background z-10">
-                                    <TableRow>
-                                        <TableHead>Product</TableHead>
-                                        <TableHead className="text-center">Available</TableHead>
-                                        <TableHead className="text-right">Action</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {stocks.map((stock) => (
-                                        <TableRow key={stock._id} className={stock.qty === 0 ? "opacity-50" : ""}>
-                                            <TableCell className="py-3">
-                                                <div className="font-medium text-sm">{stock.name}</div>
-                                                <div className="text-xs text-muted-foreground flex gap-2">
-                                                    <span className="font-mono bg-muted px-1 rounded">{stock.productCode}</span>
-                                                    <span>PV: {stock.pv}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-center">
-                                                <Badge variant={stock.qty > 0 ? "outline" : "destructive"} className={stock.qty > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : ""}>
-                                                    {stock.qty}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <Button
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    className="h-8"
-                                                    disabled={stock.qty === 0}
-                                                    onClick={() => addToQueue(stock)}
-                                                >
-                                                    <MoveRight className="h-4 w-4 mr-1" /> Transfer
-                                                </Button>
-                                            </TableCell>
+                            <div className="flex-1 overflow-auto">
+                                <Table>
+                                    <TableHeader className="sticky top-0 bg-background z-10">
+                                        <TableRow>
+                                            <TableHead>Product</TableHead>
+                                            <TableHead className="text-center">Available</TableHead>
+                                            <TableHead className="text-right">Action</TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {currentView.map((stock) => (
+                                            <TableRow key={stock._id} className={stock.qty === 0 ? "opacity-50" : ""}>
+                                                <TableCell className="py-3">
+                                                    <div className="font-medium text-sm">{stock.name}</div>
+                                                    <div className="text-xs text-muted-foreground flex gap-2">
+                                                        <span className="font-mono bg-muted px-1 rounded">{stock.productCode}</span>
+                                                        <span>PV: {stock.pv}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    <Badge variant={stock.qty > 0 ? "outline" : "destructive"} className={stock.qty > 0 ? "bg-blue-50 text-blue-700 border-blue-200" : ""}>
+                                                        {stock.qty}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        className="h-8"
+                                                        disabled={stock.qty === 0}
+                                                        onClick={() => addToQueue(stock)}
+                                                    >
+                                                        <MoveRight className="h-4 w-4 mr-1" /> Transfer
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
                         )}
 
-                        {/* Pagination */}
-                        <div className="flex justify-center items-center gap-4 p-4 border-t">
-                            {status === "CanLoadMore" && (
-                                <Button onClick={() => loadMore(20)} disabled={isStocksLoading} variant="ghost" size="sm" className="w-full text-muted-foreground">
-                                    {isStocksLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Load More
-                                </Button>
-                            )}
+                        {/* Pagination Footer */}
+                        <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-2">
+                            <div className="flex items-center space-x-2 mr-auto">
+                                <p className="text-xs font-medium hidden sm:inline-block">Rows</p>
+                                <Select
+                                    value={`${rowsPerPage}`}
+                                    onValueChange={(value) => {
+                                        const newSize = Number(value);
+                                        setRowsPerPage(newSize);
+                                        localStorage.setItem("pos_transfer_rows_per_page", String(newSize));
+                                        setCurrentPage(1);
+                                    }}
+                                >
+                                    <SelectTrigger className="h-8 w-[65px]">
+                                        <SelectValue placeholder={rowsPerPage} />
+                                    </SelectTrigger>
+                                    <SelectContent side="top">
+                                        {[5, 10, 20, 30, 50, 100].map((pageSize) => (
+                                            <SelectItem key={pageSize} value={`${pageSize}`}>
+                                                {pageSize}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="text-xs font-medium mr-2">
+                                {Math.min(startIndex + 1, totalItems)}-{Math.min(endIndex, totalItems)} of {totalItems}
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                className="h-8 w-8 p-0"
+                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="h-8 w-8 p-0"
+                                onClick={handleNextPage}
+                                disabled={currentPage >= totalPages || (currentPage === totalPages && status === "Exhausted")}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
                         </div>
                     </div>
                 </Card>

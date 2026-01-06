@@ -37,6 +37,37 @@ export const list = query({
     },
 });
 
+export const count = query({
+    args: {
+        searchTerm: v.optional(v.string()),
+        categoryId: v.optional(v.id("categories")),
+        halfPrice: v.optional(v.boolean()),
+    },
+    handler: async (ctx, args) => {
+        if (args.searchTerm) {
+            let searchQ = ctx.db
+                .query("stocks")
+                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!));
+
+            if (args.halfPrice !== undefined) {
+                searchQ = searchQ.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
+            }
+            return (await searchQ.collect()).length;
+        }
+
+        let stocksQuery = ctx.db.query("stocks");
+
+        if (args.categoryId) {
+            stocksQuery = stocksQuery.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
+        }
+
+        if (args.halfPrice !== undefined) {
+            stocksQuery = stocksQuery.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
+        }
+
+        return (await stocksQuery.collect()).length;
+    },
+});
 
 export const getShopStock = query({
     args: {
@@ -69,7 +100,7 @@ export const getShopStock = query({
             const lowerSearch = args.searchTerm.toLowerCase();
             stocks = stocks.filter(s =>
                 s.name.toLowerCase().includes(lowerSearch) ||
-                s.productCode.toLowerCase().includes(lowerSearch)
+                (s.productCode?.toLowerCase().includes(lowerSearch) ?? false)
             );
         }
 

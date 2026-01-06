@@ -113,9 +113,20 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [clientType, setClientType] = useState(isHp ? "HP Client" : "Non-Member");
     const [paymentMethod, setPaymentMethod] = useState("Cash");
     const [isLoan, setIsLoan] = useState(false);
+    const [manualName, setManualName] = useState("");
     const [paymentDate, setPaymentDate] = useState<string>("");
     const [isLoading, setIsLoading] = useState(false);
     const [receiptData, setReceiptData] = useState<any | null>(null);
+    const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
+
+    // Auto-select "Loan" payment method when isLoan is true
+    useEffect(() => {
+        if (isLoan) {
+            setPaymentMethod("Loan");
+        } else if (paymentMethod === "Loan") {
+            setPaymentMethod("Cash");
+        }
+    }, [isLoan]);
 
     // Data Fetching: Shop Stock ONLY
     // We pass user.email because the app uses custom auth, not Convex Auth
@@ -132,6 +143,24 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
     const customers = useQuery(api.customers.listAll);
     const createSale = useMutation(api.sales.create);
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+
+    useEffect(() => {
+        const saved = localStorage.getItem("pos_sales_rows_per_page");
+        if (saved) setRowsPerPage(Number(saved));
+        setCurrentPage(1); // Reset page on view change/init
+    }, [isHp]);
+
+    // Reset page on search
+    useEffect(() => { setCurrentPage(1); }, [debouncedSearch]);
+
+    // Client-side slicing
+    const stocksToDisplay = stocks;
+    const totalPages = Math.ceil(stocksToDisplay.length / rowsPerPage);
+    const paginatedStocks = stocksToDisplay.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
     const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
     const totalPV = cart.reduce((sum, item) => sum + (item.pv * item.qty), 0);
@@ -199,24 +228,40 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
     // Checkout Handler
     const handleCheckout = async () => {
+        const newErrors: Record<string, boolean> = {};
+
         if (cart.length === 0) {
-            toast.error("Cart is empty");
+            toast.error("Please add items to your cart first.");
             return;
         }
-        if (!user) {
-            toast.error("You must be logged in");
-            return;
+
+        // Validate Business Rules
+        if (clientType === "Member" && selectedCustomerId === "walk-in") {
+            newErrors.customer = true;
+            toast.error("Members must have a selected customer.");
         }
 
         if (isLoan) {
             if (selectedCustomerId === "walk-in") {
-                toast.error("Loans require a selected customer. Please select a registered distributor/customer.");
-                return;
+                newErrors.customer = true;
+                toast.error("Loans require a selected customer.");
             }
             if (!paymentDate) {
-                toast.error("Please select a payment due date for this loan.");
-                return;
+                newErrors.paymentDate = true;
+                toast.error("Please set a payment due date for the loan.");
             }
+        }
+
+        if (Object.keys(newErrors).length > 0) {
+            setFormErrors(newErrors);
+            return;
+        }
+
+        setFormErrors({});
+
+        if (!user) {
+            toast.error("You must be logged in to process sales.");
+            return;
         }
 
         try {
@@ -225,9 +270,12 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 userId: user._id,
                 total: cartTotal,
                 clientType,
+                paymentMode: paymentMethod,
+                manualCustomerName: ((clientType === "Non-Member" || clientType === "HP Client") && manualName) ? manualName : undefined,
                 items: cart.map(item => ({
                     stockId: item.stockId,
                     name: item.name,
+                    productCode: item.productCode,
                     price: item.price,
                     quantity: item.qty,
                     pv: item.pv,
@@ -235,18 +283,20 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 })),
                 customerId: selectedCustomerId === "walk-in" ? undefined : selectedCustomerId,
                 isLoan,
-                paymentDate: isLoan ? paymentDate : undefined,
+                paymentDueDate: isLoan ? paymentDate : undefined,
             });
 
             // Prepare Receipt Data
             const selectedCustomer = customers?.find(c => c._id === selectedCustomerId);
+            const fullName = `${user.first_name} ${user.last_name}${user.middle_name ? ` ${user.middle_name}` : ""}`;
+
             const receipt = {
                 customer: selectedCustomer ? {
                     name: selectedCustomer.name,
                     phone: selectedCustomer.phone,
                     email: selectedCustomer.email,
                     distributorId: selectedCustomer.distributorId
-                } : undefined,
+                } : (manualName ? { name: manualName, phone: "N/A", email: "" } : undefined),
                 shop: {
                     name: isShopUser ? shopData.shop.name : "Main Warehouse",
                     location: isShopUser ? shopData.shop.location : "Headquarters",
@@ -254,12 +304,14 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     serialNumber: isShopUser ? shopData.shop.serialNumber : "MAIN-001"
                 },
                 operator: {
-                    name: (user as any)?.name || user?.email || "Operator",
-                    email: user?.email
+                    name: fullName,
+                    email: user?.email,
+                    phone: user?.phone_number
                 },
                 clientType,
-                paymentMode: isLoan ? "Loan/Credit" : paymentMethod,
+                paymentMode: paymentMethod,
                 date: new Date().toISOString(),
+                paymentDueDate: isLoan ? paymentDate : undefined,
                 invoiceNumber: `INV-${Date.now()}`,
                 items: cart.map(item => ({
                     ...item,
@@ -273,6 +325,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             setReceiptData(receipt);
             setCart([]);
             setPaymentDate("");
+            setManualName("");
+            setPaymentMethod("Cash");
             setIsLoan(false);
         } catch (error) {
             toast.error(formatError(error));
@@ -302,52 +356,102 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     ) : stocks.length === 0 ? (
                         <div className="text-center py-10 text-muted-foreground">No products found</div>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="w-[100px]">Code</TableHead>
-                                    <TableHead>Product Name</TableHead>
-                                    <TableHead className="text-right">Price</TableHead>
-                                    <TableHead className="text-right">PV / BV</TableHead>
-                                    <TableHead className="text-center">Stock</TableHead>
-                                    <TableHead></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {stocks.map((stock: any) => (
-                                    <TableRow key={stock._id || stock.stockId} className={stock.qty === 0 ? "opacity-50" : ""}>
-                                        <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
-                                        <TableCell className="font-medium">
-                                            {stock.name}
-                                            {isShopUser && <Badge variant="secondary" className="ml-2 text-[10px] h-4">Shop Stock</Badge>}
-                                        </TableCell>
-                                        <TableCell className="text-right">{stock.price.toLocaleString()}</TableCell>
-                                        <TableCell className="text-right text-xs text-muted-foreground">
-                                            {stock.pv} / {stock.bv}
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            {stock.qty > 0 ? (
-                                                <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200">
-                                                    {stock.qty}
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="destructive">Out</Badge>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                disabled={stock.qty === 0}
-                                                onClick={() => addToCart(stock)}
-                                            >
-                                                Add
-                                            </Button>
-                                        </TableCell>
+                        <div className="flex-1 overflow-auto flex flex-col h-full">
+                            <Table>
+                                <TableHeader className="sticky top-0 bg-background z-10">
+                                    <TableRow>
+                                        <TableHead className="w-[100px]">Code</TableHead>
+                                        <TableHead>Product Name</TableHead>
+                                        <TableHead className="text-right">Price</TableHead>
+                                        <TableHead className="text-right">PV / BV</TableHead>
+                                        <TableHead className="text-center">Stock</TableHead>
+                                        <TableHead></TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {paginatedStocks.map((stock: any) => (
+                                        <TableRow key={stock._id || stock.stockId} className={stock.qty === 0 ? "opacity-50" : ""}>
+                                            <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
+                                            <TableCell className="font-medium">
+                                                {stock.name}
+                                                {isShopUser && <Badge variant="secondary" className="ml-2 text-[10px] h-4">Shop Stock</Badge>}
+                                            </TableCell>
+                                            <TableCell className="text-right">{stock.price.toLocaleString()}</TableCell>
+                                            <TableCell className="text-right text-xs text-muted-foreground">
+                                                {stock.pv} / {stock.bv}
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                {stock.qty > 0 ? (
+                                                    <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200">
+                                                        {stock.qty}
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge variant="destructive">Out</Badge>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    disabled={stock.qty === 0}
+                                                    onClick={() => addToCart(stock)}
+                                                >
+                                                    Add
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+
+                            {/* Pagination Footer */}
+                            <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-2 mt-auto">
+                                <div className="flex items-center space-x-2 mr-auto">
+                                    <p className="text-xs font-medium hidden sm:inline-block">Rows</p>
+                                    <Select
+                                        value={`${rowsPerPage}`}
+                                        onValueChange={(value) => {
+                                            const newSize = Number(value);
+                                            setRowsPerPage(newSize);
+                                            localStorage.setItem("pos_sales_rows_per_page", String(newSize));
+                                            setCurrentPage(1);
+                                        }}
+                                    >
+                                        <SelectTrigger className="h-8 w-[65px]">
+                                            <SelectValue placeholder={rowsPerPage} />
+                                        </SelectTrigger>
+                                        <SelectContent side="top">
+                                            {[5, 10, 20, 30, 50, 100].map((pageSize) => (
+                                                <SelectItem key={pageSize} value={`${pageSize}`}>
+                                                    {pageSize}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="text-xs font-medium mr-2">
+                                    {Math.min((currentPage - 1) * rowsPerPage + 1, stocks.length)}-{Math.min(currentPage * rowsPerPage, stocks.length)} of {stocks.length}
+                                </div>
+
+                                <Button
+                                    variant="outline"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage >= totalPages || totalPages === 0}
+                                >
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
                     )}
                 </div>
             </div>
@@ -446,8 +550,14 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 </div>
                                 <div className="space-y-1">
                                     <Label className="text-xs">Customer</Label>
-                                    <Select value={selectedCustomerId} onValueChange={(v) => setSelectedCustomerId(v as any)}>
-                                        <SelectTrigger className="h-8">
+                                    <Select
+                                        value={selectedCustomerId}
+                                        onValueChange={(v) => {
+                                            setSelectedCustomerId(v as any);
+                                            setFormErrors(prev => ({ ...prev, customer: false }));
+                                        }}
+                                    >
+                                        <SelectTrigger className={`h-8 ${formErrors.customer ? "border-destructive ring-1 ring-destructive" : ""}`}>
                                             <SelectValue placeholder="Walk-in Client" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -467,35 +577,68 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                         <Label className="text-xs">Payment Method</Label>
-                                        <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                                        <Select
+                                            value={paymentMethod}
+                                            onValueChange={(v) => {
+                                                setPaymentMethod(v);
+                                                if (v === "Loan") setIsLoan(true);
+                                                else if (isLoan) setIsLoan(false);
+                                            }}
+                                        >
                                             <SelectTrigger className="h-9">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
+                                                <SelectItem value="None">None</SelectItem>
                                                 <SelectItem value="Cash">Cash</SelectItem>
                                                 <SelectItem value="Mobile Money">Mobile Money</SelectItem>
                                                 <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                                                <SelectItem value="Loan">Loan</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
 
                                     <div className="flex items-center justify-between bg-background p-2 px-3 rounded-lg border h-9 mt-6">
                                         <Label htmlFor="loan-toggle" className="text-xs font-medium cursor-pointer">Loan Sale?</Label>
-                                        <Switch id="loan-toggle" checked={isLoan} onCheckedChange={setIsLoan} />
+                                        <Switch
+                                            id="loan-toggle"
+                                            checked={isLoan}
+                                            onCheckedChange={(val) => {
+                                                setIsLoan(val);
+                                                if (!val && paymentMethod === "Loan") setPaymentMethod("Cash");
+                                                if (val) setPaymentMethod("Loan");
+                                                setFormErrors(prev => ({ ...prev, paymentDate: false }));
+                                            }}
+                                        />
                                     </div>
                                 </div>
 
+                                {(clientType === "HP Client" || (clientType === "Non-Member" && selectedCustomerId === "walk-in")) && (
+                                    <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                                        <Label className="text-xs">Customer/Walk-in Name (Optional)</Label>
+                                        <Input
+                                            placeholder="Type customer name..."
+                                            className="h-8 shadow-sm border-primary/20"
+                                            value={manualName}
+                                            onChange={(e) => setManualName(e.target.value)}
+                                        />
+                                    </div>
+                                )}
+
                                 {isLoan && (
-                                    <div className="space-y-1 animate-in fade-in slide-in-from-top-2 bg-orange-50 p-2 rounded-md border border-orange-100">
-                                        <Label className="text-xs text-orange-700 font-medium flex items-center gap-2">
+                                    <div className={`space-y-1 animate-in fade-in slide-in-from-top-2 p-2 rounded-md border ${formErrors.paymentDate ? "bg-destructive/5 border-destructive" : "bg-orange-50 border-orange-100"}`}>
+                                        <Label className={`text-xs font-medium flex items-center gap-2 ${formErrors.paymentDate ? "text-destructive" : "text-orange-700"}`}>
                                             <CalendarIcon className="h-3 w-3" />
                                             Payment Due Date
                                         </Label>
                                         <Input
                                             type="date"
                                             value={paymentDate}
-                                            onChange={(e) => setPaymentDate(e.target.value)}
-                                            className="h-8 bg-white border-orange-200 focus-visible:ring-orange-500"
+                                            onChange={(e) => {
+                                                setPaymentDate(e.target.value);
+                                                setFormErrors(prev => ({ ...prev, paymentDate: false }));
+                                            }}
+                                            className={`h-8 bg-white focus-visible:ring-orange-500 ${formErrors.paymentDate ? "border-destructive" : "border-orange-200"}`}
                                             min={new Date().toISOString().split("T")[0]}
                                         />
                                     </div>

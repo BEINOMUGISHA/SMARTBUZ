@@ -7,6 +7,7 @@ export interface ReceiptData {
     clientType: string;
     paymentMode: string;
     date: string;
+    paymentDueDate?: string;
     invoiceNumber: string;
     items: any[];
     total: number;
@@ -17,9 +18,9 @@ export interface ReceiptData {
 
 export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
     return (
-        <div id="receipt-content" className="p-8 text-sm text-gray-700 bg-white border border-gray-300 print:border-none print:p-0 print:m-0 print:w-full print:h-full">
+        <div id="receipt-content" className="p-8 text-sm text-gray-700 bg-white border border-gray-300 print:border-none print:p-0 print:m-0 print:w-full">
             {/* Header */}
-            <div className="pb-4">
+            <div className="pb-4 print:break-inside-avoid">
                 <div className="flex justify-between items-start">
                     <div className="flex-1 text-center">
                         <h2 className="text-2xl font-bold text-black tracking-wide uppercase">TIENS HEALTH PRODUCTS</h2>
@@ -79,7 +80,7 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
 
 
             {/* Items Table */}
-            <div className="border border-black text-xs print:text-[11px]">
+            <div className="border border-black text-xs print:text-[11px] print:break-inside-auto">
                 <div className="grid grid-cols-12 font-bold border-b border-black">
                     <div className="p-2 border-r border-black break-words">CODE</div>
                     <div className="p-2 border-r border-black break-words col-span-3">NAME</div>
@@ -129,10 +130,15 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
             </div>
 
             {/* Footer Infos */}
-            <div className="mt-8 text-sm border-t border-gray-300 pt-4">
+            <div className="mt-8 text-sm border-t border-gray-300 pt-4 print:break-inside-avoid">
                 <div className="mb-4">
                     <p className="font-semibold mb-1">Mode of Payment</p>
-                    <p>{data.paymentMode}</p>
+                    <p className="font-bold">{data.paymentMode}</p>
+                    {data.paymentDueDate && (
+                        <p className="text-red-600 text-xs mt-1 italic">
+                            Due Date: {new Date(data.paymentDueDate).toLocaleDateString()}
+                        </p>
+                    )}
                 </div>
                 <div className="mb-4">
                     <p className="font-bold">GRAND TOTAL</p>

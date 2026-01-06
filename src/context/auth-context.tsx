@@ -10,6 +10,7 @@ import { Id } from "../../convex/_generated/dataModel";
 type User = {
     _id: Id<"users">;
     first_name: string;
+    middle_name?: string;
     last_name: string;
     email: string;
     roles: string[];

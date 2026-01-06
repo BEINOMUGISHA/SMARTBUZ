@@ -73,11 +73,16 @@ export default defineSchema({
         total: v.number(),
         date: v.string(), // ISO String
         clientType: v.string(), // retail, distributor, etc.
+        isLoan: v.optional(v.boolean()),
+        paymentDueDate: v.optional(v.string()),
+        paymentMode: v.optional(v.string()), // Cash, Mobile Money, Bank Transfer, Loan, None
+        manualCustomerName: v.optional(v.string()), // For walk-in customers
         items: v.array(
             v.object({
                 stockId: v.id("stocks"),
                 name: v.string(),
                 price: v.number(),
+                productCode: v.optional(v.string()),
                 quantity: v.number(),
                 pv: v.number(),
                 bv: v.number(),
@@ -120,7 +125,7 @@ export default defineSchema({
                 name: v.string(),
                 qty: v.number(),
                 price: v.number(),
-                productCode: v.string(),
+                productCode: v.optional(v.string()),
                 pv: v.number(),
                 bv: v.number(),
                 halfPrice: v.boolean(),

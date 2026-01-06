@@ -33,22 +33,26 @@ export const list = query({
 export const create = mutation({
     args: {
         customerId: v.optional(v.id("customers")),
+        manualCustomerName: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
         userId: v.id("users"),
         total: v.number(),
         clientType: v.string(), // "Member", "Non-Member", "Working Client", "Half-Price (HP) Client"
+        paymentMode: v.string(),
         items: v.array(v.object({
             stockId: v.id("stocks"),
             name: v.string(),
+            productCode: v.string(),
             price: v.number(),
             quantity: v.number(),
             pv: v.number(),
             bv: v.number(),
         })),
         isLoan: v.optional(v.boolean()),
-        paymentDate: v.optional(v.string()),
+        paymentDueDate: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
+        console.log(`Creating sale for user ${args.userId} (Client: ${args.clientType})`);
         const date = new Date().toISOString();
 
         // Check if user is assigned to a shop
@@ -105,16 +109,20 @@ export const create = mutation({
         // Record the sale
         const saleId = await ctx.db.insert("sales", {
             customerId: args.customerId,
+            manualCustomerName: args.manualCustomerName,
             shopId: shop ? shop._id : args.shopId, // Prioritize found shop, else fallback to arg
             userId: args.userId,
             total: args.total,
             date,
             clientType: args.clientType,
+            paymentMode: args.paymentMode,
             items: args.items,
+            isLoan: args.isLoan,
+            paymentDueDate: args.paymentDueDate,
         });
 
         // Handle Loans
-        if (args.isLoan && args.customerId && args.paymentDate) {
+        if (args.isLoan && args.customerId && args.paymentDueDate) {
             await ctx.db.insert("loans", {
                 customerId: args.customerId,
                 salesId: saleId,
@@ -143,6 +151,7 @@ export const mySalesStats = query({
         to: v.optional(v.string()),
         filterType: v.optional(v.string()), // "All", "Regular", "HP"
         email: v.optional(v.string()), // Manual Auth
+        customerId: v.optional(v.id("customers")),
     },
     handler: async (ctx, args) => {
         if (!args.email) throw new Error("Unauthorized");
@@ -191,6 +200,10 @@ export const mySalesStats = query({
             }
         }
 
+        if (args.customerId) {
+            salesQuery = salesQuery.filter((q) => q.eq(q.field("customerId"), args.customerId));
+        }
+
         const sales = await salesQuery.collect();
 
         // Calculate Stats
@@ -218,6 +231,7 @@ export const mySales = query({
         to: v.optional(v.string()),
         filterType: v.optional(v.string()), // "All", "Regular", "HP"
         email: v.optional(v.string()), // Manual Auth
+        customerId: v.optional(v.id("customers")),
     },
     handler: async (ctx, args) => {
         if (!args.email) throw new Error("Unauthorized");
@@ -253,11 +267,100 @@ export const mySales = query({
         if (args.filterType && args.filterType !== "All") {
             if (args.filterType === "HP") {
                 salesQuery = salesQuery.filter((q) => q.eq(q.field("clientType"), "HP Client"));
+            } else if (args.filterType === "Loans") {
+                salesQuery = salesQuery.filter((q) => q.eq(q.field("isLoan"), true));
             } else {
                 salesQuery = salesQuery.filter((q) => q.neq(q.field("clientType"), "HP Client"));
             }
         }
 
-        return await salesQuery.order("desc").paginate(args.paginationOpts);
+        if (args.customerId) {
+            salesQuery = salesQuery.filter((q) => q.eq(q.field("customerId"), args.customerId));
+        }
+
+        const results = await salesQuery.order("desc").paginate(args.paginationOpts);
+
+        return {
+            ...results,
+            page: await Promise.all(
+                results.page.map(async (sale) => {
+                    const customer = sale.customerId ? await ctx.db.get(sale.customerId) : null;
+                    const shop = sale.shopId ? await ctx.db.get(sale.shopId) : null;
+                    const userDoc = await ctx.db.get(sale.userId);
+
+                    const operatorName = userDoc
+                        ? `${userDoc.first_name} ${userDoc.last_name}${userDoc.middle_name ? ` ${userDoc.middle_name}` : ""}`
+                        : "Unknown";
+
+                    return {
+                        ...sale,
+                        customer,
+                        shop,
+                        operator: userDoc ? {
+                            name: operatorName,
+                            phone: userDoc.phone_number,
+                            email: userDoc.email,
+                        } : null,
+                    };
+                })
+            ),
+        };
+    },
+});
+
+export const mySalesCount = query({
+    args: {
+        from: v.optional(v.string()),
+        to: v.optional(v.string()),
+        filterType: v.optional(v.string()),
+        email: v.optional(v.string()),
+        customerId: v.optional(v.id("customers")),
+    },
+    handler: async (ctx, args) => {
+        if (!args.email) return 0;
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", args.email!))
+            .first();
+        if (!user) return 0;
+
+        const shop = await ctx.db
+            .query("shops")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .first();
+
+        let salesQuery = ctx.db.query("sales");
+
+        if (shop) {
+            salesQuery = salesQuery.filter((q) => q.eq(q.field("shopId"), shop._id));
+        }
+
+        if (args.from && args.to) {
+            const fromDate = args.from;
+            const toDate = args.to;
+            salesQuery = salesQuery.filter((q) =>
+                q.and(
+                    q.gte(q.field("date"), fromDate),
+                    q.lte(q.field("date"), toDate)
+                )
+            );
+        }
+
+        if (args.filterType && args.filterType !== "All") {
+            if (args.filterType === "HP") {
+                salesQuery = salesQuery.filter((q) => q.eq(q.field("clientType"), "HP Client"));
+            } else if (args.filterType === "Loans") {
+                salesQuery = salesQuery.filter((q) => q.eq(q.field("isLoan"), true));
+            } else {
+                salesQuery = salesQuery.filter((q) => q.neq(q.field("clientType"), "HP Client"));
+            }
+        }
+
+        if (args.customerId) {
+            salesQuery = salesQuery.filter((q) => q.eq(q.field("customerId"), args.customerId));
+        }
+
+        return (await salesQuery.collect()).length;
     },
 });
