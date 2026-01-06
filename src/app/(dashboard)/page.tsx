@@ -65,7 +65,14 @@ export default function DashboardPage() {
         to: endOfDay(new Date()),
     });
 
-    const [isAuditMode, setIsAuditMode] = useState(false);
+    const handleRangeChange = (newRange: any) => {
+        if (newRange?.from) {
+            setDate({
+                from: startOfDay(newRange.from),
+                to: endOfDay(newRange.to || newRange.from)
+            });
+        }
+    };
 
     // If sales, find their shop
     const shops = useQuery(api.shops.listAll);
@@ -94,85 +101,58 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6 lg:space-y-8">
             {/* Header / Welcome Section */}
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between sticky top-0 z-30 bg-background/95 backdrop-blur py-2 -mt-2">
-                <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="outline" className="text-[10px] uppercase tracking-widest font-black text-primary border-primary/20">
-                            {isAdmin ? "Global Administrator" : `Sales Agent: ${myShop?.name}`}
-                        </Badge>
+            <div className="flex flex-col gap-6 bg-card/50 p-4 lg:p-6 rounded-3xl border shadow-sm sticky top-0 z-30 backdrop-blur-md">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px] uppercase tracking-widest font-black text-primary border-primary/20 bg-primary/5 px-2 py-0.5">
+                                {isAdmin ? "Global Administrator" : `Sales Agent: ${myShop?.name}`}
+                            </Badge>
+                        </div>
+                        <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground">
+                            Business Overview
+                        </h1>
+                        <p className="text-muted-foreground text-xs md:text-sm font-medium">
+                            Analytics from {format(date.from, "MMM dd")} — {format(date.to, "MMM dd, yyyy")}
+                        </p>
                     </div>
-                    <h1 className="text-3xl font-black tracking-tight text-foreground">
-                        {isAuditMode ? "Daily Audit" : "Business Overview"}
-                    </h1>
-                    <p className="text-muted-foreground text-sm">
-                        {isAuditMode
-                            ? `Performance for ${format(date.from, "PPP")}`
-                            : `Data from ${format(date.from, "MMM d")} to ${format(date.to, "MMM d, yyyy")}`
-                        }
-                    </p>
-                </div>
 
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant={isAuditMode ? "secondary" : "ghost"}
-                        size="sm"
-                        className="h-9 px-3 gap-2 font-bold transition-all"
-                        onClick={() => {
-                            const today = new Date();
-                            setDate({ from: startOfDay(today), to: endOfDay(today) });
-                            setIsAuditMode(!isAuditMode);
-                        }}
-                    >
-                        {isAuditMode ? <History className="h-4 w-4" /> : <CalendarDays className="h-4 w-4" />}
-                        {isAuditMode ? "Return to Range" : "Switch to Daily Audit"}
-                    </Button>
-
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button
-                                id="date"
-                                variant={"outline"}
-                                className={cn(
-                                    "h-9 justify-start text-left font-bold w-[260px] border-sidebar-border bg-card shadow-sm",
-                                    !date && "text-muted-foreground"
-                                )}
-                            >
-                                <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                                {date?.from ? (
-                                    date.to ? (
-                                        <>
-                                            {format(date.from, "LLL dd, y")} -{" "}
-                                            {format(date.to, "LLL dd, y")}
-                                        </>
-                                    ) : (
-                                        format(date.from, "LLL dd, y")
-                                    )
-                                ) : (
-                                    <span>Pick a date range</span>
-                                )}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="end">
-                            <Calendar
-                                initialFocus
-                                mode="range"
-                                defaultMonth={date?.from}
-                                selected={date}
-                                onSelect={(newRange: any) => {
-                                    if (newRange?.from) {
-                                        setDate({
-                                            from: startOfDay(newRange.from),
-                                            to: endOfDay(newRange.to || newRange.from)
-                                        });
-                                        if (newRange.to && isAuditMode) setIsAuditMode(false);
-                                    }
-                                }}
-                                numberOfMonths={2}
-                            />
-                        </PopoverContent>
-                    </Popover>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                        {/* Range Control */}
+                        <div className="flex flex-col gap-1.5 flex-1 sm:flex-none">
+                            <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1">
+                                Filter by Date Range
+                            </label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        id="date"
+                                        variant={"outline"}
+                                        className={cn(
+                                            "h-10 justify-start text-left font-bold transition-all border-2 w-full sm:w-[260px] border-sidebar-border bg-card shadow-sm"
+                                        )}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                                        <span className="truncate">
+                                            {format(date.from, "LLL dd")} - {format(date.to, "LLL dd, y")}
+                                        </span>
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="end">
+                                    <Calendar
+                                        initialFocus
+                                        mode="range"
+                                        defaultMonth={date?.from}
+                                        selected={date}
+                                        onSelect={handleRangeChange}
+                                        numberOfMonths={2}
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -187,7 +167,7 @@ function AdminDashboard({ stats }: { stats: any }) {
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* KPI Cards Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
                     title="Gross Revenue"
                     value={`UGX ${stats.totalRevenue.toLocaleString()}`}
@@ -225,8 +205,8 @@ function AdminDashboard({ stats }: { stats: any }) {
             </div>
 
             {/* Admin Specific Content */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <Card className="col-span-4 shadow-sm border-sidebar-border/50">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
+                <Card className="lg:col-span-4 shadow-sm border-sidebar-border/50">
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
                             <CardTitle>Global Performance</CardTitle>
@@ -295,7 +275,7 @@ function AdminDashboard({ stats }: { stats: any }) {
                     </CardContent>
                 </Card>
 
-                <Card className="col-span-3 shadow-sm border-sidebar-border/50">
+                <Card className="lg:col-span-3 shadow-sm border-sidebar-border/50">
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
                             <CardTitle className="flex items-center gap-2">
@@ -342,7 +322,7 @@ function AdminDashboard({ stats }: { stats: any }) {
                     <CardDescription>Latest transactions across all branches</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                         {stats.recentSales.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-8 col-span-full font-bold uppercase tracking-widest opacity-20">No recent transactions in this range</p>
                         ) : (
@@ -374,7 +354,7 @@ function SalesDashboard({ stats, myShop }: { stats: any, myShop: any }) {
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* KPI Cards Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
                     title="My Shop Revenue"
                     value={`UGX ${stats.totalRevenue.toLocaleString()}`}
@@ -518,7 +498,7 @@ function DashboardSkeleton() {
                 <Skeleton className="h-8 w-[200px]" />
                 <Skeleton className="h-4 w-[300px]" />
             </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 {[...Array(4)].map((_, i) => (
                     <Card key={i}>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -532,7 +512,7 @@ function DashboardSkeleton() {
                     </Card>
                 ))}
             </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
                 <Skeleton className="col-span-4 h-[350px] rounded-xl" />
                 <Skeleton className="col-span-3 h-[350px] rounded-xl" />
             </div>
