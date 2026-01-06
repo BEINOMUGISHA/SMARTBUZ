@@ -160,3 +160,90 @@ export const seedLargeStock = mutation({
         return "Successfully seeded 200 Regular and 200 HP stocks!";
     },
 });
+
+export const seedShopsAndDistributors = mutation({
+    args: {},
+    handler: async (ctx) => {
+        // 1. Ensure we have some packages to link to distributors
+        let packages = await ctx.db.query("packages").collect();
+        if (packages.length === 0) {
+            const packageData = [
+                { name: "Silver Package", amount: 500000, bv: 100, pv: 50, registrationFee: 20000, isPaid: true },
+                { name: "Gold Package", amount: 1500000, bv: 300, pv: 150, registrationFee: 20000, isPaid: true },
+                { name: "Platinum Package", amount: 3000000, bv: 600, pv: 300, registrationFee: 20000, isPaid: true },
+            ];
+            for (const pkg of packageData) {
+                await ctx.db.insert("packages", pkg);
+            }
+            packages = await ctx.db.query("packages").collect();
+        }
+
+        // 2. Seed Distributors (Customers)
+        const distributors = [
+            { name: "Kato Joseph", phone: "0771112233", email: "kato@tiens.com", distributorId: "UG00112233", address: "Kampala, Katwe", packageId: packages[0]._id },
+            { name: "Nabaasa Sarah", phone: "0755443322", email: "sarah@tiens.com", distributorId: "UG44556677", address: "Mbarara, High Street", packageId: packages[1]._id },
+            { name: "Mukasa David", phone: "0700112233", email: "david@tiens.com", distributorId: "UG99887766", address: "Entebbe, Abayita Ababiri", packageId: packages[2]._id },
+            { name: "Atuhaire Peace", phone: "0788990011", email: "peace@tiens.com", distributorId: "UG11224455", address: "Gulu, Gulu Main Street", packageId: packages[0]._id },
+        ];
+
+        for (const d of distributors) {
+            const existing = await ctx.db
+                .query("customers")
+                .withIndex("by_phone", (q) => q.eq("phone", d.phone))
+                .unique();
+            if (!existing) {
+                await ctx.db.insert("customers", d);
+            }
+        }
+
+        // 3. Seed Shops
+        // Get some users (preferably sales)
+        const users = await ctx.db.query("users").collect();
+        const salesUsers = users.filter(u => u.roles.includes("sales"));
+        const manager = salesUsers.length > 0 ? salesUsers[0] : (users.length > 0 ? users[0] : null);
+
+        if (!manager) {
+            // If no users, create a default admin for manager
+            return "Error: No users found. Please run the main 'seed' mutation first to create users.";
+        }
+
+        // Get some stocks to issue
+        const stocks = await ctx.db.query("stocks").take(15);
+
+        const shopTemplates = [
+            { name: "Kampala Main Branch", serialNumber: "KLA-001", location: "Kampala Central", contact: "0414000111" },
+            { name: "Mbarara Outlet", serialNumber: "MBR-002", location: "Mbarara Town", contact: "0485000222" },
+            { name: "Gulu Hub", serialNumber: "GLU-003", location: "Gulu City", contact: "0471000333" },
+            { name: "Jinji Branch", serialNumber: "JJA-004", location: "Jinja Main Street", contact: "0434000444" },
+        ];
+
+        for (const shop of shopTemplates) {
+            const existing = await ctx.db
+                .query("shops")
+                .filter(q => q.eq(q.field("serialNumber"), shop.serialNumber))
+                .first();
+
+            if (!existing) {
+                // Issue some random stocks
+                const issuedStocks = stocks.slice(0, 5 + Math.floor(Math.random() * 5)).map(s => ({
+                    stockId: s._id,
+                    name: s.name,
+                    qty: 20 + Math.floor(Math.random() * 50),
+                    price: s.price,
+                    productCode: s.productCode,
+                    pv: s.pv,
+                    bv: s.bv,
+                    halfPrice: s.halfPrice || false,
+                }));
+
+                await ctx.db.insert("shops", {
+                    ...shop,
+                    userId: manager._id,
+                    issuedStocks,
+                });
+            }
+        }
+
+        return "Successfully seeded 4 distributors and 4 shops with initial stock!";
+    },
+});

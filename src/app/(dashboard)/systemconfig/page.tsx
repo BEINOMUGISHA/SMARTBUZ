@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { formatError } from "@/lib/utils";
+import { formatError, cn } from "@/lib/utils";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
@@ -197,7 +197,7 @@ function UserManager() {
                 first_name: formData.get("first_name") as string,
                 last_name: formData.get("last_name") as string,
                 email: formData.get("email") as string,
-                roles: ["user"], // Default role
+                roles: [formData.get("role") as string], // Selected role
                 password: "password123", // Default password
             });
             toast.success("User created successfully");
@@ -216,6 +216,7 @@ function UserManager() {
                 last_name: formData.get("last_name") as string,
                 email: formData.get("email") as string,
                 phone_number: formData.get("phone_number") as string,
+                roles: [formData.get("role") as string],
             });
             toast.success("User updated");
             setEditingItem(null);
@@ -275,7 +276,18 @@ function UserManager() {
                                         <TableCell>{user.email}</TableCell>
                                         <TableCell>
                                             <div className="flex gap-1">
-                                                {user.roles.map(r => <Badge key={r} variant="secondary" className="text-xs">{r}</Badge>)}
+                                                {user.roles.map(r => (
+                                                    <Badge
+                                                        key={r}
+                                                        variant={r === "admin" ? "default" : "secondary"}
+                                                        className={cn(
+                                                            "text-[10px] uppercase tracking-wider font-bold px-2 py-0.5",
+                                                            r === "admin" ? "bg-primary" : "bg-orange-400 text-white"
+                                                        )}
+                                                    >
+                                                        {r}
+                                                    </Badge>
+                                                ))}
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right">
@@ -306,6 +318,16 @@ function UserManager() {
                             <div className="space-y-2"><Label>Last Name</Label><Input name="last_name" required /></div>
                         </div>
                         <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" required /></div>
+                        <div className="space-y-2">
+                            <Label>System Role</Label>
+                            <Select name="role" defaultValue="sales" required>
+                                <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="admin">System Admin (All Access)</SelectItem>
+                                    <SelectItem value="sales">Sales Agent (Shop Limited)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                         <DialogFooter><Button type="submit">Create User</Button></DialogFooter>
                     </form>
                 </DialogContent>
@@ -322,6 +344,16 @@ function UserManager() {
                             </div>
                             <div className="space-y-2"><Label>Email</Label><Input name="email" defaultValue={editingItem.email} required /></div>
                             <div className="space-y-2"><Label>Phone</Label><Input name="phone_number" defaultValue={editingItem.phone_number} /></div>
+                            <div className="space-y-2">
+                                <Label>System Role</Label>
+                                <Select name="role" defaultValue={editingItem.roles[0] || "sales"} required>
+                                    <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="admin">System Admin (All Access)</SelectItem>
+                                        <SelectItem value="sales">Sales Agent (Shop Limited)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <DialogFooter><Button type="submit">Save Changes</Button></DialogFooter>
                         </form>
                     )}

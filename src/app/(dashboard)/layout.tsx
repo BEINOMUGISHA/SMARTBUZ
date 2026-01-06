@@ -81,30 +81,38 @@ export default function DashboardLayout({
             {/* Navigation */}
             <div className="flex-1 overflow-y-auto py-6 px-4">
                 <nav className="space-y-1.5">
-                    {navItems.map((item) => {
-                        const isActive = pathname === item.href;
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                onClick={() => setIsMobileOpen(false)}
-                                className={cn(
-                                    "group flex items-center rounded-xl py-3 text-sm font-medium transition-all duration-200 ease-in-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                                    isActive
-                                        ? "bg-gradient-to-r from-sidebar-primary/10 to-sidebar-primary/5 text-sidebar-primary shadow-sm ring-1 ring-sidebar-primary/20"
-                                        : "text-muted-foreground",
-                                    isCollapsed ? "justify-center px-2" : "justify-between px-4"
-                                )}
-                                title={isCollapsed ? item.label : undefined}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <item.icon className={cn("h-5 w-5 transition-colors", isActive ? "text-sidebar-primary" : "text-muted-foreground group-hover:text-sidebar-primary")} />
-                                    {!isCollapsed && <span>{item.label}</span>}
-                                </div>
-                                {isActive && !isCollapsed && <ChevronRight className="h-4 w-4 text-sidebar-primary animate-in fade-in slide-in-from-left-2" />}
-                            </Link>
-                        );
-                    })}
+                    {navItems
+                        .filter(item => {
+                            if (user.roles.includes("admin")) return true;
+                            if (user.roles.includes("sales")) {
+                                return item.label === "Dashboard" || item.label === "Sales";
+                            }
+                            return false;
+                        })
+                        .map((item) => {
+                            const isActive = pathname === item.href;
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    onClick={() => setIsMobileOpen(false)}
+                                    className={cn(
+                                        "group flex items-center rounded-xl py-3 text-sm font-medium transition-all duration-200 ease-in-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                                        isActive
+                                            ? "bg-gradient-to-r from-sidebar-primary/10 to-sidebar-primary/5 text-sidebar-primary shadow-sm ring-1 ring-sidebar-primary/20"
+                                            : "text-muted-foreground",
+                                        isCollapsed ? "justify-center px-2" : "justify-between px-4"
+                                    )}
+                                    title={isCollapsed ? item.label : undefined}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <item.icon className={cn("h-5 w-5 transition-colors", isActive ? "text-sidebar-primary" : "text-muted-foreground group-hover:text-sidebar-primary")} />
+                                        {!isCollapsed && <span>{item.label}</span>}
+                                    </div>
+                                    {isActive && !isCollapsed && <ChevronRight className="h-4 w-4 text-sidebar-primary animate-in fade-in slide-in-from-left-2" />}
+                                </Link>
+                            );
+                        })}
                 </nav>
             </div>
 
