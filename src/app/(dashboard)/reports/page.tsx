@@ -1,7 +1,6 @@
-"use client";
-
-import { useState } from "react";
-import { useQuery } from "convex/react";
+"use client"
+import { useState, useEffect } from "react";
+import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,37 +32,105 @@ export default function ReportsPage() {
     const [clientType, setClientType] = useState<string>("All");
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
 
+    // Pagination States
+    const [salesPage, setSalesPage] = useState(1);
+    const [salesRows, setSalesRows] = useState(20);
+    const [loansPage, setLoansPage] = useState(1);
+    const [loansRows, setLoansRows] = useState(20);
+    const [stockPage, setStockPage] = useState(1);
+    const [stockRows, setStockRows] = useState(20);
+
+    // Persist row settings
+    useEffect(() => {
+        const savedSales = localStorage.getItem("pos_reports_sales_rows");
+        if (savedSales) setSalesRows(Number(savedSales));
+        const savedLoans = localStorage.getItem("pos_reports_loans_rows");
+        if (savedLoans) setLoansRows(Number(savedLoans));
+        const savedStock = localStorage.getItem("pos_reports_stock_rows");
+        if (savedStock) setStockRows(Number(savedStock));
+    }, []);
+
     // Date Range State (Default to last 30 days)
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
         to: format(new Date(), "yyyy-MM-dd")
     });
 
+    // Params for queries
+    const commonArgs = {
+        startDate: dateRange.from,
+        endDate: dateRange.to
+    };
+
     // Queries
-    const stats = useQuery(api.reports.summaryStats, {
-        startDate: dateRange.from,
-        endDate: dateRange.to
-    });
-    const shopSummary = useQuery(api.reports.getShopSummary, {
-        startDate: dateRange.from,
-        endDate: dateRange.to
-    });
-    const stockSummary = useQuery(api.reports.getStockSummary);
+    const stats = useQuery(api.reports.summaryStats, commonArgs);
+    const shopSummary = useQuery(api.reports.getShopSummary, commonArgs);
+
+    // Global Stock Pagination
+    const { results: stockRecords, status: stockStatus, loadMore: loadMoreStock, isLoading: stockLoading } = usePaginatedQuery(
+        api.reports.getStockSummary,
+        {},
+        { initialNumItems: stockRows }
+    );
+    const totalStockCount = useQuery(api.reports.getStockSummaryCount) || 0;
+
     const shops = useQuery(api.shops.listAll);
 
-    const salesReport = useQuery(api.reports.getDetailedSalesReport, {
-        paginationOpts: { numItems: 20, cursor: null },
+    // Detailed Sales Pagination
+    const salesArgs = {
+        ...commonArgs,
         shopId: selectedShop === "all" ? undefined : (selectedShop as any),
         clientType: clientType === "All" ? undefined : clientType,
-        startDate: dateRange.from,
-        endDate: dateRange.to
-    });
+    };
+    const { results: salesRecords, status: salesStatus, loadMore: loadMoreSales, isLoading: salesLoading } = usePaginatedQuery(
+        api.reports.getDetailedSalesReport,
+        salesArgs,
+        { initialNumItems: salesRows }
+    );
+    const totalSalesCount = useQuery(api.reports.getDetailedSalesReportCount, salesArgs) || 0;
 
-    const loansReport = useQuery(api.reports.getLoanSummary, {
-        paginationOpts: { numItems: 20, cursor: null },
-        startDate: dateRange.from,
-        endDate: dateRange.to
-    });
+    // Loans Pagination
+    const loansArgs = { ...commonArgs };
+    const { results: loansRecords, status: loansStatus, loadMore: loadMoreLoans, isLoading: loansLoading } = usePaginatedQuery(
+        api.reports.getLoanSummary,
+        loansArgs,
+        { initialNumItems: loansRows }
+    );
+    const totalLoansCount = useQuery(api.reports.getLoanSummaryCount, loansArgs) || 0;
+
+    // Pagination Sync Logic (Keep loaded items synced with requested rows)
+    useEffect(() => {
+        if (salesStatus === "CanLoadMore" && salesRecords.length < (salesPage * salesRows)) {
+            loadMoreSales(salesRows);
+        }
+    }, [salesPage, salesRows, salesRecords.length, salesStatus, loadMoreSales]);
+
+    useEffect(() => {
+        if (loansStatus === "CanLoadMore" && loansRecords.length < (loansPage * loansRows)) {
+            loadMoreLoans(loansRows);
+        }
+    }, [loansPage, loansRows, loansRecords.length, loansStatus, loadMoreLoans]);
+
+    useEffect(() => {
+        if (stockStatus === "CanLoadMore" && stockRecords.length < (stockPage * stockRows)) {
+            loadMoreStock(stockRows);
+        }
+    }, [stockPage, stockRows, stockRecords.length, stockStatus, loadMoreStock]);
+
+    const handleSalesNext = () => {
+        const totalPages = Math.ceil(totalSalesCount / salesRows);
+        if (salesPage < totalPages) setSalesPage(p => p + 1);
+    };
+
+    const handleLoansNext = () => {
+        const totalPages = Math.ceil(totalLoansCount / loansRows);
+        if (loansPage < totalPages) setLoansPage(p => p + 1);
+    };
+
+    const handleStockNext = () => {
+        const totalPages = Math.ceil(totalStockCount / stockRows);
+        if (stockPage < totalPages) setStockPage(p => p + 1);
+    };
 
     const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
 
@@ -354,8 +421,22 @@ export default function ReportsPage() {
                     <ReportTable
                         title="Comprehensive Sales Report"
                         subtitle="Complete itemized transaction history."
-                        data={salesReport?.page || []}
-                        isLoading={salesReport === undefined}
+                        data={salesRecords?.slice((salesPage - 1) * salesRows, salesPage * salesRows) || []}
+                        isLoading={salesLoading}
+                        pagination={{
+                            currentPage: salesPage,
+                            totalPages: Math.ceil(totalSalesCount / salesRows),
+                            rowsPerPage: salesRows,
+                            onRowsPerPageChange: (rows) => {
+                                setSalesRows(rows);
+                                setSalesPage(1);
+                                localStorage.setItem("pos_reports_sales_rows", String(rows));
+                            },
+                            totalItems: totalSalesCount,
+                            onNext: handleSalesNext,
+                            onPrev: () => setSalesPage(p => Math.max(1, p - 1)),
+                            canLoadMore: salesStatus === "CanLoadMore"
+                        }}
                         columns={[
                             {
                                 header: "Date/Time",
@@ -447,8 +528,22 @@ export default function ReportsPage() {
                     <ReportTable
                         title="Global Inventory Status"
                         subtitle="Combined view of HQ and all shop holdings"
-                        data={stockSummary || []}
-                        isLoading={stockSummary === undefined}
+                        data={stockRecords?.slice((stockPage - 1) * stockRows, stockPage * stockRows) || []}
+                        isLoading={stockLoading}
+                        pagination={{
+                            currentPage: stockPage,
+                            totalPages: Math.ceil(totalStockCount / stockRows),
+                            rowsPerPage: stockRows,
+                            onRowsPerPageChange: (rows) => {
+                                setStockRows(rows);
+                                setStockPage(1);
+                                localStorage.setItem("pos_reports_stock_rows", String(rows));
+                            },
+                            totalItems: totalStockCount,
+                            onNext: handleStockNext,
+                            onPrev: () => setStockPage(p => Math.max(1, p - 1)),
+                            canLoadMore: stockStatus === "CanLoadMore"
+                        }}
                         columns={[
                             {
                                 header: "Product", accessor: (item: any) => (
@@ -472,8 +567,22 @@ export default function ReportsPage() {
                     <ReportTable
                         title="Outstanding Loans Report"
                         subtitle="Detailed tracking of credit-based sales and debtor balances."
-                        data={loansReport?.page || []}
-                        isLoading={loansReport === undefined}
+                        data={loansRecords?.slice((loansPage - 1) * loansRows, loansPage * loansRows) || []}
+                        isLoading={loansLoading}
+                        pagination={{
+                            currentPage: loansPage,
+                            totalPages: Math.ceil(totalLoansCount / loansRows),
+                            rowsPerPage: loansRows,
+                            onRowsPerPageChange: (rows) => {
+                                setLoansRows(rows);
+                                setLoansPage(1);
+                                localStorage.setItem("pos_reports_loans_rows", String(rows));
+                            },
+                            totalItems: totalLoansCount,
+                            onNext: handleLoansNext,
+                            onPrev: () => setLoansPage(p => Math.max(1, p - 1)),
+                            canLoadMore: loansStatus === "CanLoadMore"
+                        }}
                         columns={[
                             {
                                 header: "Date/Time",

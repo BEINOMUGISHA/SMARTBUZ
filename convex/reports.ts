@@ -297,8 +297,11 @@ export const getShopSummary = query({
 });
 
 export const getStockSummary = query({
-    handler: async (ctx) => {
-        const hqStocks = await ctx.db.query("stocks").collect();
+    args: {
+        paginationOpts: paginationOptsValidator,
+    },
+    handler: async (ctx, args) => {
+        const results = await ctx.db.query("stocks").paginate(args.paginationOpts);
         const shops = await ctx.db.query("shops").collect();
 
         const shopStockMap: Record<string, number> = {};
@@ -308,11 +311,20 @@ export const getStockSummary = query({
             });
         });
 
-        return hqStocks.map(stock => ({
+        const page = results.page.map(stock => ({
             ...stock,
             hqQty: stock.qty,
             shopQty: shopStockMap[stock._id] || 0,
             totalQty: stock.qty + (shopStockMap[stock._id] || 0)
         }));
+
+        return { ...results, page };
+    }
+});
+
+export const getStockSummaryCount = query({
+    args: {},
+    handler: async (ctx) => {
+        return (await ctx.db.query("stocks").collect()).length;
     }
 });

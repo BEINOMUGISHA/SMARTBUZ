@@ -85,8 +85,8 @@ function ShopStockViewer() {
 
     // Filter
     const filteredStocks = allStocks.filter(s => {
-        const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
-            s.productCode.toLowerCase().includes(search.toLowerCase());
+        const matchesSearch = (s.name?.toLowerCase().includes(search.toLowerCase()) || false) ||
+            (s.productCode?.toLowerCase().includes(search.toLowerCase()) || false);
         const isHpItem = !!s.halfPrice;
         const matchesType = viewType === "hp" ? isHpItem : !isHpItem;
         return matchesSearch && matchesType;
