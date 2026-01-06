@@ -131,12 +131,12 @@ export default function DashboardPage() {
                                         id="date"
                                         variant={"outline"}
                                         className={cn(
-                                            "h-10 justify-start text-left font-bold transition-all border-2 w-full sm:w-[260px] border-sidebar-border bg-card shadow-sm"
+                                            "h-10 justify-start text-left font-bold transition-all border-2 w-full sm:w-[240px] border-sidebar-border bg-card shadow-sm text-xs"
                                         )}
                                     >
-                                        <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                                        <CalendarIcon className="mr-2 h-3.5 w-3.5 text-primary" />
                                         <span className="truncate">
-                                            {format(date.from, "LLL dd")} - {format(date.to, "LLL dd, y")}
+                                            {format(date.from, "MMM dd")} - {format(date.to, "MMM dd, yyyy")}
                                         </span>
                                     </Button>
                                 </PopoverTrigger>

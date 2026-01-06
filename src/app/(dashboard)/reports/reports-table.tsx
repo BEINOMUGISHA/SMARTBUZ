@@ -74,57 +74,59 @@ export function ReportTable<T>({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto rounded-xl border bg-card/50 px-2 lg:px-0">
-                <Table>
-                    <TableHeader className="bg-primary/5 sticky top-0 z-10 border-b-2 border-primary/20">
-                        <TableRow className="hover:bg-transparent">
-                            {columns.map((col, idx) => (
-                                <TableHead key={idx} className={cn("font-black text-primary uppercase text-[10px] tracking-wider py-4", col.className)}>
-                                    {col.header}
-                                </TableHead>
-                            ))}
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {isLoading ? (
-                            Array.from({ length: 5 }).map((_, i) => (
-                                <TableRow key={i}>
-                                    {columns.map((_, idx) => (
-                                        <TableCell key={idx}>
-                                            <div className="h-4 w-full animate-pulse rounded bg-muted" />
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))
-                        ) : data.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
-                                    No data found.
-                                </TableCell>
+            <div className="flex-1 overflow-auto rounded-xl border bg-card/50">
+                <div className="min-w-[800px] lg:min-w-0">
+                    <Table>
+                        <TableHeader className="bg-primary/5 sticky top-0 z-10 border-b-2 border-primary/20">
+                            <TableRow className="hover:bg-transparent">
+                                {columns.map((col, idx) => (
+                                    <TableHead key={idx} className={cn("font-black text-primary uppercase text-[10px] tracking-wider py-4", col.className)}>
+                                        {col.header}
+                                    </TableHead>
+                                ))}
                             </TableRow>
-                        ) : (
-                            data.map((item, rowIdx) => (
-                                <TableRow key={rowIdx} className="hover:bg-muted/30 transition-colors">
-                                    {columns.map((col, colIdx) => (
-                                        <TableCell key={colIdx} className={cn("py-3 text-[11px]", col.className)}>
-                                            {typeof col.accessor === "function"
-                                                ? col.accessor(item)
-                                                : (item[col.accessor] as React.ReactNode)}
-                                        </TableCell>
-                                    ))}
+                        </TableHeader>
+                        <TableBody>
+                            {isLoading ? (
+                                Array.from({ length: 5 }).map((_, i) => (
+                                    <TableRow key={i}>
+                                        {columns.map((_, idx) => (
+                                            <TableCell key={idx}>
+                                                <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))
+                            ) : data.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
+                                        No data found.
+                                    </TableCell>
                                 </TableRow>
-                            ))
-                        )}
-                        {footer}
-                    </TableBody>
-                </Table>
+                            ) : (
+                                data.map((item, rowIdx) => (
+                                    <TableRow key={rowIdx} className="hover:bg-muted/30 transition-colors">
+                                        {columns.map((col, colIdx) => (
+                                            <TableCell key={colIdx} className={cn("py-3 text-[11px]", col.className)}>
+                                                {typeof col.accessor === "function"
+                                                    ? col.accessor(item)
+                                                    : (item[col.accessor] as React.ReactNode)}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))
+                            )}
+                            {footer}
+                        </TableBody>
+                    </Table>
+                </div>
             </div>
 
             {/* Pagination Footer */}
             {pagination && (
-                <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-2 rounded-b-xl border">
-                    <div className="flex items-center space-x-2 mr-auto">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground hidden sm:inline-block">Rows</p>
+                <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 rounded-b-xl border">
+                    <div className="flex items-center space-x-2">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Rows</p>
                         <Select
                             value={`${pagination.rowsPerPage}`}
                             onValueChange={(value) => pagination.onRowsPerPageChange(Number(value))}
@@ -142,27 +144,29 @@ export function ReportTable<T>({
                         </Select>
                     </div>
 
-                    <div className="text-[10px] font-black uppercase tracking-tighter mr-4 text-primary">
-                        {Math.min(startIndex + 1, pagination.totalItems)}-{Math.min(endIndex, pagination.totalItems)} of {pagination.totalItems}
-                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="text-[10px] font-black uppercase tracking-tighter text-primary">
+                            {Math.min(startIndex + 1, pagination.totalItems)}-{Math.min(endIndex, pagination.totalItems)} of {pagination.totalItems}
+                        </div>
 
-                    <div className="flex items-center gap-1">
-                        <Button
-                            variant="outline"
-                            className="h-8 w-8 p-0 border-2"
-                            onClick={pagination.onPrev}
-                            disabled={pagination.currentPage === 1}
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-8 w-8 p-0 border-2"
-                            onClick={pagination.onNext}
-                            disabled={pagination.currentPage >= pagination.totalPages && !pagination.canLoadMore}
-                        >
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                            <Button
+                                variant="outline"
+                                className="h-8 w-8 p-0 border-2"
+                                onClick={pagination.onPrev}
+                                disabled={pagination.currentPage === 1}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="h-8 w-8 p-0 border-2"
+                                onClick={pagination.onNext}
+                                disabled={pagination.currentPage >= pagination.totalPages && !pagination.canLoadMore}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}

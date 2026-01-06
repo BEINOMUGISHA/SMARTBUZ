@@ -212,7 +212,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
             />
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2 bg-card p-2 rounded-lg border shadow-sm w-full max-w-sm">
+                <div className="flex items-center gap-2 bg-card p-2 rounded-lg border shadow-sm w-full sm:max-w-sm">
                     <Search className="h-4 w-4 text-muted-foreground ml-2" />
                     <Input
                         placeholder="Search product name..."
@@ -221,244 +221,191 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                             setSearch(e.target.value);
                             setCurrentPage(1); // Reset to page 1 on search
                         }}
-                        className="border-0 bg-transparent shadow-none focus-visible:ring-0 h-8"
+                        className="border-0 bg-transparent shadow-none focus-visible:ring-0 h-8 w-full"
                     />
                 </div>
-                <Button onClick={() => setIsAddOpen(true)}>
+                <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto">
                     <Plus className="mr-2 h-4 w-4" /> Add {halfPrice ? "HP" : "Regular"} Product
                 </Button>
             </div>
 
             <div className="rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col">
-                <div className="flex-1 overflow-auto">
-                    <Table>
-                        <TableHeader className="bg-muted/50">
-                            <TableRow>
-                                <TableHead>Code</TableHead>
-                                <TableHead>Product Name</TableHead>
-                                <TableHead>Category</TableHead>
-                                <TableHead className="text-right">Price (UGX)</TableHead>
-                                <TableHead className="text-center">Qty</TableHead>
-                                <TableHead className="text-center">PV</TableHead>
-                                <TableHead className="text-center">BV</TableHead>
-                                <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {!results ? (
+                <div className="flex-1 overflow-x-auto">
+                    <div className="min-w-[1000px] lg:min-w-0">
+                        <Table>
+                            <TableHeader className="bg-muted/50">
                                 <TableRow>
-                                    <TableCell colSpan={8} className="h-24 text-center">
-                                        <Loader2 className="h-4 w-4 animate-spin mx-auto" />
-                                    </TableCell>
+                                    <TableHead>Code</TableHead>
+                                    <TableHead>Product Name</TableHead>
+                                    <TableHead>Category</TableHead>
+                                    <TableHead className="text-right">Price (UGX)</TableHead>
+                                    <TableHead className="text-center">Qty</TableHead>
+                                    <TableHead className="text-center">PV</TableHead>
+                                    <TableHead className="text-center">BV</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
-                            ) : currentView.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                                        {status === "LoadingMore" || status === "LoadingFirstPage" ? (
-                                            <div className="flex items-center justify-center gap-2">
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                <span>Loading data...</span>
-                                            </div>
-                                        ) : (
-                                            "No items found."
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                currentView.map((stock) => (
-                                    <TableRow key={stock._id} className="hover:bg-muted/50">
-                                        <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
-                                        <TableCell className="font-medium">{stock.name}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline" className="font-normal">
-                                                {categories?.find(c => c._id === stock.categoryId)?.type || "Unknown"}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right font-bold">{stock.price.toLocaleString()}</TableCell>
-                                        <TableCell className="text-center">
-                                            <Badge variant={stock.qty < 10 ? "destructive" : "secondary"}>{stock.qty}</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-center text-xs">{stock.pv}</TableCell>
-                                        <TableCell className="text-center text-xs">{stock.bv}</TableCell>
-                                        <TableCell className="text-right">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" className="h-8 w-8 p-0">
-                                                        <MoreHorizontal className="h-4 w-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => setEditingStock(stock)}>
-                                                        <Edit className="mr-2 h-4 w-4" /> Edit
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(stock._id)}>
-                                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
+                            </TableHeader>
+                            <TableBody>
+                                {!results ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="h-24 text-center">
+                                            <Loader2 className="h-4 w-4 animate-spin mx-auto" />
                                         </TableCell>
                                     </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
+                                ) : currentView.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                                            {status === "LoadingMore" || status === "LoadingFirstPage" ? (
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    <span>Loading data...</span>
+                                                </div>
+                                            ) : (
+                                                "No items found."
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    currentView.map((stock) => (
+                                        <TableRow key={stock._id} className="hover:bg-muted/50">
+                                            <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
+                                            <TableCell className="font-medium">{stock.name}</TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline" className="font-normal">
+                                                    {categories?.find(c => c._id === stock.categoryId)?.type || "Unknown"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right font-bold">{stock.price.toLocaleString()}</TableCell>
+                                            <TableCell className="text-center">
+                                                <Badge variant={stock.qty < 10 ? "destructive" : "secondary"}>{stock.qty}</Badge>
+                                            </TableCell>
+                                            <TableCell className="text-center text-xs">{stock.pv}</TableCell>
+                                            <TableCell className="text-center text-xs">{stock.bv}</TableCell>
+                                            <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" className="h-8 w-8 p-0">
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => setEditingStock(stock)}>
+                                                            <Edit className="mr-2 h-4 w-4" /> Edit
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(stock._id)}>
+                                                            <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
 
-                {/* Full Pagination Footer */}
-                <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-6 lg:space-x-8">
-                    <div className="flex items-center space-x-2">
-                        <p className="text-sm font-medium">Rows per page</p>
-                        <Select
-                            value={`${rowsPerPage}`}
-                            onValueChange={(value) => {
-                                const newSize = Number(value);
-                                setRowsPerPage(newSize);
-                                localStorage.setItem("pos_stock_rows_per_page", String(newSize));
-                                setCurrentPage(1);
-                            }}
-                        >
-                            <SelectTrigger className="h-8 w-[70px]">
-                                <SelectValue placeholder={rowsPerPage} />
-                            </SelectTrigger>
-                            <SelectContent side="top">
-                                {[5, 10, 20, 30, 50, 100].map((pageSize) => (
-                                    <SelectItem key={pageSize} value={`${pageSize}`}>
-                                        {pageSize}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="flex w-[100px] items-center justify-center text-sm font-medium">
-                        Page {currentPage} of {totalPages || 1}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <span className="text-sm text-muted-foreground hidden md:inline-block mr-4">
-                            Showing {Math.min(startIndex + 1, totalItems)}-{Math.min(endIndex, totalItems)} of {totalItems} items
-                        </span>
-                        <Button
-                            variant="outline"
-                            className="hidden h-8 w-8 p-0 lg:flex"
-                            onClick={() => setCurrentPage(1)}
-                            disabled={currentPage === 1}
-                        >
-                            <span className="sr-only">Go to first page</span>
-                            <ChevronsLeft className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-8 w-8 p-0"
-                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                        >
-                            <span className="sr-only">Go to previous page</span>
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-8 w-8 p-0"
-                            onClick={handleNextPage}
-                            disabled={currentPage >= totalPages || (currentPage === totalPages && status === "Exhausted")}
-                        >
-                            <span className="sr-only">Go to next page</span>
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="hidden h-8 w-8 p-0 lg:flex"
-                            onClick={() => {
-                                // For last page, ideally we need all data loaded. 
-                                // This is tricky with infinite scroll. 
-                                // Best effort: go to last calculated page, trigger loadMore loop? 
-                                // For now, just set page. User might see empty if not loaded.
-                                // We'll disable this button if we don't have all data?
-                                // Or we can implement partial jump logic.
-                                // Let's just set the page.
-                                setCurrentPage(totalPages);
-                                if (status === "CanLoadMore") loadMore(totalItems - loadedCount); // Attempt to load all
-                            }}
-                            disabled={currentPage >= totalPages}
-                        >
-                            <span className="sr-only">Go to last page</span>
-                            <ChevronsRight className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Add/Edit Dialogs Reuse */}
-            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Add {halfPrice ? "HP" : "Regular"} Stock</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleCreate} className="space-y-4 py-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Product Name</Label>
-                                <Input name="name" required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Product Code</Label>
-                                <Input name="productCode" required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Category</Label>
-                                <Select name="categoryId" required>
-                                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                                    <SelectContent>
-                                        {categories?.map((c) => <SelectItem key={c._id} value={c._id}>{c.type}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Selling Price</Label>
-                                <Input name="price" type="number" required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Purchase Price</Label>
-                                <Input name="purchasePrice" type="number" required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Quantity</Label>
-                                <Input name="qty" type="number" required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>PV</Label>
-                                <Input name="pv" type="number" required step="0.1" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>BV</Label>
-                                <Input name="bv" type="number" required step="0.1" />
-                            </div>
+                    {/* Full Pagination Footer */}
+                    <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-6 lg:space-x-8">
+                        <div className="flex items-center space-x-2">
+                            <p className="text-sm font-medium">Rows per page</p>
+                            <Select
+                                value={`${rowsPerPage}`}
+                                onValueChange={(value) => {
+                                    const newSize = Number(value);
+                                    setRowsPerPage(newSize);
+                                    localStorage.setItem("pos_stock_rows_per_page", String(newSize));
+                                    setCurrentPage(1);
+                                }}
+                            >
+                                <SelectTrigger className="h-8 w-[70px]">
+                                    <SelectValue placeholder={rowsPerPage} />
+                                </SelectTrigger>
+                                <SelectContent side="top">
+                                    {[5, 10, 20, 30, 50, 100].map((pageSize) => (
+                                        <SelectItem key={pageSize} value={`${pageSize}`}>
+                                            {pageSize}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
-                        <Input name="description" placeholder="Description (Optional)" className="mt-4" />
-                        <DialogFooter className="mt-4">
-                            <Button type="submit">Create</Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+                        <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+                            Page {currentPage} of {totalPages || 1}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <span className="text-sm text-muted-foreground hidden md:inline-block mr-4">
+                                Showing {Math.min(startIndex + 1, totalItems)}-{Math.min(endIndex, totalItems)} of {totalItems} items
+                            </span>
+                            <Button
+                                variant="outline"
+                                className="hidden h-8 w-8 p-0 lg:flex"
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                            >
+                                <span className="sr-only">Go to first page</span>
+                                <ChevronsLeft className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="h-8 w-8 p-0"
+                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                <span className="sr-only">Go to previous page</span>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="h-8 w-8 p-0"
+                                onClick={handleNextPage}
+                                disabled={currentPage >= totalPages || (currentPage === totalPages && status === "Exhausted")}
+                            >
+                                <span className="sr-only">Go to next page</span>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="hidden h-8 w-8 p-0 lg:flex"
+                                onClick={() => {
+                                    // For last page, ideally we need all data loaded. 
+                                    // This is tricky with infinite scroll. 
+                                    // Best effort: go to last calculated page, trigger loadMore loop? 
+                                    // For now, just set page. User might see empty if not loaded.
+                                    // We'll disable this button if we don't have all data?
+                                    // Or we can implement partial jump logic.
+                                    // Let's just set the page.
+                                    setCurrentPage(totalPages);
+                                    if (status === "CanLoadMore") loadMore(totalItems - loadedCount); // Attempt to load all
+                                }}
+                                disabled={currentPage >= totalPages}
+                            >
+                                <span className="sr-only">Go to last page</span>
+                                <ChevronsRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                </div>
 
-            <Dialog open={!!editingStock} onOpenChange={(o) => !o && setEditingStock(null)}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Edit Stock</DialogTitle>
-                    </DialogHeader>
-                    {editingStock && (
-                        <form onSubmit={handleUpdate} className="space-y-4 py-4">
+                {/* Add/Edit Dialogs Reuse */}
+                <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Add {halfPrice ? "HP" : "Regular"} Stock</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={handleCreate} className="space-y-4 py-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Product Name</Label>
-                                    <Input name="name" defaultValue={editingStock.name} required />
+                                    <Input name="name" required />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Product Code</Label>
-                                    <Input name="productCode" defaultValue={editingStock.productCode} required />
+                                    <Input name="productCode" required />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Category</Label>
-                                    <Select name="categoryId" defaultValue={editingStock.categoryId} required>
+                                    <Select name="categoryId" required>
                                         <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                                         <SelectContent>
                                             {categories?.map((c) => <SelectItem key={c._id} value={c._id}>{c.type}</SelectItem>)}
@@ -467,33 +414,88 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Selling Price</Label>
-                                    <Input name="price" type="number" defaultValue={editingStock.price} required />
+                                    <Input name="price" type="number" required />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Purchase Price</Label>
-                                    <Input name="purchasePrice" type="number" defaultValue={editingStock.purchasePrice} required />
+                                    <Input name="purchasePrice" type="number" required />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Quantity</Label>
-                                    <Input name="qty" type="number" defaultValue={editingStock.qty} required />
+                                    <Input name="qty" type="number" required />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>PV</Label>
-                                    <Input name="pv" type="number" defaultValue={editingStock.pv} required step="0.1" />
+                                    <Input name="pv" type="number" required step="0.1" />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>BV</Label>
-                                    <Input name="bv" type="number" defaultValue={editingStock.bv} required step="0.1" />
+                                    <Input name="bv" type="number" required step="0.1" />
                                 </div>
                             </div>
-                            <Input name="description" defaultValue={editingStock.description} placeholder="Description" className="mt-4" />
+                            <Input name="description" placeholder="Description (Optional)" className="mt-4" />
                             <DialogFooter className="mt-4">
-                                <Button type="submit">Update</Button>
+                                <Button type="submit">Create</Button>
                             </DialogFooter>
                         </form>
-                    )}
-                </DialogContent>
-            </Dialog>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={!!editingStock} onOpenChange={(o) => !o && setEditingStock(null)}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Edit Stock</DialogTitle>
+                        </DialogHeader>
+                        {editingStock && (
+                            <form onSubmit={handleUpdate} className="space-y-4 py-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Product Name</Label>
+                                        <Input name="name" defaultValue={editingStock.name} required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Product Code</Label>
+                                        <Input name="productCode" defaultValue={editingStock.productCode} required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Category</Label>
+                                        <Select name="categoryId" defaultValue={editingStock.categoryId} required>
+                                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                                            <SelectContent>
+                                                {categories?.map((c) => <SelectItem key={c._id} value={c._id}>{c.type}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Selling Price</Label>
+                                        <Input name="price" type="number" defaultValue={editingStock.price} required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Purchase Price</Label>
+                                        <Input name="purchasePrice" type="number" defaultValue={editingStock.purchasePrice} required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Quantity</Label>
+                                        <Input name="qty" type="number" defaultValue={editingStock.qty} required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>PV</Label>
+                                        <Input name="pv" type="number" defaultValue={editingStock.pv} required step="0.1" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>BV</Label>
+                                        <Input name="bv" type="number" defaultValue={editingStock.bv} required step="0.1" />
+                                    </div>
+                                </div>
+                                <Input name="description" defaultValue={editingStock.description} placeholder="Description" className="mt-4" />
+                                <DialogFooter className="mt-4">
+                                    <Button type="submit">Update</Button>
+                                </DialogFooter>
+                            </form>
+                        )}
+                    </DialogContent>
+                </Dialog>
+            </div>
         </div>
     );
 }

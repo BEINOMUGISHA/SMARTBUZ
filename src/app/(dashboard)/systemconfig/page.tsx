@@ -55,11 +55,11 @@ export default function SystemConfigPage() {
             </div>
 
             <Tabs defaultValue="users" value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
-                    <TabsTrigger value="users">Users</TabsTrigger>
-                    <TabsTrigger value="packages">Packages</TabsTrigger>
-                    <TabsTrigger value="distributors">Distributors</TabsTrigger>
-                    <TabsTrigger value="shops">Shops</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-[600px] h-auto p-1 bg-muted/50 border shadow-sm">
+                    <TabsTrigger value="users" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Users</TabsTrigger>
+                    <TabsTrigger value="packages" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Packages</TabsTrigger>
+                    <TabsTrigger value="distributors" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Distributors</TabsTrigger>
+                    <TabsTrigger value="shops" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Shops</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="users" className="mt-6">
@@ -91,7 +91,7 @@ function PaginationControls({
     totalItems
 }: any) {
     return (
-        <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-6 lg:space-x-8">
+        <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4">
             <div className="flex items-center space-x-2">
                 <p className="text-sm font-medium">Rows per page</p>
                 <Select
@@ -113,49 +113,48 @@ function PaginationControls({
                     </SelectContent>
                 </Select>
             </div>
-            <div className="flex w-[100px] items-center justify-center text-sm font-medium">
-                Page {currentPage} of {totalPages || 1}
-            </div>
-            <div className="flex items-center space-x-2">
-                <span className="text-sm text-muted-foreground hidden md:inline-block mr-4">
-                    Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} items
-                </span>
-                <Button
-                    variant="outline"
-                    className="hidden h-8 w-8 p-0 lg:flex"
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1}
-                >
-                    <span className="sr-only">Go to first page</span>
-                    <ChevronsLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                    variant="outline"
-                    className="h-8 w-8 p-0"
-                    onClick={() => setCurrentPage((p: number) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                >
-                    <span className="sr-only">Go to previous page</span>
-                    <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                    variant="outline"
-                    className="h-8 w-8 p-0"
-                    onClick={() => setCurrentPage((p: number) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages || totalPages === 0}
-                >
-                    <span className="sr-only">Go to next page</span>
-                    <ChevronRight className="h-4 w-4" />
-                </Button>
-                <Button
-                    variant="outline"
-                    className="hidden h-8 w-8 p-0 lg:flex"
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage === totalPages || totalPages === 0}
-                >
-                    <span className="sr-only">Go to last page</span>
-                    <ChevronsRight className="h-4 w-4" />
-                </Button>
+            <div className="flex items-center gap-4">
+                <div className="text-sm font-medium">
+                    Page {currentPage} of {totalPages || 1}
+                </div>
+                <div className="flex items-center space-x-2">
+                    <Button
+                        variant="outline"
+                        className="hidden h-8 w-8 p-0 lg:flex"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                    >
+                        <span className="sr-only">Go to first page</span>
+                        <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage((p: number) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                    >
+                        <span className="sr-only">Go to previous page</span>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage((p: number) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                    >
+                        <span className="sr-only">Go to next page</span>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="hidden h-8 w-8 p-0 lg:flex"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                    >
+                        <span className="sr-only">Go to last page</span>
+                        <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
         </div>
     );
@@ -242,69 +241,71 @@ function UserManager() {
                 <div className="flex flex-col gap-4 space-y-4">
                     <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete User?" />
 
-                    <div className="flex justify-between items-center gap-4">
-                        <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full max-w-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full sm:max-w-sm">
                             <Search className="h-4 w-4 text-muted-foreground ml-2" />
-                            <Input placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0" />
+                            <Input placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
                         </div>
-                        <Button onClick={() => setIsAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add User</Button>
+                        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add User</Button>
                     </div>
 
-                    <div className="rounded-md border">
-                        <Table>
-                            <TableHeader className="bg-muted/50">
-                                <TableRow>
-                                    <TableHead>User</TableHead>
-                                    <TableHead>Email</TableHead>
-                                    <TableHead>Roles</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {!users ? (
-                                    <TableRow><TableCell colSpan={4} className="h-24 text-center"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                                ) : currentItems.map((user) => (
-                                    <TableRow key={user._id}>
-                                        <TableCell className="font-medium">
-                                            <div className="flex items-center gap-2">
-                                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                                                    {user.first_name[0]}{user.last_name[0]}
-                                                </div>
-                                                {user.first_name} {user.last_name}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>{user.email}</TableCell>
-                                        <TableCell>
-                                            <div className="flex gap-1">
-                                                {user.roles.map(r => (
-                                                    <Badge
-                                                        key={r}
-                                                        variant={r === "admin" ? "default" : "secondary"}
-                                                        className={cn(
-                                                            "text-[10px] uppercase tracking-wider font-bold px-2 py-0.5",
-                                                            r === "admin" ? "bg-primary" : "bg-orange-400 text-white"
-                                                        )}
-                                                    >
-                                                        {r}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => setEditingItem(user)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                                    <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(user._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
+                    <div className="rounded-md border overflow-x-auto">
+                        <div className="min-w-[800px] lg:min-w-0">
+                            <Table>
+                                <TableHeader className="bg-muted/50">
+                                    <TableRow>
+                                        <TableHead>User</TableHead>
+                                        <TableHead>Email</TableHead>
+                                        <TableHead>Roles</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {!users ? (
+                                        <TableRow><TableCell colSpan={4} className="h-24 text-center"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                                    ) : currentItems.map((user) => (
+                                        <TableRow key={user._id}>
+                                            <TableCell className="font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                                                        {user.first_name[0]}{user.last_name[0]}
+                                                    </div>
+                                                    {user.first_name} {user.last_name}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>{user.email}</TableCell>
+                                            <TableCell>
+                                                <div className="flex gap-1">
+                                                    {user.roles.map(r => (
+                                                        <Badge
+                                                            key={r}
+                                                            variant={r === "admin" ? "default" : "secondary"}
+                                                            className={cn(
+                                                                "text-[10px] uppercase tracking-wider font-bold px-2 py-0.5",
+                                                                r === "admin" ? "bg-primary" : "bg-orange-400 text-white"
+                                                            )}
+                                                        >
+                                                            {r}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => setEditingItem(user)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(user._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                        <PaginationControls currentPage={currentPage} totalPages={totalPages} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} setCurrentPage={setCurrentPage} startIndex={startIndex} endIndex={endIndex} totalItems={totalItems} />
                     </div>
-                    <PaginationControls currentPage={currentPage} totalPages={totalPages} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} setCurrentPage={setCurrentPage} startIndex={startIndex} endIndex={endIndex} totalItems={totalItems} />
                 </div>
             </CardContent>
 
@@ -442,51 +443,53 @@ function PackageManager() {
                 <div className="flex flex-col gap-4 space-y-4">
                     <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete Package?" />
 
-                    <div className="flex justify-between items-center gap-4">
-                        <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full max-w-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full sm:max-w-sm">
                             <Search className="h-4 w-4 text-muted-foreground ml-2" />
-                            <Input placeholder="Search packages..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0" />
+                            <Input placeholder="Search packages..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
                         </div>
-                        <Button onClick={() => setIsAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Package</Button>
+                        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add Package</Button>
                     </div>
 
-                    <div className="rounded-md border">
-                        <Table>
-                            <TableHeader className="bg-muted/50">
-                                <TableRow>
-                                    <TableHead>Package Name</TableHead>
-                                    <TableHead className="text-right">Amount (UGX)</TableHead>
-                                    <TableHead className="text-center">PV</TableHead>
-                                    <TableHead className="text-center">BV</TableHead>
-                                    <TableHead className="text-center">Paid</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {!packages ? <TableRow><TableCell colSpan={6}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((pkg) => (
-                                    <TableRow key={pkg._id}>
-                                        <TableCell className="font-medium">{pkg.name}</TableCell>
-                                        <TableCell className="text-right font-bold">{pkg.amount.toLocaleString()}</TableCell>
-                                        <TableCell className="text-center text-xs text-muted-foreground">{pkg.pv}</TableCell>
-                                        <TableCell className="text-center text-xs text-muted-foreground">{pkg.bv}</TableCell>
-                                        <TableCell className="text-center">
-                                            {pkg.isPaid ? <Badge className="bg-green-100 text-green-800 hover:bg-green-200">Yes</Badge> : <Badge variant="outline">No</Badge>}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => setEditingItem(pkg)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                                    <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(pkg._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
+                    <div className="rounded-md border overflow-x-auto">
+                        <div className="min-w-[800px] lg:min-w-0">
+                            <Table>
+                                <TableHeader className="bg-muted/50">
+                                    <TableRow>
+                                        <TableHead>Package Name</TableHead>
+                                        <TableHead className="text-right">Amount (UGX)</TableHead>
+                                        <TableHead className="text-center">PV</TableHead>
+                                        <TableHead className="text-center">BV</TableHead>
+                                        <TableHead className="text-center">Paid</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {!packages ? <TableRow><TableCell colSpan={6}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((pkg) => (
+                                        <TableRow key={pkg._id}>
+                                            <TableCell className="font-medium">{pkg.name}</TableCell>
+                                            <TableCell className="text-right font-bold">{pkg.amount.toLocaleString()}</TableCell>
+                                            <TableCell className="text-center text-xs text-muted-foreground">{pkg.pv}</TableCell>
+                                            <TableCell className="text-center text-xs text-muted-foreground">{pkg.bv}</TableCell>
+                                            <TableCell className="text-center">
+                                                {pkg.isPaid ? <Badge className="bg-green-100 text-green-800 hover:bg-green-200">Yes</Badge> : <Badge variant="outline">No</Badge>}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => setEditingItem(pkg)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(pkg._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                        <PaginationControls currentPage={currentPage} totalPages={totalPages} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} setCurrentPage={setCurrentPage} startIndex={startIndex} endIndex={endIndex} totalItems={totalItems} />
                     </div>
-                    <PaginationControls currentPage={currentPage} totalPages={totalPages} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} setCurrentPage={setCurrentPage} startIndex={startIndex} endIndex={endIndex} totalItems={totalItems} />
                 </div>
             </CardContent>
 
@@ -610,56 +613,58 @@ function DistributorManager() {
                 <div className="flex flex-col gap-4 space-y-4">
                     <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete Distributor?" />
 
-                    <div className="flex justify-between items-center gap-4">
-                        <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full max-w-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full sm:max-w-sm">
                             <Search className="h-4 w-4 text-muted-foreground ml-2" />
-                            <Input placeholder="Search name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0" />
+                            <Input placeholder="Search name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
                         </div>
-                        <Button onClick={() => setIsAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Distributor</Button>
+                        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add Distributor</Button>
                     </div>
 
-                    <div className="rounded-md border">
-                        <Table>
-                            <TableHeader className="bg-muted/50">
-                                <TableRow>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>ID NO</TableHead>
-                                    <TableHead>Contact</TableHead>
-                                    <TableHead>Package</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {!distributors ? <TableRow><TableCell colSpan={4}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((dist) => (
-                                    <TableRow key={dist._id}>
-                                        <TableCell className="font-medium">{dist.name}</TableCell>
-                                        <TableCell className="font-mono text-xs">{dist.distributorId || "-"}</TableCell>
-                                        <TableCell>
-                                            <div className="flex flex-col text-sm">
-                                                <span>{dist.phone}</span>
-                                                <span className="text-muted-foreground text-xs">{dist.email}</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline" className="font-normal">
-                                                {packages?.find(p => p._id === dist.packageId)?.name || "—"}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => setEditingItem(dist)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                                    <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(dist._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
+                    <div className="rounded-md border overflow-x-auto">
+                        <div className="min-w-[800px] lg:min-w-0">
+                            <Table>
+                                <TableHeader className="bg-muted/50">
+                                    <TableRow>
+                                        <TableHead>Name</TableHead>
+                                        <TableHead>ID NO</TableHead>
+                                        <TableHead>Contact</TableHead>
+                                        <TableHead>Package</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {!distributors ? <TableRow><TableCell colSpan={4}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((dist) => (
+                                        <TableRow key={dist._id}>
+                                            <TableCell className="font-medium">{dist.name}</TableCell>
+                                            <TableCell className="font-mono text-xs">{dist.distributorId || "-"}</TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col text-sm">
+                                                    <span>{dist.phone}</span>
+                                                    <span className="text-muted-foreground text-xs">{dist.email}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline" className="font-normal">
+                                                    {packages?.find(p => p._id === dist.packageId)?.name || "—"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => setEditingItem(dist)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(dist._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                        <PaginationControls currentPage={currentPage} totalPages={totalPages} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} setCurrentPage={setCurrentPage} startIndex={startIndex} endIndex={endIndex} totalItems={totalItems} />
                     </div>
-                    <PaginationControls currentPage={currentPage} totalPages={totalPages} rowsPerPage={rowsPerPage} setRowsPerPage={setRowsPerPage} setCurrentPage={setCurrentPage} startIndex={startIndex} endIndex={endIndex} totalItems={totalItems} />
                 </div>
             </CardContent>
 

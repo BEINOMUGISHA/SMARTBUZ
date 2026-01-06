@@ -37,11 +37,11 @@ export default function SalesPage() {
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
             <SalesHeader />
             <Tabs defaultValue="regular" className="flex-1 flex flex-col">
-                <TabsList className="grid w-full grid-cols-4 lg:w-[540px]">
-                    <TabsTrigger value="regular">Regular Sales</TabsTrigger>
-                    <TabsTrigger value="hp">HP Sales</TabsTrigger>
-                    <TabsTrigger value="packages">Packages</TabsTrigger>
-                    <TabsTrigger value="mysales">My Sales</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-[600px] h-auto p-1 bg-muted/50 border shadow-sm">
+                    <TabsTrigger value="regular" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Regular Sales</TabsTrigger>
+                    <TabsTrigger value="hp" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">HP Sales</TabsTrigger>
+                    <TabsTrigger value="packages" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Packages</TabsTrigger>
+                    <TabsTrigger value="mysales" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">My Sales</TabsTrigger>
                 </TabsList>
 
                 <div className="flex-1 mt-4 overflow-hidden">
@@ -336,9 +336,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full pb-10 lg:pb-0">
             {/* Left Col: Product Selection (Table View) */}
-            <div className="lg:col-span-7 flex flex-col gap-4 h-full overflow-hidden">
+            <div className="lg:col-span-7 flex flex-col gap-4 h-[500px] lg:h-full overflow-hidden">
                 <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -350,64 +350,66 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     />
                 </div>
 
-                <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-4">
+                <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-4 flex flex-col">
                     {isStocksLoading ? (
                         <div className="flex items-center justify-center h-40"><Loader2 className="animate-spin" /></div>
                     ) : stocks.length === 0 ? (
                         <div className="text-center py-10 text-muted-foreground">No products found</div>
                     ) : (
-                        <div className="flex-1 overflow-auto flex flex-col h-full">
-                            <Table>
-                                <TableHeader className="sticky top-0 bg-background z-10">
-                                    <TableRow>
-                                        <TableHead className="w-[100px]">Code</TableHead>
-                                        <TableHead>Product Name</TableHead>
-                                        <TableHead className="text-right">Price</TableHead>
-                                        <TableHead className="text-right">PV / BV</TableHead>
-                                        <TableHead className="text-center">Stock</TableHead>
-                                        <TableHead></TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {paginatedStocks.map((stock: any) => (
-                                        <TableRow key={stock._id || stock.stockId} className={stock.qty === 0 ? "opacity-50" : ""}>
-                                            <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
-                                            <TableCell className="font-medium">
-                                                {stock.name}
-                                                {isShopUser && <Badge variant="secondary" className="ml-2 text-[10px] h-4">Shop Stock</Badge>}
-                                            </TableCell>
-                                            <TableCell className="text-right">{stock.price.toLocaleString()}</TableCell>
-                                            <TableCell className="text-right text-xs text-muted-foreground">
-                                                {stock.pv} / {stock.bv}
-                                            </TableCell>
-                                            <TableCell className="text-center">
-                                                {stock.qty > 0 ? (
-                                                    <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200">
-                                                        {stock.qty}
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="destructive">Out</Badge>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    disabled={stock.qty === 0}
-                                                    onClick={() => addToCart(stock)}
-                                                >
-                                                    Add
-                                                </Button>
-                                            </TableCell>
+                        <div className="flex-1 overflow-x-auto flex flex-col h-full">
+                            <div className="min-w-[800px] lg:min-w-0 flex-1">
+                                <Table>
+                                    <TableHeader className="sticky top-0 bg-background z-10">
+                                        <TableRow>
+                                            <TableHead className="w-[100px]">Code</TableHead>
+                                            <TableHead>Product Name</TableHead>
+                                            <TableHead className="text-right">Price</TableHead>
+                                            <TableHead className="text-right">PV / BV</TableHead>
+                                            <TableHead className="text-center">Stock</TableHead>
+                                            <TableHead></TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {paginatedStocks.map((stock: any) => (
+                                            <TableRow key={stock._id || stock.stockId} className={stock.qty === 0 ? "opacity-50" : ""}>
+                                                <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
+                                                <TableCell className="font-medium">
+                                                    {stock.name}
+                                                    {isShopUser && <Badge variant="secondary" className="ml-2 text-[10px] h-4">Shop Stock</Badge>}
+                                                </TableCell>
+                                                <TableCell className="text-right">{stock.price.toLocaleString()}</TableCell>
+                                                <TableCell className="text-right text-xs text-muted-foreground">
+                                                    {stock.pv} / {stock.bv}
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    {stock.qty > 0 ? (
+                                                        <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200">
+                                                            {stock.qty}
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="destructive">Out</Badge>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        disabled={stock.qty === 0}
+                                                        onClick={() => addToCart(stock)}
+                                                    >
+                                                        Add
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
 
                             {/* Pagination Footer */}
-                            <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-2 mt-auto">
-                                <div className="flex items-center space-x-2 mr-auto">
-                                    <p className="text-xs font-medium hidden sm:inline-block">Rows</p>
+                            <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 mt-auto">
+                                <div className="flex items-center space-x-2">
+                                    <p className="text-xs font-medium">Rows</p>
                                     <Select
                                         value={`${rowsPerPage}`}
                                         onValueChange={(value) => {
@@ -429,27 +431,30 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="text-xs font-medium">
+                                        {Math.min((currentPage - 1) * rowsPerPage + 1, stocks.length)}-{Math.min(currentPage * rowsPerPage, stocks.length)} of {stocks.length}
+                                    </div>
 
-                                <div className="text-xs font-medium mr-2">
-                                    {Math.min((currentPage - 1) * rowsPerPage + 1, stocks.length)}-{Math.min(currentPage * rowsPerPage, stocks.length)} of {stocks.length}
+                                    <div className="flex items-center space-x-2">
+                                        <Button
+                                            variant="outline"
+                                            className="h-8 w-8 p-0"
+                                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                        >
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            className="h-8 w-8 p-0"
+                                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage >= totalPages || totalPages === 0}
+                                        >
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
-
-                                <Button
-                                    variant="outline"
-                                    className="h-8 w-8 p-0"
-                                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
-                                >
-                                    <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className="h-8 w-8 p-0"
-                                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage >= totalPages || totalPages === 0}
-                                >
-                                    <ChevronRight className="h-4 w-4" />
-                                </Button>
                             </div>
                         </div>
                     )}
@@ -457,7 +462,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             </div>
 
             {/* Right Col: Cart & Checkout */}
-            <div className="lg:col-span-5 h-full flex flex-col gap-4 overflow-hidden">
+            <div className="lg:col-span-5 h-[650px] lg:h-full flex flex-col gap-4 overflow-hidden">
                 <Card className="flex-1 flex flex-col overflow-hidden border-2 shadow-md">
                     <CardHeader className="bg-muted/30 pb-4">
                         <CardTitle className="flex items-center gap-2">
@@ -473,50 +478,52 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 <p className="text-xs">Select items from the left to start a sale</p>
                             </div>
                         ) : (
-                            <Table>
-                                <TableHeader className="sticky top-0 bg-background z-10">
-                                    <TableRow>
-                                        <TableHead className="w-[40%]">Item & Price Override</TableHead>
-                                        <TableHead className="w-[20%] text-center">Qty</TableHead>
-                                        <TableHead className="text-right">Total</TableHead>
-                                        <TableHead className="w-[10%]"></TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {cart.map(item => (
-                                        <TableRow key={item.stockId}>
-                                            <TableCell className="py-2">
-                                                <div className="font-medium text-sm line-clamp-1 mb-1">{item.name}</div>
-                                                <Input
-                                                    className="h-7 w-24 text-xs"
-                                                    value={item.price}
-                                                    type="number"
-                                                    onChange={(e) => updatePrice(item.stockId, e.target.value)}
-                                                />
-                                            </TableCell>
-                                            <TableCell className="p-0">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, -1)}>
-                                                        <Minus className="h-3 w-3" />
-                                                    </Button>
-                                                    <span className="w-6 text-center text-sm font-medium">{item.qty}</span>
-                                                    <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, 1)}>
-                                                        <Plus className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-right font-medium">
-                                                {(item.price * item.qty).toLocaleString()}
-                                            </TableCell>
-                                            <TableCell className="p-2 text-right">
-                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => removeFromCart(item.stockId)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </TableCell>
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader className="sticky top-0 bg-background z-10">
+                                        <TableRow>
+                                            <TableHead className="w-[45%]">Item & Price Override</TableHead>
+                                            <TableHead className="w-[20%] text-center">Qty</TableHead>
+                                            <TableHead className="text-right">Total</TableHead>
+                                            <TableHead className="w-[10%]"></TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {cart.map(item => (
+                                            <TableRow key={item.stockId}>
+                                                <TableCell className="py-2">
+                                                    <div className="font-medium text-[11px] lg:text-sm line-clamp-1 mb-1">{item.name}</div>
+                                                    <Input
+                                                        className="h-7 w-20 lg:w-24 text-[10px] lg:text-xs"
+                                                        value={item.price}
+                                                        type="number"
+                                                        onChange={(e) => updatePrice(item.stockId, e.target.value)}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="p-0">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, -1)}>
+                                                            <Minus className="h-3 w-3" />
+                                                        </Button>
+                                                        <span className="w-5 text-center text-xs font-medium">{item.qty}</span>
+                                                        <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, 1)}>
+                                                            <Plus className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium text-[11px]">
+                                                    {(item.price * item.qty).toLocaleString()}
+                                                </TableCell>
+                                                <TableCell className="p-2 text-right">
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => removeFromCart(item.stockId)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
                         )}
                     </CardContent>
 
