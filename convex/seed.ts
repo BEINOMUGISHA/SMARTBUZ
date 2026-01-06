@@ -2,6 +2,7 @@ import { mutation } from "./_generated/server";
 // Force sync
 import { v } from "convex/values";
 import bcrypt from "bcryptjs";
+import { Id } from "./_generated/dataModel";
 
 export const seed = mutation({
     args: {},
@@ -165,25 +166,32 @@ export const seedShopsAndDistributors = mutation({
     args: {},
     handler: async (ctx) => {
         // 1. Ensure we have some packages to link to distributors
-        let packages = await ctx.db.query("packages").collect();
-        if (packages.length === 0) {
-            const packageData = [
+        const existingPackages = await ctx.db.query("packages").collect();
+        const packageIds: Id<"packages">[] = existingPackages.map(p => p._id);
+
+        if (packageIds.length < 3) {
+            const packageTemplates = [
                 { name: "Silver Package", amount: 500000, bv: 100, pv: 50, registrationFee: 20000, isPaid: true },
                 { name: "Gold Package", amount: 1500000, bv: 300, pv: 150, registrationFee: 20000, isPaid: true },
                 { name: "Platinum Package", amount: 3000000, bv: 600, pv: 300, registrationFee: 20000, isPaid: true },
             ];
-            for (const pkg of packageData) {
-                await ctx.db.insert("packages", pkg);
+            for (const pkg of packageTemplates) {
+                const existing = existingPackages.find(p => p.name === pkg.name);
+                if (!existing) {
+                    const id = await ctx.db.insert("packages", pkg);
+                    packageIds.push(id);
+                }
             }
-            packages = await ctx.db.query("packages").collect();
         }
+
+        const getPkgId = (index: number) => packageIds[index] || packageIds[0];
 
         // 2. Seed Distributors (Customers)
         const distributors = [
-            { name: "Kato Joseph", phone: "0771112233", email: "kato@tiens.com", distributorId: "UG00112233", address: "Kampala, Katwe", packageId: packages[0]._id },
-            { name: "Nabaasa Sarah", phone: "0755443322", email: "sarah@tiens.com", distributorId: "UG44556677", address: "Mbarara, High Street", packageId: packages[1]._id },
-            { name: "Mukasa David", phone: "0700112233", email: "david@tiens.com", distributorId: "UG99887766", address: "Entebbe, Abayita Ababiri", packageId: packages[2]._id },
-            { name: "Atuhaire Peace", phone: "0788990011", email: "peace@tiens.com", distributorId: "UG11224455", address: "Gulu, Gulu Main Street", packageId: packages[0]._id },
+            { name: "Kato Joseph", phone: "0771112233", email: "kato@tiens.com", distributorId: "UG00112233", address: "Kampala, Katwe", packageId: getPkgId(0) },
+            { name: "Nabaasa Sarah", phone: "0755443322", email: "sarah@tiens.com", distributorId: "UG44556677", address: "Mbarara, High Street", packageId: getPkgId(1) },
+            { name: "Mukasa David", phone: "0700112233", email: "david@tiens.com", distributorId: "UG99887766", address: "Entebbe, Abayita Ababiri", packageId: getPkgId(2) },
+            { name: "Atuhaire Peace", phone: "0788990011", email: "peace@tiens.com", distributorId: "UG11224455", address: "Gulu, Gulu Main Street", packageId: getPkgId(0) },
         ];
 
         for (const d of distributors) {
