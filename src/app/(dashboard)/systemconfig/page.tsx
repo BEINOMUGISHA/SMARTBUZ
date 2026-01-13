@@ -56,7 +56,7 @@ export default function SystemConfigPage() {
             </div>
 
             <Tabs defaultValue="users" value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-[600px] h-auto p-1 bg-muted/50 border shadow-sm">
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 lg:w-[600px] h-auto p-1 bg-muted/50 border shadow-sm">
                     <TabsTrigger value="users" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Users</TabsTrigger>
                     <TabsTrigger value="packages" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Packages</TabsTrigger>
                     <TabsTrigger value="distributors" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Distributors</TabsTrigger>
