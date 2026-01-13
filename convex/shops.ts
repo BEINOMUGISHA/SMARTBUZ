@@ -17,10 +17,80 @@ export const listAll = query({
     },
 });
 
+export const getPaginated = query({
+    args: {
+        limit: v.number(),
+        offset: v.number(),
+        searchTerm: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let q = ctx.db.query("shops");
+        let results = await q.order("desc").collect();
+
+        if (args.searchTerm) {
+            const search = args.searchTerm.toLowerCase();
+            results = results.filter(s =>
+                s.name.toLowerCase().includes(search) ||
+                s.location.toLowerCase().includes(search)
+            );
+        }
+
+        const totalCount = results.length;
+        const page = results.slice(args.offset, args.offset + args.limit);
+
+        return { page, totalCount };
+    },
+});
+
 export const getShop = query({
     args: { id: v.id("shops") },
     handler: async (ctx, args) => {
         return await ctx.db.get(args.id);
+    },
+});
+
+export const getPaginatedShopStock = query({
+    args: {
+        shopId: v.id("shops"),
+        limit: v.number(),
+        offset: v.number(),
+        searchTerm: v.optional(v.string()),
+        halfPrice: v.optional(v.boolean()),
+    },
+    handler: async (ctx, args) => {
+        const shop = await ctx.db.get(args.shopId);
+        if (!shop) return { page: [], totalCount: 0, stats: { totalValue: 0, totalPV: 0, totalBV: 0, totalItems: 0 } };
+
+        let stocks = shop.issuedStocks || [];
+
+        // Apply Search
+        if (args.searchTerm) {
+            const search = args.searchTerm.toLowerCase();
+            stocks = stocks.filter(s =>
+                s.name.toLowerCase().includes(search) ||
+                (s.productCode && s.productCode.toLowerCase().includes(search))
+            );
+        }
+
+        // Apply HP Filter
+        if (args.halfPrice !== undefined) {
+            stocks = stocks.filter(s => !!s.halfPrice === args.halfPrice);
+        }
+
+        const totalCount = stocks.length;
+
+        // Calculate Stats for the ENTIRE filtered list (pre-pagination)
+        const stats = stocks.reduce((acc, s) => ({
+            totalValue: acc.totalValue + (s.qty * s.price),
+            totalPV: acc.totalPV + (s.qty * (s.pv || 0)),
+            totalBV: acc.totalBV + (s.qty * (s.bv || 0)),
+            totalItems: acc.totalItems + s.qty
+        }), { totalValue: 0, totalPV: 0, totalBV: 0, totalItems: 0 });
+
+        // Paginate
+        const page = stocks.slice(args.offset, args.offset + args.limit);
+
+        return { page, totalCount, stats };
     },
 });
 
@@ -257,4 +327,66 @@ export const transferStock = mutation({
             timestamp: new Date().toISOString(),
         });
     },
+});
+
+export const batchTransferStock = mutation({
+    args: {
+        shopId: v.id("shops"),
+        userId: v.id("users"),
+        items: v.array(v.object({
+            stockId: v.id("stocks"),
+            quantity: v.number(),
+        })),
+    },
+    handler: async (ctx, args) => {
+        const shop = await ctx.db.get(args.shopId);
+        if (!shop) throw new Error("Shop not found");
+
+        let newIssuedStocks = [...shop.issuedStocks];
+        let logs: string[] = [];
+
+        for (const itemRequest of args.items) {
+            const stock = await ctx.db.get(itemRequest.stockId);
+            if (!stock) throw new Error(`Stock item ${itemRequest.stockId} not found`);
+            if (stock.qty < itemRequest.quantity) throw new Error(`Insufficient stock for ${stock.name}`);
+
+            // Deduct from warehouse
+            await ctx.db.patch(itemRequest.stockId, {
+                qty: stock.qty - itemRequest.quantity
+            });
+
+            const existingIndex = newIssuedStocks.findIndex(s => s.stockId === itemRequest.stockId);
+            if (existingIndex >= 0) {
+                newIssuedStocks[existingIndex] = {
+                    ...newIssuedStocks[existingIndex],
+                    qty: newIssuedStocks[existingIndex].qty + itemRequest.quantity,
+                    price: stock.price,
+                    pv: stock.pv,
+                    bv: stock.bv,
+                    halfPrice: stock.halfPrice || false,
+                };
+            } else {
+                newIssuedStocks.push({
+                    stockId: stock._id,
+                    name: stock.name,
+                    productCode: stock.productCode,
+                    qty: itemRequest.quantity,
+                    price: stock.price,
+                    pv: stock.pv,
+                    bv: stock.bv,
+                    halfPrice: stock.halfPrice || false,
+                });
+            }
+            logs.push(`${itemRequest.quantity}x ${stock.name}`);
+        }
+
+        await ctx.db.patch(args.shopId, { issuedStocks: newIssuedStocks });
+
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Batch Transfer Stock",
+            details: `Transferred ${logs.join(", ")} to ${shop.name}`,
+            timestamp: new Date().toISOString(),
+        });
+    }
 });

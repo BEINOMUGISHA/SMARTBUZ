@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 
 export const getStats = query({
     args: {
@@ -8,51 +9,53 @@ export const getStats = query({
         shopId: v.optional(v.id("shops")),
     },
     handler: async (ctx, args) => {
-        let salesQuery = ctx.db.query("sales");
+        // [OPTIMIZED] Use proper indexed queries instead of .collect()
+        let salesQuery;
+        if (args.shopId) {
+            if (args.startDate && args.endDate) {
+                salesQuery = ctx.db.query("sales").withIndex("by_shop_date", q =>
+                    q.eq("shopId", args.shopId!).gte("date", args.startDate!).lte("date", args.endDate!)
+                );
+            } else {
+                salesQuery = ctx.db.query("sales").withIndex("by_shop_date", q => q.eq("shopId", args.shopId!));
+            }
+        } else {
+            if (args.startDate && args.endDate) {
+                salesQuery = ctx.db.query("sales").withIndex("by_date", q =>
+                    q.gte("date", args.startDate!).lte("date", args.endDate!)
+                );
+            } else {
+                salesQuery = ctx.db.query("sales");
+            }
+        }
 
-        const allSales = await salesQuery.order("desc").collect();
-        const allCustomers = await ctx.db.query("customers").collect();
-        const allStock = await ctx.db.query("stocks").collect();
-
-        // 1. Filter Sales by Date and Shop
-        const filteredSales = allSales.filter(sale => {
-            const matchesShop = args.shopId ? sale.shopId === args.shopId : true;
-            const matchesDate = (args.startDate && args.endDate)
-                ? (sale.date >= args.startDate && sale.date <= args.endDate)
-                : true;
-            return matchesShop && matchesDate;
-        });
+        const filteredSales = await salesQuery.order("desc").collect();
+        const totalCustomers = (await ctx.db.query("customers").collect()).length;
 
         // 2. Calculate Revenue
         const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
 
-        // 3. Low Stock (Threshold < 10)
-        // For Sales Dashboard, we might want to filter stock by shop, 
-        // but stocks table is global. Shops table has issuedStocks.
+        // 3. Low Stock [OPTIMIZED]
         let lowStockCount = 0;
         if (args.shopId) {
             const shop = await ctx.db.get(args.shopId);
             lowStockCount = shop?.issuedStocks.filter(s => s.qty < 5).length || 0;
         } else {
-            lowStockCount = allStock.filter(s => s.qty < 10).length;
+            lowStockCount = (await ctx.db.query("stocks").withIndex("by_qty", q => q.lt("qty", 10)).collect()).length;
         }
 
-        // 4. Recent Sales
-        const recentSales = filteredSales.slice(0, 5).map(sale => ({
+        // 4. Recent Sales [BATCH OPTIMIZED]
+        const rawRecentSales = filteredSales.slice(0, 5);
+        const customerIds = [...new Set(rawRecentSales.map(s => s.customerId).filter((id): id is Id<"customers"> => !!id))];
+        const customers = await Promise.all(customerIds.map(id => ctx.db.get(id)));
+        const customerMap = new Map(customers.filter(c => c !== null).map(c => [c!._id, c]));
+
+        const recentSales = rawRecentSales.map(sale => ({
             _id: sale._id,
-            customerName: sale.manualCustomerName || "Walk-in Customer",
+            customerName: sale.customerId ? (customerMap.get(sale.customerId)?.name || "Unknown") : (sale.manualCustomerName || "Walk-in"),
             amount: sale.total,
             date: sale.date,
             status: "Completed"
-        }));
-
-        const enrichedRecentSales = await Promise.all(recentSales.map(async (s) => {
-            const sale = filteredSales.find(fs => fs._id === s._id);
-            if (sale?.customerId) {
-                const customer = await ctx.db.get(sale.customerId);
-                return { ...s, customerName: customer?.name || "Unknown" };
-            }
-            return s;
         }));
 
         // 5. Chart Data (Daily Revenue)
@@ -69,9 +72,9 @@ export const getStats = query({
         return {
             totalRevenue,
             totalOrders: filteredSales.length,
-            totalCustomers: allCustomers.length,
+            totalCustomers,
             lowStockCount,
-            recentSales: enrichedRecentSales,
+            recentSales,
             chartData
         };
     },
@@ -80,10 +83,9 @@ export const getStats = query({
 export const getGlobalLowStock = query({
     args: {},
     handler: async (ctx) => {
-        const stocks = await ctx.db.query("stocks").collect();
-        return stocks
-            .filter(s => s.qty < 15)
-            .sort((a, b) => a.qty - b.qty)
-            .slice(0, 10);
+        return await ctx.db.query("stocks")
+            .withIndex("by_qty", q => q.lt("qty", 15))
+            .order("asc")
+            .take(10);
     }
 });

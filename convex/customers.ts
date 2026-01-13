@@ -22,6 +22,32 @@ export const listAll = query({
     },
 });
 
+export const getPaginated = query({
+    args: {
+        limit: v.number(),
+        offset: v.number(),
+        searchTerm: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let q = ctx.db.query("customers");
+        let results = await q.order("desc").collect();
+
+        if (args.searchTerm) {
+            const search = args.searchTerm.toLowerCase();
+            results = results.filter(c =>
+                c.name.toLowerCase().includes(search) ||
+                c.phone.includes(search) ||
+                (c.distributorId && c.distributorId.toLowerCase().includes(search))
+            );
+        }
+
+        const totalCount = results.length;
+        const page = results.slice(args.offset, args.offset + args.limit);
+
+        return { page, totalCount };
+    },
+});
+
 // Add customer
 export const add = mutation({
     args: {

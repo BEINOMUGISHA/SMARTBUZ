@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Loader2, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Search } from "lucide-react";
 import { startOfMonth, endOfMonth, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -43,6 +44,7 @@ export function MySalesView() {
     });
     const [filterType, setFilterType] = useState("All");
     const [selectedCustomerId, setSelectedCustomerId] = useState<Id<"customers"> | undefined>(undefined);
+    const [searchTerm, setSearchTerm] = useState("");
 
     // Receipt Modal State
     const [printReceiptData, setPrintReceiptData] = useState<ReceiptData | null>(null);
@@ -64,6 +66,7 @@ export function MySalesView() {
         to: date?.to?.toISOString(),
         filterType,
         customerId: selectedCustomerId,
+        searchTerm,
         email: user?.email || undefined
     };
 
@@ -112,27 +115,39 @@ export function MySalesView() {
         <div className="flex flex-col h-full space-y-4">
             {/* Top Controls */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-muted/20 p-4 rounded-lg border">
-                <div className="flex items-center gap-2">
-                    <Label className="whitespace-nowrap">Date Range:</Label>
-                    <DatePickerWithRange date={date} setDate={setDate} />
+                <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                        <Label className="whitespace-nowrap">Date Range:</Label>
+                        <DatePickerWithRange date={date} setDate={setDate} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Label>Filter Type:</Label>
+                        <Select value={filterType} onValueChange={setFilterType}>
+                            <SelectTrigger className="w-[140px] bg-white">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="All">All Sales</SelectItem>
+                                <SelectItem value="Regular">Regular Sales</SelectItem>
+                                <SelectItem value="HP">HP Sales</SelectItem>
+                                <SelectItem value="Loans">Loans</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Label>Filter Type:</Label>
-                    <Select value={filterType} onValueChange={setFilterType}>
-                        <SelectTrigger className="w-[180px] bg-white">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="All">All Sales</SelectItem>
-                            <SelectItem value="Regular">Regular Sales</SelectItem>
-                            <SelectItem value="HP">HP Sales</SelectItem>
-                            <SelectItem value="Loans">Loans</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Label>Distributor:</Label>
-                    <DistributorValues selectedId={selectedCustomerId} onSelect={setSelectedCustomerId} />
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="relative w-full sm:w-[250px]">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search customer, invoice..."
+                            className="pl-9 bg-white"
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <DistributorValues selectedId={selectedCustomerId} onSelect={setSelectedCustomerId} />
+                    </div>
                 </div>
             </div>
 

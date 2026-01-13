@@ -26,7 +26,9 @@ const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/systemconfig", label: "System Config", icon: ShoppingCart },
     { href: "/stock", label: "Stock", icon: Package },
-    { href: "/sales", label: "Sales", icon: Users },
+    { href: "/inventory", label: "Inventory", icon: BarChart3 },
+    { href: "/customers", label: "Customers", icon: Users },
+    { href: "/sales", label: "Sales", icon: ShoppingCart },
     { href: "/shops", label: "Shops", icon: Store },
     { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
@@ -99,7 +101,7 @@ export default function DashboardLayout({
                                     className={cn(
                                         "group flex items-center rounded-xl py-3 text-sm font-medium transition-all duration-200 ease-in-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                                         isActive
-                                            ? "bg-gradient-to-r from-sidebar-primary/10 to-sidebar-primary/5 text-sidebar-primary shadow-sm ring-1 ring-sidebar-primary/20"
+                                            ? "bg-linear-to-r from-sidebar-primary/10 to-sidebar-primary/5 text-sidebar-primary shadow-sm ring-1 ring-sidebar-primary/20"
                                             : "text-muted-foreground",
                                         isCollapsed ? "justify-center px-2" : "justify-between px-4"
                                     )}
@@ -132,7 +134,7 @@ export default function DashboardLayout({
                     {!isCollapsed && <span>Settings</span>}
                 </Link>
 
-                <div className="my-2 h-px bg-gradient-to-r from-transparent via-sidebar-border to-transparent" />
+                <div className="my-2 h-px bg-linear-to-r from-transparent via-sidebar-border to-transparent" />
 
                 <div className={cn("flex items-center gap-3 rounded-xl bg-sidebar-accent/50 p-3 shadow-sm border border-sidebar-border/30", isCollapsed && "justify-center p-2")}>
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-primary/10 text-sidebar-primary font-bold">

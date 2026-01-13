@@ -31,6 +31,28 @@ export const listAll = query({
     },
 });
 
+export const getPaginated = query({
+    args: {
+        limit: v.number(),
+        offset: v.number(),
+        searchTerm: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let q = ctx.db.query("packages");
+        let results = await q.order("desc").collect();
+
+        if (args.searchTerm) {
+            const search = args.searchTerm.toLowerCase();
+            results = results.filter(p => p.name.toLowerCase().includes(search));
+        }
+
+        const totalCount = results.length;
+        const page = results.slice(args.offset, args.offset + args.limit);
+
+        return { page, totalCount };
+    },
+});
+
 export const update = mutation({
     args: {
         id: v.id("packages"),

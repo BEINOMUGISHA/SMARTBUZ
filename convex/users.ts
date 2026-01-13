@@ -35,6 +35,33 @@ export const listAll = query({
     },
 });
 
+export const getPaginated = query({
+    args: {
+        limit: v.number(),
+        offset: v.number(),
+        searchTerm: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let q = ctx.db.query("users");
+
+        let results = await q.order("desc").collect();
+
+        if (args.searchTerm) {
+            const search = args.searchTerm.toLowerCase();
+            results = results.filter(u =>
+                u.first_name.toLowerCase().includes(search) ||
+                u.last_name.toLowerCase().includes(search) ||
+                u.email.toLowerCase().includes(search)
+            );
+        }
+
+        const totalCount = results.length;
+        const page = results.slice(args.offset, args.offset + args.limit);
+
+        return { page, totalCount };
+    },
+});
+
 // Get user by email
 export const getByEmail = query({
     args: { email: v.string() },

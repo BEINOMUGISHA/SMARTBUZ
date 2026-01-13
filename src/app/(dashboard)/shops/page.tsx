@@ -69,34 +69,13 @@ function ShopStockViewer() {
     const shops = useQuery(api.shops.listAll);
     const [selectedShopId, setSelectedShopId] = useState<Id<"shops"> | "">("");
     const [search, setSearch] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
     const [viewType, setViewType] = useState<"regular" | "hp">("regular");
 
     // Edit State
     const [editingItem, setEditingItem] = useState<{ stockId: Id<"stocks">; name: string; qty: number } | null>(null);
     const [newQty, setNewQty] = useState<string>("");
     const [isUpdating, setIsUpdating] = useState(false);
-
-    const shopData = useQuery(api.shops.getShop, selectedShopId ? { id: selectedShopId as Id<"shops"> } : "skip");
-    const adjustStock = useMutation(api.shops.adjustShopStock);
-    const returnStock = useMutation(api.shops.returnShopStock);
-
-    // Derived State
-    const allStocks = shopData?.issuedStocks || [];
-
-    // Filter
-    const filteredStocks = allStocks.filter(s => {
-        const matchesSearch = (s.name?.toLowerCase().includes(search.toLowerCase()) || false) ||
-            (s.productCode?.toLowerCase().includes(search.toLowerCase()) || false);
-        const isHpItem = !!s.halfPrice;
-        const matchesType = viewType === "hp" ? isHpItem : !isHpItem;
-        return matchesSearch && matchesType;
-    });
-
-    // Stats
-    const totalItems = filteredStocks.reduce((acc, s) => acc + s.qty, 0);
-    const totalValue = filteredStocks.reduce((acc, s) => acc + (s.qty * s.price), 0);
-    const totalPV = filteredStocks.reduce((acc, s) => acc + (s.qty * s.pv), 0);
-    const totalBV = filteredStocks.reduce((acc, s) => acc + (s.qty * s.bv), 0);
 
     // Pagination
     const [page, setPage] = useState(1);
@@ -107,10 +86,32 @@ function ShopStockViewer() {
         if (saved) setRowsPerPage(Number(saved));
     }, []);
 
-    const totalPages = Math.ceil(filteredStocks.length / rowsPerPage);
-    const paginatedStocks = filteredStocks.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search);
+            setPage(1);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [search]);
 
-    useEffect(() => { setPage(1); }, [search, selectedShopId, viewType]);
+    useEffect(() => { setPage(1); }, [selectedShopId, viewType]);
+
+    const paginatedResult = useQuery(api.shops.getPaginatedShopStock, selectedShopId ? {
+        shopId: selectedShopId as Id<"shops">,
+        limit: rowsPerPage,
+        offset: (page - 1) * rowsPerPage,
+        searchTerm: debouncedSearch || undefined,
+        halfPrice: viewType === "hp"
+    } : "skip");
+
+    const adjustStock = useMutation(api.shops.adjustShopStock);
+    const returnStock = useMutation(api.shops.returnShopStock);
+
+    // Derived State from Backend
+    const stocks = paginatedResult?.page || [];
+    const totalCount = paginatedResult?.totalCount || 0;
+    const stats = paginatedResult?.stats || { totalValue: 0, totalPV: 0, totalBV: 0, totalItems: 0 };
+    const totalPages = Math.ceil(totalCount / rowsPerPage);
 
     // Handlers
     const handleEditClick = (item: any) => {
@@ -158,7 +159,7 @@ function ShopStockViewer() {
     };
 
     return (
-        <div className="grid grid-cols-1 gap-6 h-full flex flex-col">
+        <div className="flex flex-col gap-6 h-full">
             {/* Controls & Summary */}
             <div className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-card p-4 rounded-xl border shadow-sm">
@@ -202,19 +203,19 @@ function ShopStockViewer() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <Card className="p-4 shadow-sm border-none bg-blue-50/50">
                             <p className="text-xs text-muted-foreground uppercase font-bold">Total Value</p>
-                            <p className="text-xl font-black text-primary">UGX {totalValue.toLocaleString()}</p>
+                            <p className="text-xl font-black text-primary">UGX {stats.totalValue.toLocaleString()}</p>
                         </Card>
                         <Card className="p-4 shadow-sm border-none bg-green-50/50">
-                            <p className="text-xs text-muted-foreground uppercase font-bold text-green-700">Total Items</p>
-                            <p className="text-xl font-black text-green-900">{totalItems.toLocaleString()}</p>
+                            <p className="text-xs uppercase font-bold text-green-700">Total Items</p>
+                            <p className="text-xl font-black text-green-900">{stats.totalItems.toLocaleString()}</p>
                         </Card>
                         <Card className="p-4 shadow-sm border-none bg-orange-50/50">
-                            <p className="text-xs text-muted-foreground uppercase font-bold text-orange-700">Total PV</p>
-                            <p className="text-xl font-black text-orange-900">{totalPV}</p>
+                            <p className="text-xs uppercase font-bold text-orange-700">Total PV</p>
+                            <p className="text-xl font-black text-orange-900">{stats.totalPV}</p>
                         </Card>
                         <Card className="p-4 shadow-sm border-none bg-purple-50/50">
-                            <p className="text-xs text-muted-foreground uppercase font-bold text-purple-700">Total BV</p>
-                            <p className="text-xl font-black text-purple-900">{totalBV}</p>
+                            <p className="text-xs uppercase font-bold text-purple-700">Total BV</p>
+                            <p className="text-xl font-black text-purple-900">{stats.totalBV}</p>
                         </Card>
                     </div>
                 )}
@@ -237,7 +238,11 @@ function ShopStockViewer() {
                         <p className="text-lg font-medium">No Shop Selected</p>
                         <p className="text-sm">Please select a shop to view its inventory.</p>
                     </div>
-                ) : filteredStocks.length === 0 ? (
+                ) : paginatedResult === undefined ? (
+                    <div className="flex-1 flex items-center justify-center min-h-[300px]">
+                        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+                    </div>
+                ) : stocks.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground min-h-[300px]">
                         <p>No {viewType === 'hp' ? 'HP' : 'Regular'} products found in this shop.</p>
                     </div>
@@ -258,7 +263,7 @@ function ShopStockViewer() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {paginatedStocks.map((stock) => (
+                                        {stocks.map((stock) => (
                                             <TableRow key={stock.stockId}>
                                                 <TableCell>
                                                     <div className="font-medium">{stock.name}</div>
@@ -320,7 +325,7 @@ function ShopStockViewer() {
 
                             <div className="flex items-center gap-4">
                                 <div className="text-xs font-medium">
-                                    {Math.min((page - 1) * rowsPerPage + 1, filteredStocks.length)}-{Math.min(page * rowsPerPage, filteredStocks.length)} of {filteredStocks.length}
+                                    {Math.min((page - 1) * rowsPerPage + 1, totalCount)}-{Math.min(page * rowsPerPage, totalCount)} of {totalCount}
                                 </div>
 
                                 <div className="flex items-center space-x-2">
@@ -427,7 +432,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
     }) || 0;
 
     const shops = useQuery(api.shops.listAll);
-    const transferStock = useMutation(api.shops.transferStock);
+    const batchTransfer = useMutation(api.shops.batchTransferStock);
 
     const totalPages = Math.ceil(totalItems / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
@@ -503,14 +508,14 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
 
         try {
             setIsSubmitting(true);
-            for (const item of transferQueue) {
-                await transferStock({
-                    shopId: selectedShopId as Id<"shops">,
-                    stockId: item.stockId,
-                    quantity: item.qty,
-                    userId: user._id,
-                });
-            }
+            await batchTransfer({
+                shopId: selectedShopId as Id<"shops">,
+                userId: user._id,
+                items: transferQueue.map(i => ({
+                    stockId: i.stockId,
+                    quantity: i.qty
+                }))
+            });
             toast.success(`Successfully transferred ${transferQueue.length} items`);
             setTransferQueue([]);
         } catch (error) {
@@ -536,7 +541,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-0 flex flex-col overflow-hidden">
+                    <div className="flex-1 border rounded-xl bg-card shadow-sm p-0 flex flex-col overflow-hidden">
                         {!stocks ? (
                             <div className="flex items-center justify-center flex-1 h-40"><Loader2 className="animate-spin" /></div>
                         ) : currentView.length === 0 ? (

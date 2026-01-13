@@ -167,26 +167,26 @@ function UserManager() {
     const [editingItem, setEditingItem] = useState<Doc<"users"> | null>(null);
     const [deletingId, setDeletingId] = useState<Id<"users"> | null>(null);
 
-    // Pagination
+    // Pagination [TRUE]
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
 
-    const users = useQuery(api.users.listAll);
+    const paginatedResult = useQuery(api.users.getPaginated, {
+        limit: rowsPerPage,
+        offset: (currentPage - 1) * rowsPerPage,
+        searchTerm: search || undefined
+    });
+
     const createUser = useMutation(api.users.create);
     const updateUser = useMutation(api.users.update);
     const deleteUser = useMutation(api.users.remove);
 
-    const filteredItems = users?.filter(u =>
-        u.first_name.toLowerCase().includes(search.toLowerCase()) ||
-        u.last_name.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase())
-    ) || [];
-
-    const totalItems = filteredItems.length;
+    const users = paginatedResult?.page;
+    const totalItems = paginatedResult?.totalCount || 0;
     const totalPages = Math.ceil(totalItems / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const endIndex = Math.min(startIndex + rowsPerPage, totalItems);
-    const currentItems = filteredItems.slice(startIndex, endIndex);
+    const currentItems = users || [];
 
     const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -373,20 +373,22 @@ function PackageManager() {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
 
-    const packages = useQuery(api.packages.listAll);
+    const paginatedResult = useQuery(api.packages.getPaginated, {
+        limit: rowsPerPage,
+        offset: (currentPage - 1) * rowsPerPage,
+        searchTerm: search || undefined
+    });
+
     const createPackage = useMutation(api.packages.add);
     const updatePackage = useMutation(api.packages.update);
     const deletePackage = useMutation(api.packages.remove);
 
-    const filteredItems = packages?.filter(p =>
-        p.name.toLowerCase().includes(search.toLowerCase())
-    ) || [];
-
-    const totalItems = filteredItems.length;
+    const packages = paginatedResult?.page;
+    const totalItems = paginatedResult?.totalCount || 0;
     const totalPages = Math.ceil(totalItems / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const endIndex = Math.min(startIndex + rowsPerPage, totalItems);
-    const currentItems = filteredItems.slice(startIndex, endIndex);
+    const currentItems = packages || [];
 
     const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -541,22 +543,24 @@ function DistributorManager() {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
 
-    const distributors = useQuery(api.customers.listAll);
-    const packages = useQuery(api.packages.listAll);
+    const paginatedResult = useQuery(api.customers.getPaginated, {
+        limit: rowsPerPage,
+        offset: (currentPage - 1) * rowsPerPage,
+        searchTerm: search || undefined
+    });
+
+    const packageList = useQuery(api.packages.listAll);
+    const packageMap = new Map(packageList?.map(p => [p._id, p.name]) || []);
+
     const createDistributor = useMutation(api.customers.add);
     const updateDistributor = useMutation(api.customers.update);
     const deleteDistributor = useMutation(api.customers.remove);
 
-    const filteredItems = distributors?.filter(d =>
-        d.name.toLowerCase().includes(search.toLowerCase()) ||
-        d.phone.includes(search)
-    ) || [];
-
-    const totalItems = filteredItems.length;
+    const totalItems = paginatedResult?.totalCount || 0;
     const totalPages = Math.ceil(totalItems / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const endIndex = Math.min(startIndex + rowsPerPage, totalItems);
-    const currentItems = filteredItems.slice(startIndex, endIndex);
+    const currentItems = paginatedResult?.page || [];
 
     const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -634,7 +638,7 @@ function DistributorManager() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {!distributors ? <TableRow><TableCell colSpan={4}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((dist) => (
+                                    {paginatedResult === undefined ? <TableRow><TableCell colSpan={4}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((dist) => (
                                         <TableRow key={dist._id}>
                                             <TableCell className="font-medium">{dist.name}</TableCell>
                                             <TableCell className="font-mono text-xs">{dist.distributorId || "-"}</TableCell>
@@ -646,7 +650,7 @@ function DistributorManager() {
                                             </TableCell>
                                             <TableCell>
                                                 <Badge variant="outline" className="font-normal">
-                                                    {packages?.find(p => p._id === dist.packageId)?.name || "—"}
+                                                    {packageMap.get(dist.packageId!) || "—"}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
@@ -685,7 +689,7 @@ function DistributorManager() {
                                 <SelectTrigger><SelectValue placeholder="Select package" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="none">None</SelectItem>
-                                    {packages?.map(p => <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>)}
+                                    {packageList?.map(p => <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -712,7 +716,7 @@ function DistributorManager() {
                                     <SelectTrigger><SelectValue placeholder="Select package" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="none">None</SelectItem>
-                                        {packages?.map(p => <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>)}
+                                        {packageList?.map(p => <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -734,22 +738,24 @@ function ShopManager() {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
 
-    const shops = useQuery(api.shops.listAll);
-    const users = useQuery(api.users.listAll);
+    const paginatedResult = useQuery(api.shops.getPaginated, {
+        limit: rowsPerPage,
+        offset: (currentPage - 1) * rowsPerPage,
+        searchTerm: search || undefined
+    });
+
+    const userList = useQuery(api.users.listAll);
+    const userMap = new Map(userList?.map(u => [u._id, `${u.first_name} ${u.last_name}`]) || []);
+
     const createShop = useMutation(api.shops.create);
     const updateShop = useMutation(api.shops.update);
     const deleteShop = useMutation(api.shops.remove);
 
-    const filteredItems = shops?.filter(s =>
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.location.toLowerCase().includes(search.toLowerCase())
-    ) || [];
-
-    const totalItems = filteredItems.length;
+    const totalItems = paginatedResult?.totalCount || 0;
     const totalPages = Math.ceil(totalItems / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const endIndex = Math.min(startIndex + rowsPerPage, totalItems);
-    const currentItems = filteredItems.slice(startIndex, endIndex);
+    const currentItems = paginatedResult?.page || [];
 
     const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -823,7 +829,7 @@ function ShopManager() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {!shops ? <TableRow><TableCell colSpan={4}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((shop) => (
+                                {paginatedResult === undefined ? <TableRow><TableCell colSpan={4}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((shop) => (
                                     <TableRow key={shop._id}>
                                         <TableCell className="font-medium">
                                             <div>{shop.name}</div>
@@ -832,10 +838,7 @@ function ShopManager() {
                                         <TableCell>{shop.location}</TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className="font-normal">
-                                                {(() => {
-                                                    const u = users?.find(u => u._id === shop.userId);
-                                                    return u ? `${u.first_name} ${u.last_name}` : "Unknown";
-                                                })()}
+                                                {userMap.get(shop.userId) || "Unknown"}
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
@@ -871,7 +874,7 @@ function ShopManager() {
                             <Select name="userId" required>
                                 <SelectTrigger><SelectValue placeholder="Select manager" /></SelectTrigger>
                                 <SelectContent>
-                                    {users?.map(u => <SelectItem key={u._id} value={u._id}>{u.first_name} {u.last_name}</SelectItem>)}
+                                    {userList?.map((u: any) => <SelectItem key={u._id} value={u._id}>{u.first_name} {u.last_name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -896,7 +899,7 @@ function ShopManager() {
                                 <Select name="userId" defaultValue={editingItem.userId} required>
                                     <SelectTrigger><SelectValue placeholder="Select manager" /></SelectTrigger>
                                     <SelectContent>
-                                        {users?.map(u => <SelectItem key={u._id} value={u._id}>{u.first_name} {u.last_name}</SelectItem>)}
+                                        {userList?.map((u: any) => <SelectItem key={u._id} value={u._id}>{u.first_name} {u.last_name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>

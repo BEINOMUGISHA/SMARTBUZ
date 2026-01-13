@@ -39,6 +39,9 @@ export default defineSchema({
         halfPrice: v.optional(v.boolean()),
     })
         .index("by_productCode", ["productCode"])
+        .index("by_qty", ["qty"])
+        .index("by_category", ["categoryId"])
+        .index("by_halfPrice", ["halfPrice"])
         .searchIndex("search_name", { searchField: "name" }),
 
     customers: defineTable({
@@ -88,7 +91,9 @@ export default defineSchema({
                 bv: v.number(),
             })
         ),
-    }).index("by_date", ["date"]),
+    }).index("by_date", ["date"])
+        .index("by_shop_date", ["shopId", "date"])
+        .index("by_customer_date", ["customerId", "date"]),
 
     loans: defineTable({
         customerId: v.id("customers"),

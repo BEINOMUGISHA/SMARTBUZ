@@ -128,25 +128,28 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         }
     }, [isLoan]);
 
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+
     // Data Fetching: Shop Stock ONLY
     // We pass user.email because the app uses custom auth, not Convex Auth
     const shopData = useQuery(api.stocks.getShopStock, {
         searchTerm: debouncedSearch || undefined,
         halfPrice: isHp,
         email: user?.email || undefined,
+        limit: rowsPerPage,
+        offset: (currentPage - 1) * rowsPerPage,
     });
 
     const isShopUser = !!shopData?.shop;
     const stocks = shopData?.stocks || [];
-    const status = "Loaded"; // No pagination for now
+    const totalStocksCount = shopData?.totalCount || 0;
+    const status = "Loaded";
     const isStocksLoading = shopData === undefined;
 
     const customers = useQuery(api.customers.listAll);
     const createSale = useMutation(api.sales.create);
-
-    // Pagination State
-    const [currentPage, setCurrentPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
 
     useEffect(() => {
         const saved = localStorage.getItem("pos_sales_rows_per_page");
@@ -157,10 +160,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     // Reset page on search
     useEffect(() => { setCurrentPage(1); }, [debouncedSearch]);
 
-    // Client-side slicing
-    const stocksToDisplay = stocks;
-    const totalPages = Math.ceil(stocksToDisplay.length / rowsPerPage);
-    const paginatedStocks = stocksToDisplay.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+    const totalPages = Math.ceil(totalStocksCount / rowsPerPage);
+    const paginatedStocks = stocks; // Already paginated on server
 
     const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
     const totalPV = cart.reduce((sum, item) => sum + (item.pv * item.qty), 0);
@@ -433,7 +434,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="text-xs font-medium">
-                                        {Math.min((currentPage - 1) * rowsPerPage + 1, stocks.length)}-{Math.min(currentPage * rowsPerPage, stocks.length)} of {stocks.length}
+                                        {Math.min((currentPage - 1) * rowsPerPage + 1, totalStocksCount)}-{Math.min(currentPage * rowsPerPage, totalStocksCount)} of {totalStocksCount}
                                     </div>
 
                                     <div className="flex items-center space-x-2">

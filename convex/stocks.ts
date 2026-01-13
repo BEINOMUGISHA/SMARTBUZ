@@ -11,6 +11,45 @@ export const list = query({
         halfPrice: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
+        // [OPTIMIZED with Index]
+        let query;
+        if (args.searchTerm) {
+            query = ctx.db
+                .query("stocks")
+                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!));
+
+            if (args.halfPrice !== undefined) {
+                query = query.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
+            }
+            if (args.categoryId) {
+                query = query.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
+            }
+            return await query.paginate(args.paginationOpts);
+        } else if (args.categoryId) {
+            query = ctx.db.query("stocks").withIndex("by_category", q => q.eq("categoryId", args.categoryId!));
+            if (args.halfPrice !== undefined) {
+                query = query.filter(q => q.eq(q.field("halfPrice"), args.halfPrice));
+            }
+        } else if (args.halfPrice !== undefined) {
+            query = ctx.db.query("stocks").withIndex("by_halfPrice", q => q.eq("halfPrice", args.halfPrice!));
+        } else {
+            query = ctx.db.query("stocks");
+        }
+
+        return await query.order("desc").paginate(args.paginationOpts);
+    },
+});
+
+export const getPaginated = query({
+    args: {
+        limit: v.number(),
+        offset: v.number(),
+        searchTerm: v.optional(v.string()),
+        categoryId: v.optional(v.id("categories")),
+        halfPrice: v.optional(v.boolean()),
+    },
+    handler: async (ctx, args) => {
+        // [OPTIMIZED with proper types]
         if (args.searchTerm) {
             let searchQ = ctx.db
                 .query("stocks")
@@ -19,21 +58,30 @@ export const list = query({
             if (args.halfPrice !== undefined) {
                 searchQ = searchQ.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
             }
-
-            return await searchQ.paginate(args.paginationOpts);
+            if (args.categoryId) {
+                searchQ = searchQ.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
+            }
+            const all = await searchQ.collect();
+            return { page: all.slice(args.offset, args.offset + args.limit), totalCount: all.length };
         }
 
-        let stocksQuery = ctx.db.query("stocks");
-
+        let stocksQuery;
         if (args.categoryId) {
-            stocksQuery = stocksQuery.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
+            stocksQuery = ctx.db.query("stocks").withIndex("by_category", q => q.eq("categoryId", args.categoryId!));
+            if (args.halfPrice !== undefined) {
+                stocksQuery = stocksQuery.filter(q => q.eq(q.field("halfPrice"), args.halfPrice));
+            }
+        } else if (args.halfPrice !== undefined) {
+            stocksQuery = ctx.db.query("stocks").withIndex("by_halfPrice", q => q.eq("halfPrice", args.halfPrice!));
+        } else {
+            stocksQuery = ctx.db.query("stocks");
         }
 
-        if (args.halfPrice !== undefined) {
-            stocksQuery = stocksQuery.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
-        }
+        const all = await stocksQuery.order("desc").collect();
+        const totalCount = all.length;
+        const page = all.slice(args.offset, args.offset + args.limit);
 
-        return await stocksQuery.order("desc").paginate(args.paginationOpts);
+        return { page, totalCount };
     },
 });
 
@@ -44,29 +92,92 @@ export const count = query({
         halfPrice: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
+        // [OPTIMIZED with Index]
+        let query;
         if (args.searchTerm) {
-            let searchQ = ctx.db
+            query = ctx.db
                 .query("stocks")
                 .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!));
 
             if (args.halfPrice !== undefined) {
-                searchQ = searchQ.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
+                query = query.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
             }
-            return (await searchQ.collect()).length;
+            if (args.categoryId) {
+                query = query.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
+            }
+        } else if (args.categoryId) {
+            query = ctx.db.query("stocks").withIndex("by_category", q => q.eq("categoryId", args.categoryId!));
+            if (args.halfPrice !== undefined) {
+                query = query.filter(q => q.eq(q.field("halfPrice"), args.halfPrice));
+            }
+        } else if (args.halfPrice !== undefined) {
+            query = ctx.db.query("stocks").withIndex("by_halfPrice", q => q.eq("halfPrice", args.halfPrice!));
+        } else {
+            query = ctx.db.query("stocks");
         }
 
-        let stocksQuery = ctx.db.query("stocks");
-
-        if (args.categoryId) {
-            stocksQuery = stocksQuery.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
-        }
-
-        if (args.halfPrice !== undefined) {
-            stocksQuery = stocksQuery.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
-        }
-
-        return (await stocksQuery.collect()).length;
+        return (await query.collect()).length;
     },
+});
+
+export const getInventoryStats = query({
+    args: {},
+    handler: async (ctx) => {
+        const stocks = await ctx.db.query("stocks").collect();
+        const categories = await ctx.db.query("categories").collect();
+        const catMap = new Map(categories.map(c => [c._id, c.type]));
+
+        const stats = stocks.reduce((acc, s) => {
+            const sellValue = s.qty * s.price;
+            const costValue = s.qty * s.purchasePrice;
+
+            acc.totalSellValue += sellValue;
+            acc.totalCostValue += costValue;
+            acc.totalItems += s.qty;
+            acc.skuCount += 1;
+
+            const catName = catMap.get(s.categoryId) || "Unknown";
+            acc.categoryDistribution[catName] = (acc.categoryDistribution[catName] || 0) + s.qty;
+
+            return acc;
+        }, {
+            totalSellValue: 0,
+            totalCostValue: 0,
+            totalItems: 0,
+            skuCount: 0,
+            categoryDistribution: {} as Record<string, number>
+        });
+
+        // Convert distribution to array for charts
+        const distributionArray = Object.entries(stats.categoryDistribution).map(([name, value]) => ({
+            name,
+            value
+        })).sort((a, b) => b.value - a.value);
+
+        return { ...stats, categoryDistribution: distributionArray };
+    }
+});
+
+export const getLowStockAudit = query({
+    args: { threshold: v.optional(v.number()) },
+    handler: async (ctx, args) => {
+        const threshold = args.threshold ?? 10;
+        const lowStock = await ctx.db
+            .query("stocks")
+            .withIndex("by_qty")
+            .filter(q => q.lt(q.field("qty"), threshold))
+            .collect();
+
+        // Enrich with category names
+        const categories = await ctx.db.query("categories").collect();
+        const catMap = new Map(categories.map(c => [c._id, c.type]));
+
+        return lowStock.map(s => ({
+            ...s,
+            categoryName: catMap.get(s.categoryId) || "Unknown",
+            valuation: s.qty * s.price
+        }));
+    }
 });
 
 export const getShopStock = query({
@@ -74,6 +185,8 @@ export const getShopStock = query({
         searchTerm: v.optional(v.string()),
         halfPrice: v.optional(v.boolean()),
         email: v.optional(v.string()), // Pass email explicitly because we don't use Convex Auth
+        limit: v.optional(v.number()),
+        offset: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
         if (!args.email) return { shop: null, stocks: [] };
@@ -111,8 +224,13 @@ export const getShopStock = query({
 
         // Map to match the shape of the main 'stocks' table for UI consistency if needed
         // The array in 'shops' already has { stockId, name, qty... }
-        // We'll return it as is, but UI needs to handle accessing it.
-        return { shop, stocks };
+
+        const totalCount = stocks.length;
+        if (args.offset !== undefined && args.limit !== undefined) {
+            stocks = stocks.slice(args.offset, args.offset + args.limit);
+        }
+
+        return { shop, stocks, totalCount };
     },
 });
 
