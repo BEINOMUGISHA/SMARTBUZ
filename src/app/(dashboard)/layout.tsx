@@ -209,7 +209,7 @@ export default function DashboardLayout({
                 <div className="sticky top-0 z-40 flex h-16 items-center border-b bg-background/95 px-6 backdrop-blur lg:hidden justify-between shadow-sm">
                     <div className="flex items-center gap-3">
                         <Image src="/logo.ico" alt="Logo" width={32} height={32} />
-                        <span className="font-bold text-lg text-primary">Jirah POS</span>
+                        <span className="font-bold text-lg text-primary">TIENS POS</span>
                     </div>
                     <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
                         <SheetTrigger asChild>

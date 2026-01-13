@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/auth-context";
-import { Package2 } from "lucide-react";
+import { Eye, EyeOff, Package2 } from "lucide-react";
 
 import Link from "next/link";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import { formatError } from "@/lib/utils";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
@@ -99,22 +100,35 @@ export default function LoginPage() {
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">Password</Label>
-                    <Link href="/auth/forgot-password" title="Forgot Password" className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors">
-                      Forgot password?
-                    </Link>
                   </div>
                   <div className="relative group">
                     <Input
                       id="password"
                       name="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       autoComplete="current-password"
                       required
                       placeholder="••••••••"
-                      className="h-14 pl-4 pr-4 border-muted-foreground/20 focus:border-primary focus:ring-primary/20 transition-all rounded-xl text-lg"
+                      className="h-14 pl-4 pr-12 border-muted-foreground/20 focus:border-primary focus:ring-primary/20 transition-all rounded-xl text-lg"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground h-10 w-10"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                      <span className="sr-only">
+                        {showPassword ? "Hide password" : "Show password"}
+                      </span>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -146,7 +160,7 @@ export default function LoginPage() {
 
           <div className="pt-4 text-center">
             <p className="text-sm font-medium text-muted-foreground/60">
-              &copy; {new Date().getFullYear()} Jirah POS • Specialized for Tiens Uganda
+              &copy; {new Date().getFullYear()} TIENS POS • Specialized for Tiens Uganda
             </p>
           </div>
         </div>
