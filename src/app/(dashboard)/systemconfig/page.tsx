@@ -43,6 +43,7 @@ import { toast } from "sonner";
 import { formatError, cn } from "@/lib/utils";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { AuditLogsManager } from "./audit-logs";
 
 export default function SystemConfigPage() {
     const [activeTab, setActiveTab] = useState("users");
@@ -60,6 +61,7 @@ export default function SystemConfigPage() {
                     <TabsTrigger value="packages" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Packages</TabsTrigger>
                     <TabsTrigger value="distributors" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Distributors</TabsTrigger>
                     <TabsTrigger value="shops" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Shops</TabsTrigger>
+                    <TabsTrigger value="audit" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Audit Logs</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="users" className="mt-6">
@@ -74,13 +76,16 @@ export default function SystemConfigPage() {
                 <TabsContent value="shops" className="mt-6">
                     <ShopManager />
                 </TabsContent>
+                <TabsContent value="audit" className="mt-6">
+                    <AuditLogsManager />
+                </TabsContent>
             </Tabs>
         </div>
     );
 }
 
 // --- Shared Pagination Component ---
-function PaginationControls({
+export function PaginationControls({
     currentPage,
     totalPages,
     rowsPerPage,
