@@ -20,11 +20,12 @@ async function runSeedCategories(ctx: any) {
     return categoryIds;
 }
 
-async function runSeedUsers(ctx: any) {
+
+async function seedUsersInternal(ctx: any) {
     const users = [
         { first_name: "Admin", last_name: "User", email: "admin@pos.com", password: "password123", roles: ["admin"] },
         { first_name: "Sales", last_name: "Agent", email: "sales@pos.com", password: "password123", roles: ["sales"] },
-        { first_name: "Stock", last_name: "Manager", email: "stock@pos.com", password: "password123", roles: ["stock"] },
+        { first_name: "Stock", last_name: "Manager", email: "stock@pos.com", password: "password123", roles: ["sales"] },
     ];
     for (const user of users) {
         const existing = await ctx.db.query("users").withIndex("by_email", (q: any) => q.eq("email", user.email)).unique();
@@ -202,7 +203,7 @@ export const seed = mutation({
     args: {},
     handler: async (ctx) => {
         const catIds = await runSeedCategories(ctx);
-        await runSeedUsers(ctx);
+        await seedUsersInternal(ctx);
         await runSeedStocks(ctx, catIds);
         return "Base seeding complete.";
     }
@@ -241,11 +242,19 @@ export const seedActivityLogs = mutation({
     }
 });
 
+export const runSeedUsers = mutation({
+    args: {},
+    handler: async (ctx) => {
+        await seedUsersInternal(ctx);
+        return "Users seeded successfully.";
+    }
+});
+
 export const seedEverything = mutation({
     args: {},
     handler: async (ctx) => {
         const catIds = await runSeedCategories(ctx);
-        await runSeedUsers(ctx);
+        await seedUsersInternal(ctx);
         await runSeedStocks(ctx, catIds);
         await runSeedLargeStock(ctx, catIds);
         const pkgIds = await runSeedPackages(ctx);
