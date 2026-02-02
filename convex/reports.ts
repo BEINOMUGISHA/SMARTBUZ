@@ -275,6 +275,7 @@ export const getLoanSummary = query({
 
         return {
             page,
+            isDone: totalCount <= (args.paginationOpts.numItems + (args.paginationOpts.id ? args.paginationOpts.numItems : 0)), // Simple check for manual pagination
             status: totalCount > args.paginationOpts.numItems ? "CanLoadMore" : "Exhausted",
             continueCursor: "" // Cursor-less pagination for filtered results
         };
