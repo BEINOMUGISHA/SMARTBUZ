@@ -76,24 +76,72 @@ export async function exportToExcel(data: any[], columns: Column[], filename: st
 /**
  * Exports data to a PDF file with Tiens branding and formatted tables.
  */
-export function exportToPDF(data: any[], columns: Column[], filename: string, title: string) {
+/**
+ * Exports data to a PDF file with Tiens branding and formatted tables.
+ */
+export function exportToPDF(data: any[], columns: Column[], filename: string, title: string, summaryData?: any) {
     const doc = new jsPDF() as any;
 
     // Add Branding Header
     doc.setFillColor(0, 133, 66); // Tiens Green
-    doc.rect(0, 0, 210, 40, "F");
+    doc.rect(0, 0, 210, 45, "F");
 
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.text("TIENS HEALTH PRODUCTS", 105, 20, { align: "center" });
+    doc.text("TIENS HEALTH PRODUCTS", 105, 18, { align: "center" });
 
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text(`OFFICIAL ${title.toUpperCase()}`, 105, 30, { align: "center" });
+    doc.text("6th Floor, King Fahd Plaza, Plot 52 Kampala Rd", 105, 25, { align: "center" });
+    doc.text("Tel: +256 (0) 702 794 458 | 0773 662 136", 105, 29, { align: "center" });
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text(`OFFICIAL ${title.toUpperCase()}`, 105, 38, { align: "center" });
 
     doc.setFontSize(8);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 200, 35, { align: "right" });
+    doc.setTextColor(200, 200, 200);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 200, 42, { align: "right" });
+
+    let currentY = 55;
+
+    // Summary Section in PDF
+    if (summaryData) {
+        doc.setFillColor(245, 250, 248);
+        doc.rect(10, currentY, 190, 25, "F");
+        doc.setDrawColor(0, 133, 66);
+        doc.setLineWidth(0.5);
+        doc.rect(10, currentY, 190, 25, "D");
+
+        doc.setTextColor(0, 133, 66);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+
+        // Sales
+        doc.text("TOTAL SALES", 20, currentY + 8);
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+        doc.text(`UGX ${summaryData.totalRevenue.toLocaleString()}`, 20, currentY + 18);
+
+        // PV/BV
+        doc.setTextColor(180, 110, 0);
+        doc.setFontSize(9);
+        doc.text("TIED PV/BV", 75, currentY + 8);
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+        doc.text(`${summaryData.totalPV.toLocaleString()} PV / ${summaryData.totalBV.toLocaleString()} BV`, 75, currentY + 18);
+
+        // Profit
+        doc.setTextColor(0, 80, 180);
+        doc.setFontSize(9);
+        doc.text("NET PROFIT", 145, currentY + 8);
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+        doc.text(`UGX ${summaryData.totalProfit.toLocaleString()}`, 145, currentY + 18);
+
+        currentY += 35;
+    }
 
     // Prepare table data
     const tableHeaders = columns.map(c => c.header.toUpperCase());
@@ -115,11 +163,11 @@ export function exportToPDF(data: any[], columns: Column[], filename: string, ti
     autoTable(doc, {
         head: [tableHeaders],
         body: tableData,
-        startY: 50,
+        startY: currentY,
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: [0, 133, 66], textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [245, 245, 245] },
-        margin: { top: 50 },
+        margin: { top: currentY },
     });
 
     doc.save(`${filename}.pdf`);

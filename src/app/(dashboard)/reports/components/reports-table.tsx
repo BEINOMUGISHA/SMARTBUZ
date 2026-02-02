@@ -32,6 +32,7 @@ interface ReportTableProps<T> {
     columns: Column<T>[];
     data: T[];
     isLoading?: boolean;
+    search?: string;
     pagination?: {
         currentPage: number;
         totalPages: number;
@@ -43,6 +44,8 @@ interface ReportTableProps<T> {
         canLoadMore?: boolean;
     };
     footer?: React.ReactNode;
+    summaryData?: any;
+    compact?: boolean;
 }
 
 export function ReportTable<T>({
@@ -53,6 +56,8 @@ export function ReportTable<T>({
     isLoading,
     pagination,
     footer,
+    summaryData,
+    compact,
 }: ReportTableProps<T>) {
     const handlePrint = () => {
         window.print();
@@ -63,31 +68,31 @@ export function ReportTable<T>({
     const endIndex = pagination ? Math.min(startIndex + pagination.rowsPerPage, pagination.totalItems) : data.length;
 
     return (
-        <div className="space-y-4 h-full flex flex-col">
+        <div className={cn("space-y-4 h-full flex flex-col", compact && "space-y-2")}>
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-sm font-black uppercase tracking-widest text-primary italic leading-none">{title}</h2>
-                    {subtitle && <p className="text-[10px] text-muted-foreground font-bold mt-1 uppercase tracking-tighter">{subtitle}</p>}
+                    <h2 className={cn("text-sm font-black uppercase tracking-widest text-primary italic leading-none", compact && "text-[11px]")}>{title}</h2>
+                    {subtitle && <p className={cn("text-[10px] text-muted-foreground font-bold mt-1 uppercase tracking-tighter", compact && "text-[9px] mt-0.5")}>{subtitle}</p>}
                 </div>
                 <div className="flex items-center gap-2 print:hidden">
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => exportToExcel(data, columns as any, title.replace(/\s+/g, "_").toLowerCase())}
-                        className="h-7 px-3 gap-2 text-[10px] font-black uppercase border-emerald-600/20 text-emerald-700 hover:bg-emerald-50"
+                        className={cn("h-7 px-3 gap-2 text-[10px] font-black uppercase border-emerald-600/20 text-emerald-700 hover:bg-emerald-50", compact && "h-6 px-2 text-[8px]")}
                     >
-                        <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+                        <FileSpreadsheet className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> Excel
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => exportToPDF(data, columns as any, title.replace(/\s+/g, "_").toLowerCase(), title)}
-                        className="h-7 px-3 gap-2 text-[10px] font-black uppercase border-red-600/20 text-red-700 hover:bg-red-50"
+                        onClick={() => exportToPDF(data, columns as any, title.replace(/\s+/g, "_").toLowerCase(), title, summaryData)}
+                        className={cn("h-7 px-3 gap-2 text-[10px] font-black uppercase border-red-600/20 text-red-700 hover:bg-red-50", compact && "h-6 px-2 text-[8px]")}
                     >
-                        <FileText className="h-3.5 w-3.5" /> PDF
+                        <FileText className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> PDF
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handlePrint} className="h-7 px-3 gap-2 text-[10px] font-black uppercase border-muted-foreground/20">
-                        <Printer className="h-3.5 w-3.5" /> Print
+                    <Button variant="outline" size="sm" onClick={handlePrint} className={cn("h-7 px-3 gap-2 text-[10px] font-black uppercase border-muted-foreground/20", compact && "h-6 px-2 text-[8px]")}>
+                        <Printer className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> Print
                     </Button>
                 </div>
             </div>
@@ -98,7 +103,7 @@ export function ReportTable<T>({
                         <TableHeader className="bg-primary/5 sticky top-0 z-10 border-b-2 border-primary/20">
                             <TableRow className="hover:bg-transparent">
                                 {columns.map((col, idx) => (
-                                    <TableHead key={idx} className={cn("font-black text-primary uppercase text-[10px] tracking-wider py-4", col.className)}>
+                                    <TableHead key={idx} className={cn("font-black text-primary uppercase text-[10px] tracking-wider py-4", compact && "py-2 text-[9px]", col.className)}>
                                         {col.header}
                                     </TableHead>
                                 ))}
@@ -125,7 +130,7 @@ export function ReportTable<T>({
                                 data.map((item, rowIdx) => (
                                     <TableRow key={rowIdx} className="hover:bg-muted/30 transition-colors">
                                         {columns.map((col, colIdx) => (
-                                            <TableCell key={colIdx} className={cn("py-3 text-[11px]", col.className)}>
+                                            <TableCell key={colIdx} className={cn("py-3 text-[11px]", compact && "py-1.5 text-[10px]", col.className)}>
                                                 {typeof col.accessor === "function"
                                                     ? col.accessor(item)
                                                     : (item[col.accessor] as React.ReactNode)}
@@ -221,31 +226,61 @@ export function ReportTable<T>({
 
             {/* HIDDEN PRINT CONTENT */}
             {/* HIDDEN PRINT CONTENT */}
-            <div id="report-print-container" className="hidden print:block bg-white text-black p-8">
-                {/* OFFICIAL TIENS BANNER */}
-                <div className="flex flex-col items-center mb-10 pb-6 border-b-4 border-emerald-600 print-break-inside-avoid">
-                    <h1 className="text-3xl font-black uppercase tracking-tighter text-emerald-800">TIENS HEALTH PRODUCTS</h1>
-                    <div className="flex items-center gap-4 mt-2">
-                        <span className="h-px w-10 bg-emerald-600/30"></span>
-                        <p className="text-xs font-bold uppercase tracking-[0.3em] text-emerald-600">OFFICIAL {title}</p>
-                        <span className="h-px w-10 bg-emerald-600/30"></span>
-                    </div>
-                    <div className="mt-4 flex justify-between w-full text-[9px] font-bold text-gray-400 px-4">
-                        <span>GENERATED: {new Date().toLocaleString()}</span>
-                        <span>INTERNAL SECURITY DOCUMENT</span>
+            {/* HIDDEN PRINT CONTENT */}
+            <div id="report-print-container" className="hidden print:block bg-white text-black p-4 min-h-screen">
+                {/* OFFICIAL TIENS HEADER (Matching Receipt Style) */}
+                <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans">
+                    <div className="flex justify-between items-start">
+                        <div className="flex-1 text-center">
+                            <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase">TIENS HEALTH PRODUCTS</h2>
+                            <p className="text-[11px] leading-tight font-bold text-gray-600">6th Floor, King Fahd Plaza, Plot 52 Kampala Rd</p>
+                            <p className="text-[11px] font-bold text-gray-500">P.O.Box .... Kampala, Tel: +256 (0) 702 794 458 | 0773 662 136</p>
+                            <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
+                                OFFICIAL {title}
+                            </div>
+                        </div>
+                        <div className="w-[80px] h-[80px]">
+                            <img src="/logo.ico" alt="TIENS Logo" className="w-full h-full object-contain" />
+                        </div>
                     </div>
                 </div>
 
-                <div className="mb-6">
-                    <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">{title}</h2>
-                    {subtitle && <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mt-1">{subtitle}</p>}
+                {/* SUMMARY CARDS IN PRINT */}
+                {summaryData && (
+                    <div className="grid grid-cols-4 gap-4 mb-8 print-break-inside-avoid">
+                        <div className="border-2 border-emerald-100 p-3 rounded-xl bg-emerald-50/10">
+                            <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Sales</p>
+                            <p className="text-sm font-black">UGX {summaryData.totalRevenue.toLocaleString()}</p>
+                            <p className="text-[8px] font-bold text-gray-500 italic">{summaryData.itemCount} Items Sold</p>
+                        </div>
+                        <div className="border-2 border-amber-100 p-3 rounded-xl bg-amber-50/10">
+                            <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest mb-1">Tied PV/BV</p>
+                            <p className="text-sm font-black">{summaryData.totalPV.toLocaleString()} PV</p>
+                            <p className="text-[8px] font-bold text-gray-500 italic">{summaryData.totalBV.toLocaleString()} BV</p>
+                        </div>
+                        <div className="border-2 border-blue-100 p-3 rounded-xl bg-blue-50/10">
+                            <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mb-1">Net Profit</p>
+                            <p className="text-sm font-black">UGX {summaryData.totalProfit.toLocaleString()}</p>
+                            <p className="text-[8px] font-bold text-gray-500 italic">After Expenses</p>
+                        </div>
+                        <div className="border-2 border-purple-100 p-3 rounded-xl bg-purple-50/10">
+                            <p className="text-[8px] font-black text-purple-600 uppercase tracking-widest mb-1">Stock Value</p>
+                            <p className="text-sm font-black">UGX {summaryData.totalInventorySellingPrice.toLocaleString()}</p>
+                            <p className="text-[8px] font-bold text-gray-500 italic">Est. Revenue</p>
+                        </div>
+                    </div>
+                )}
+
+                <div className="mb-4">
+                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">{title}</h3>
+                    {subtitle && <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5 tracking-wide">{subtitle}</p>}
                 </div>
 
-                <table className="w-full border-collapse">
+                <table className="w-full border-collapse border border-gray-200">
                     <thead>
-                        <tr className="bg-emerald-600 text-white">
+                        <tr className="bg-gray-100 border-b-2 border-gray-300">
                             {columns.map((col, idx) => (
-                                <th key={idx} className={cn("px-4 py-3 text-left font-black uppercase text-[10px] border-r border-emerald-500 last:border-0", col.className)}>
+                                <th key={idx} className={cn("px-3 py-2 text-left font-black uppercase text-[9px] border-r border-gray-300 last:border-0 text-gray-700", col.className)}>
                                     {col.header}
                                 </th>
                             ))}
@@ -253,14 +288,14 @@ export function ReportTable<T>({
                     </thead>
                     <tbody>
                         {data.map((item, rowIdx) => (
-                            <tr key={rowIdx} className="border-b last:border-b-2 border-gray-100">
+                            <tr key={rowIdx} className="border-b border-gray-100">
                                 {columns.map((col, colIdx) => (
-                                    <td key={colIdx} className={cn("px-4 py-2 text-[10px] border-r border-gray-50 last:border-0", col.className)}>
+                                    <td key={colIdx} className={cn("px-3 py-1.5 text-[9px] border-r border-gray-100 last:border-0", col.className)}>
                                         {(col as any).exportValue
                                             ? (col as any).exportValue(item)
                                             : (typeof col.accessor === "function"
                                                 ? (col as any).accessor(item)
-                                                : (item as any)[col.accessor as string])}
+                                                : (item as any)[col.accessor as any])}
                                     </td>
                                 ))}
                             </tr>
@@ -268,16 +303,21 @@ export function ReportTable<T>({
                     </tbody>
                 </table>
 
-                <div className="mt-8 grid grid-cols-2 gap-8 text-[10px] print-break-inside-avoid">
-                    <div className="border-t border-black pt-2">
-                        <p className="font-bold">Authorized Signatory</p>
-                        <div className="h-12" />
-                        <p>Name: ________________________</p>
+                <div className="mt-8 flex justify-between text-[10px] font-bold text-gray-400 italic">
+                    <span>Generated by System on {new Date().toLocaleString()}</span>
+                    <span>Verified Official Document</span>
+                </div>
+
+                <div className="mt-12 grid grid-cols-2 gap-12 text-[10px] print-break-inside-avoid">
+                    <div className="border-t-2 border-gray-200 pt-4">
+                        <p className="font-black uppercase tracking-widest text-gray-800 border-b border-dashed border-gray-300 pb-1 mb-4">Authorized Signature</p>
+                        <div className="h-10 text-gray-300">Space for signature</div>
+                        <p className="mt-2 text-gray-500 font-bold">DATE: ________________________</p>
                     </div>
-                    <div className="border-t border-black pt-2 text-right">
-                        <p className="font-bold">Office Stamp</p>
-                        <div className="h-12" />
-                        <p>Date: {new Date().toLocaleDateString()}</p>
+                    <div className="border-t-2 border-gray-200 pt-4 text-right">
+                        <p className="font-black uppercase tracking-widest text-gray-800 border-b border-dashed border-gray-300 pb-1 mb-4">Official Stamp</p>
+                        <div className="h-10 invisible">Stamp Space</div>
+                        <p className="mt-2 text-gray-500 font-bold tracking-tight uppercase">TIENS HEALTH PRODUCTS CENTER</p>
                     </div>
                 </div>
             </div>

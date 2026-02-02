@@ -10,6 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { ReportTable } from "./reports-table";
 import { ReportFilters } from "./ReportFilters";
+import { ReportSummary } from "./ReportSummary";
+import { SearchableSelect } from "./SearchableSelect";
+import { Id } from "../../../../../convex/_generated/dataModel";
 
 export function DetailedSalesReport() {
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
@@ -19,16 +22,20 @@ export function DetailedSalesReport() {
     });
 
     const [selectedShop, setSelectedShop] = useState<string>("all");
+    const [customerId, setCustomerId] = useState<string>("all");
     const [clientType, setClientType] = useState<string>("All");
+    const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
     const shops = useQuery(api.shops.listAll);
+    const customers = useQuery(api.customers.listAll);
 
     const salesArgs = {
         startDate: dateRange.from,
         endDate: dateRange.to,
-        shopId: selectedShop === "all" ? undefined : (selectedShop as any),
+        shopId: selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
+        customerId: customerId === "all" ? undefined : (customerId as Id<"customers">),
         clientType: clientType === "All" ? undefined : clientType,
     };
 
@@ -39,6 +46,14 @@ export function DetailedSalesReport() {
     );
 
     const totalSalesCount = useQuery(api.reports.getDetailedSalesReportCount, salesArgs) || 0;
+    const summaryData = useQuery(api.reports.getReportsSummary, {
+        startDate: dateRange.from,
+        endDate: dateRange.to,
+        shopId: selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
+        customerId: customerId === "all" ? undefined : (customerId as Id<"customers">),
+        clientType: clientType === "All" ? undefined : clientType,
+        search: search || undefined
+    });
 
     useEffect(() => {
         if (salesStatus === "CanLoadMore" && salesRecords.length < (page * rowsPerPage)) {
@@ -58,23 +73,32 @@ export function DetailedSalesReport() {
                     />
 
                     <div className="flex items-center gap-2 ml-auto">
-                        <Select value={selectedShop} onValueChange={setSelectedShop}>
-                            <SelectTrigger className="w-[160px] h-8 text-[10px] font-bold border-muted-foreground/20">
-                                <SelectValue placeholder="All Branches" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Branches</SelectItem>
-                                {shops?.map(s => (
-                                    <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                            options={[
+                                { value: "all", label: "All Branches" },
+                                ...(shops || []).map(s => ({ value: s._id, label: s.name }))
+                            ]}
+                            value={selectedShop}
+                            onValueChange={setSelectedShop}
+                            placeholder="All Branches"
+                            width="140px"
+                        />
+                        <SearchableSelect
+                            options={[
+                                { value: "all", label: "All Clients/Distributors" },
+                                ...(customers || []).map(c => ({ value: c._id, label: `${c.name} (${c.distributorId || 'N/A'})` }))
+                            ]}
+                            value={customerId}
+                            onValueChange={setCustomerId}
+                            placeholder="Select Client"
+                            width="180px"
+                        />
                         <Select value={clientType} onValueChange={setClientType}>
-                            <SelectTrigger className="w-[130px] h-8 text-[10px] font-bold border-muted-foreground/20">
-                                <SelectValue placeholder="All Clients" />
+                            <SelectTrigger className="w-[100px] h-8 text-[10px] font-bold border-muted-foreground/20">
+                                <SelectValue placeholder="Client Type" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="All">All Clients</SelectItem>
+                                <SelectItem value="All">All Types</SelectItem>
                                 <SelectItem value="Member">Regular Member</SelectItem>
                                 <SelectItem value="HP Client">HP Client</SelectItem>
                                 <SelectItem value="Walk-in">Walk-in</SelectItem>
@@ -87,15 +111,20 @@ export function DetailedSalesReport() {
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
                         placeholder="Search within records (name, transaction ID...)"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-9 text-xs border-muted-foreground/10 bg-muted/5 focus:bg-white transition-all"
                     />
                 </div>
             </div>
 
+            <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} />
+
             <ReportTable
                 title="Comprehensive Sales Report"
                 subtitle="Complete itemized transaction history."
                 data={salesRecords?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
+                summaryData={summaryData}
                 isLoading={salesLoading}
                 pagination={{
                     currentPage: page,
@@ -187,6 +216,6 @@ export function DetailedSalesReport() {
                     }
                 ]}
             />
-        </div>
+        </div >
     );
 }

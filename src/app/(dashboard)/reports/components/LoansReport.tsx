@@ -9,9 +9,11 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ReportTable } from "./reports-table";
 import { ReportFilters } from "./ReportFilters";
+import { ReportSummary } from "./ReportSummary";
 
 export function LoansReport() {
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
+    const [search, setSearch] = useState("");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
         to: format(new Date(), "yyyy-MM-dd")
@@ -32,12 +34,11 @@ export function LoansReport() {
     );
 
     const totalLoansCount = useQuery(api.reports.getLoanSummaryCount, loansArgs) || 0;
-
-    useEffect(() => {
-        if (loansStatus === "CanLoadMore" && loansRecords.length < (page * rowsPerPage)) {
-            loadMoreLoans(rowsPerPage);
-        }
-    }, [page, rowsPerPage, loansRecords.length, loansStatus, loadMoreLoans]);
+    const summaryData = useQuery(api.reports.getReportsSummary, {
+        startDate: dateRange.from,
+        endDate: dateRange.to,
+        search: search || undefined
+    });
 
     const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
 
@@ -60,16 +61,22 @@ export function LoansReport() {
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
                         placeholder="Search debtors by name or phone..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-9 text-xs border-muted-foreground/10 bg-muted/5 focus:bg-white transition-all"
                     />
                 </div>
             </div>
 
+            <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} />
+
             <ReportTable
                 title="Outstanding Loans Report"
                 subtitle="Detailed tracking of credit-based sales and debtor balances."
                 data={loansRecords?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
+                summaryData={summaryData || undefined}
                 isLoading={loansLoading}
+                search={search}
                 pagination={{
                     currentPage: page,
                     totalPages: Math.ceil(totalLoansCount / rowsPerPage),

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
+import { Id } from "./_generated/dataModel";
 
 // List stocks with pagination, search, and category filtering
 export const list = query({
@@ -301,9 +302,43 @@ export const add = mutation({
         halfPrice: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
-        return await ctx.db.insert("stocks", {
+        const identity = await ctx.auth.getUserIdentity();
+        let userId: Id<"users"> | undefined;
+
+        if (identity) {
+            const user = await ctx.db
+                .query("users")
+                .withIndex("by_email", (q) => q.eq("email", identity.email!))
+                .first();
+            if (user) userId = user._id;
+        }
+
+        // Fallback for system/seed if no identity
+        if (!userId) {
+            const admin = await ctx.db.query("users").first();
+            if (admin) userId = admin._id;
+        }
+
+        const stockId = await ctx.db.insert("stocks", {
             ...args,
         });
+
+        if (userId) {
+            await ctx.db.insert("stockEntries", {
+                stockId,
+                quantity: args.qty,
+                userId,
+                date: new Date().toISOString(),
+                price: args.price,
+                purchasePrice: args.purchasePrice,
+                pv: args.pv,
+                bv: args.bv,
+                halfPrice: args.halfPrice || false,
+                type: "add",
+            });
+        }
+
+        return stockId;
     },
 });
 
@@ -382,6 +417,23 @@ export const restock = mutation({
         date: v.string(),
     },
     handler: async (ctx, args) => {
+        const identity = await ctx.auth.getUserIdentity();
+        let userId: Id<"users"> | undefined;
+
+        if (identity) {
+            const user = await ctx.db
+                .query("users")
+                .withIndex("by_email", (q) => q.eq("email", identity.email!))
+                .first();
+            if (user) userId = user._id;
+        }
+
+        // Fallback
+        if (!userId) {
+            const admin = await ctx.db.query("users").first();
+            if (admin) userId = admin._id;
+        }
+
         const stock = await ctx.db.get(args.id);
         if (!stock) throw new Error("Stock not found");
 
@@ -392,6 +444,21 @@ export const restock = mutation({
             bv: args.bv,
             halfPrice: args.halfPrice,
         });
+
+        if (userId) {
+            await ctx.db.insert("stockEntries", {
+                stockId: args.id,
+                quantity: args.quantityToAdd,
+                userId,
+                date: args.date || new Date().toISOString(),
+                price: args.price,
+                purchasePrice: stock.purchasePrice, // Assuming purchase price doesn't change on restock in current schema, or we take from stock
+                pv: args.pv,
+                bv: args.bv,
+                halfPrice: args.halfPrice,
+                type: "restock",
+            });
+        }
 
         // Update shops as well for the price/pv/bv/halfPrice change
         const shops = await ctx.db.query("shops").collect();

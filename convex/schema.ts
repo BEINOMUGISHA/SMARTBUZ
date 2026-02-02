@@ -153,6 +153,21 @@ export default defineSchema({
         .index("by_timestamp", ["timestamp"])
         .index("by_userId", ["userId"]),
 
+    stockEntries: defineTable({
+        stockId: v.id("stocks"),
+        quantity: v.number(),
+        userId: v.id("users"),
+        date: v.string(), // ISO String
+        price: v.number(),
+        purchasePrice: v.number(),
+        pv: v.number(),
+        bv: v.number(),
+        halfPrice: v.boolean(),
+        type: v.string(), // "add" or "restock"
+    })
+        .index("by_date", ["date"])
+        .index("by_stockId", ["stockId"]),
+
     passwordResets: defineTable({
         email: v.string(),
         code: v.string(),
