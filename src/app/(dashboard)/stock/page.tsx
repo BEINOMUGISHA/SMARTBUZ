@@ -196,7 +196,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 <div className="flex items-center gap-2 bg-card p-2 rounded-lg border shadow-sm w-full sm:max-w-sm">
                     <Search className="h-4 w-4 text-muted-foreground ml-2" />
                     <Input
-                        placeholder="Search product name..."
+                        placeholder="Search by code or name..."
                         value={search}
                         onChange={(e) => {
                             setSearch(e.target.value);

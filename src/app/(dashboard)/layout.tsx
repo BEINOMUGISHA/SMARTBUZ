@@ -27,7 +27,6 @@ const navItems = [
     { href: "/systemconfig", label: "System Config", icon: ShoppingCart },
     { href: "/stock", label: "Stock", icon: Package },
     { href: "/inventory", label: "Inventory", icon: BarChart3 },
-    { href: "/customers", label: "Customers", icon: Users },
     { href: "/sales", label: "Sales", icon: ShoppingCart },
     { href: "/shops", label: "Shops", icon: Store },
     { href: "/reports", label: "Reports", icon: BarChart3 },

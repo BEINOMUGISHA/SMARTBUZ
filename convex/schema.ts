@@ -78,7 +78,7 @@ export default defineSchema({
         clientType: v.string(), // retail, distributor, etc.
         isLoan: v.optional(v.boolean()),
         paymentDueDate: v.optional(v.string()),
-        paymentMode: v.optional(v.string()), // Cash, Mobile Money, Bank Transfer, Loan, None
+        paymentMode: v.optional(v.string()), // Cash, Mobile Money, Bank Transfer, Loan, Bonus Transfer, None
         manualCustomerName: v.optional(v.string()), // For walk-in customers
         items: v.array(
             v.object({

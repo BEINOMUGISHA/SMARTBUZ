@@ -419,7 +419,7 @@ function DistributorValues({ selectedId, onSelect }: { selectedId: Id<"customers
                             {customers?.map((customer) => (
                                 <CommandItem
                                     key={customer._id}
-                                    value={customer.name}
+                                    value={`${customer.name} ${customer.distributorId || ""}`}
                                     onSelect={() => {
                                         onSelect(customer._id);
                                         setOpen(false);
@@ -431,7 +431,14 @@ function DistributorValues({ selectedId, onSelect }: { selectedId: Id<"customers
                                             selectedId === customer._id ? "opacity-100" : "opacity-0"
                                         )}
                                     />
-                                    {customer.name}
+                                    <div className="flex flex-col">
+                                        <span>{customer.name}</span>
+                                        {customer.distributorId && (
+                                            <span className="text-[10px] text-muted-foreground">
+                                                ID: {customer.distributorId}
+                                            </span>
+                                        )}
+                                    </div>
                                 </CommandItem>
                             ))}
                         </CommandGroup>

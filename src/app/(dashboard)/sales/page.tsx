@@ -13,13 +13,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Package, User, Loader2, ChevronLeft, ChevronRight, CalendarIcon, Store } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Package, User, Loader2, ChevronLeft, ChevronRight, CalendarIcon, Store, Check, ChevronsUpDown, Download } from "lucide-react";
 import { toast } from "sonner";
-import { formatError } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
 import { ReceiptModal } from "@/components/ReceiptModal";
 import { MySalesView } from "./my-sales-view";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn, formatError } from "@/lib/utils";
+import { generateRestockPDF } from "@/lib/restock-pdf";
 // Types
 type CartItem = {
     stockId: Id<"stocks">;
@@ -37,11 +40,12 @@ export default function SalesPage() {
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
             <SalesHeader />
             <Tabs defaultValue="regular" className="flex-1 flex flex-col">
-                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-[600px] h-auto p-1 bg-muted/50 border shadow-sm">
-                    <TabsTrigger value="regular" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Regular Sales</TabsTrigger>
-                    <TabsTrigger value="hp" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">HP Sales</TabsTrigger>
-                    <TabsTrigger value="packages" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Packages</TabsTrigger>
-                    <TabsTrigger value="mysales" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">My Sales</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 lg:w-[750px] h-auto p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-sm rounded-xl">
+                    <TabsTrigger value="regular" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Regular Sales</TabsTrigger>
+                    <TabsTrigger value="hp" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">HP Sales</TabsTrigger>
+                    <TabsTrigger value="restock" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-destructive">Restock</TabsTrigger>
+                    <TabsTrigger value="packages" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Packages</TabsTrigger>
+                    <TabsTrigger value="mysales" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">My Sales</TabsTrigger>
                 </TabsList>
 
                 <div className="flex-1 mt-4 overflow-hidden">
@@ -50,6 +54,9 @@ export default function SalesPage() {
                     </TabsContent>
                     <TabsContent value="hp" className="h-full m-0">
                         <SalesInterface isHp={true} />
+                    </TabsContent>
+                    <TabsContent value="restock" className="h-full m-0">
+                        <RestockView />
                     </TabsContent>
                     <TabsContent value="packages" className="h-full m-0">
                         <div className="flex flex-col items-center justify-center h-full text-muted-foreground bg-muted/10 rounded-lg border border-dashed border-muted p-12">
@@ -131,12 +138,14 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [isLoaded, setIsLoaded] = useState(false);
 
     // Data Fetching: Shop Stock ONLY
     // We pass user.email because the app uses custom auth, not Convex Auth
     const shopData = useQuery(api.stocks.getShopStock, {
         searchTerm: debouncedSearch || undefined,
         halfPrice: isHp,
+        availability: "inStock",
         email: user?.email || undefined,
         limit: rowsPerPage,
         offset: (currentPage - 1) * rowsPerPage,
@@ -157,8 +166,32 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         setCurrentPage(1); // Reset page on view change/init
     }, [isHp]);
 
-    // Reset page on search
+    // Reset page on search or availability change
     useEffect(() => { setCurrentPage(1); }, [debouncedSearch]);
+
+    // Cart Local Storage Persistence
+    useEffect(() => {
+        const key = isHp ? "pos_cart_hp" : "pos_cart_regular";
+        const savedCart = localStorage.getItem(key);
+        if (savedCart) {
+            try {
+                setCart(JSON.parse(savedCart));
+            } catch (e) {
+                console.error("Failed to parse saved cart", e);
+            }
+        }
+        setIsLoaded(true);
+    }, [isHp]);
+
+    useEffect(() => {
+        if (!isLoaded) return;
+        const key = isHp ? "pos_cart_hp" : "pos_cart_regular";
+        if (cart.length > 0) {
+            localStorage.setItem(key, JSON.stringify(cart));
+        } else {
+            localStorage.removeItem(key);
+        }
+    }, [cart, isHp, isLoaded]);
 
     const totalPages = Math.ceil(totalStocksCount / rowsPerPage);
     const paginatedStocks = stocks; // Already paginated on server
@@ -168,10 +201,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const totalBV = cart.reduce((sum, item) => sum + (item.bv * item.qty), 0);
 
     // Cart Actions
-    const addToCart = (stock: any) => { // Type loose for compatibility
+    const addToCart = (stock: any) => {
         setCart(prev => {
             const existing = prev.find(i => i.stockId === stock._id || i.stockId === stock.stockId);
-            const stockId = stock._id || stock.stockId; // Handle both stock doc and refined shop item
+            const stockId = stock._id || stock.stockId;
 
             if (existing) {
                 if (existing.qty >= existing.maxQty) {
@@ -191,7 +224,6 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 bv: stock.bv
             }];
         });
-        toast.success(`Added ${stock.name} to cart`);
     };
 
     const updateQty = (stockId: Id<"stocks">, delta: number) => {
@@ -324,11 +356,16 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             };
 
             setReceiptData(receipt);
+            toast.success("Sale completed successfully!");
+
+            // Clear Cart and Local Storage
             setCart([]);
-            setPaymentDate("");
+            const key = isHp ? "pos_cart_hp" : "pos_cart_regular";
+            localStorage.removeItem(key);
             setManualName("");
-            setPaymentMethod("Cash");
+            setPaymentDate("");
             setIsLoan(false);
+
         } catch (error) {
             toast.error(formatError(error));
         } finally {
@@ -343,7 +380,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Search products..."
+                        placeholder="Search by code or name..."
                         className="pl-9 h-12 text-lg"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -371,38 +408,47 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {paginatedStocks.map((stock: any) => (
-                                            <TableRow key={stock._id || stock.stockId} className={stock.qty === 0 ? "opacity-50" : ""}>
-                                                <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
-                                                <TableCell className="font-medium">
-                                                    {stock.name}
-                                                    {isShopUser && <Badge variant="secondary" className="ml-2 text-[10px] h-4">Shop Stock</Badge>}
-                                                </TableCell>
-                                                <TableCell className="text-right">{stock.price.toLocaleString()}</TableCell>
-                                                <TableCell className="text-right text-xs text-muted-foreground">
-                                                    {stock.pv} / {stock.bv}
-                                                </TableCell>
-                                                <TableCell className="text-center">
-                                                    {stock.qty > 0 ? (
-                                                        <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200">
-                                                            {stock.qty}
-                                                        </Badge>
-                                                    ) : (
-                                                        <Badge variant="destructive">Out</Badge>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="secondary"
-                                                        disabled={stock.qty === 0}
-                                                        onClick={() => addToCart(stock)}
-                                                    >
-                                                        Add
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {paginatedStocks.map((stock: any) => {
+                                            const cartItem = cart.find(i => i.stockId === (stock._id || stock.stockId));
+                                            const virtualQty = stock.qty - (cartItem?.qty || 0);
+
+                                            return (
+                                                <TableRow key={stock._id || stock.stockId} className={virtualQty === 0 ? "opacity-50" : ""}>
+                                                    <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
+                                                    <TableCell className="font-medium">
+                                                        {stock.name}
+                                                        {isShopUser && <Badge variant="secondary" className="ml-2 text-[10px] h-4">Shop Stock</Badge>}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono">{stock.price.toLocaleString()}</TableCell>
+                                                    <TableCell className="text-right text-xs text-muted-foreground">
+                                                        {stock.pv} / {stock.bv}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <div className="flex flex-col items-center">
+                                                            <span className={cn("font-bold px-2 py-0.5 rounded-full", virtualQty === 0 ? "bg-destructive/10 text-destructive" : "bg-green-50 text-green-700")}>
+                                                                {virtualQty}
+                                                            </span>
+                                                            {cartItem && (
+                                                                <span className="text-[10px] font-medium text-primary mt-1">
+                                                                    {cartItem.qty} in cart
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-8 rounded-lg font-bold transition-transform active:scale-95"
+                                                            variant={virtualQty > 0 ? "secondary" : "outline"}
+                                                            disabled={virtualQty <= 0}
+                                                            onClick={() => addToCart(stock)}
+                                                        >
+                                                            {virtualQty > 0 ? "Add" : "Empty"}
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -558,25 +604,15 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 </div>
                                 <div className="space-y-1">
                                     <Label className="text-xs">Customer</Label>
-                                    <Select
-                                        value={selectedCustomerId}
-                                        onValueChange={(v) => {
-                                            setSelectedCustomerId(v as any);
+                                    <DistributorSearch
+                                        customers={customers || []}
+                                        selectedId={selectedCustomerId}
+                                        onSelect={(id) => {
+                                            setSelectedCustomerId(id as any);
                                             setFormErrors(prev => ({ ...prev, customer: false }));
                                         }}
-                                    >
-                                        <SelectTrigger className={`h-8 ${formErrors.customer ? "border-destructive ring-1 ring-destructive" : ""}`}>
-                                            <SelectValue placeholder="Walk-in Client" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="walk-in">
-                                                <span className="flex items-center text-muted-foreground"><User className="mr-2 h-3 w-3" /> Walk-in Client</span>
-                                            </SelectItem>
-                                            {customers?.map(c => (
-                                                <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        error={formErrors.customer}
+                                    />
                                 </div>
                             </div>
 
@@ -601,6 +637,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                 <SelectItem value="Cash">Cash</SelectItem>
                                                 <SelectItem value="Mobile Money">Mobile Money</SelectItem>
                                                 <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                                                <SelectItem value="Bonus Transfer">Bonus Transfer</SelectItem>
                                                 <SelectItem value="Loan">Loan</SelectItem>
                                             </SelectContent>
                                         </Select>
@@ -674,5 +711,241 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 data={receiptData}
             />
         </div>
+    );
+}
+function RestockView() {
+    const { user } = useAuth();
+    const [hpFilter, setHpFilter] = useState<"regular" | "hp">("regular");
+    const [currentPage, setCurrentPage] = useState(1);
+    const rowsPerPage = 10;
+
+    const restockData = useQuery(api.stocks.getShopStock, {
+        halfPrice: hpFilter === "hp",
+        availability: "outOfStock",
+        email: user?.email || undefined,
+        limit: rowsPerPage,
+        offset: (currentPage - 1) * rowsPerPage,
+    });
+
+    const items = restockData?.stocks || [];
+    const totalCount = restockData?.totalCount || 0;
+    const totalPages = Math.ceil(totalCount / rowsPerPage);
+
+    return (
+        <div className="flex flex-col gap-6 h-full">
+            <div className="flex items-center justify-between">
+                <Tabs value={hpFilter} onValueChange={(v) => { setHpFilter(v as any); setCurrentPage(1); }} className="w-[300px]">
+                    <TabsList className="grid w-full grid-cols-2 rounded-lg border shadow-sm">
+                        <TabsTrigger value="regular" className="text-xs uppercase tracking-wider font-bold">Regular Stock</TabsTrigger>
+                        <TabsTrigger value="hp" className="text-xs uppercase tracking-wider font-bold text-primary">HP Stock</TabsTrigger>
+                    </TabsList>
+                </Tabs>
+
+                <div className="flex items-center gap-3">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 gap-2 font-bold border-primary/20 hover:bg-primary/5 text-primary"
+                        disabled={items.length === 0}
+                        onClick={() => {
+                            if (restockData?.shop && user) {
+                                generateRestockPDF(
+                                    items.map(i => ({
+                                        productCode: i.productCode || "N/A",
+                                        name: i.name,
+                                        price: i.price,
+                                        qty: i.qty
+                                    })),
+                                    {
+                                        name: restockData.shop.name,
+                                        location: restockData.shop.location,
+                                        contact: restockData.shop.contact,
+                                        serialNumber: restockData.shop.serialNumber
+                                    },
+                                    {
+                                        name: `${user.first_name} ${user.last_name}`,
+                                        email: user.email
+                                    },
+                                    hpFilter === "hp"
+                                );
+                                toast.success("PDF generated successfully!");
+                            }
+                        }}
+                    >
+                        <Download className="h-4 w-4" />
+                        Download PDF
+                    </Button>
+
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg border border-destructive/20 animate-pulse">
+                        <Package className="h-4 w-4" />
+                        <span className="text-xs font-bold uppercase tracking-tighter">Items Needing Restock</span>
+                        <Badge variant="destructive" className="h-5 min-w-[20px] px-1 flex justify-center">{totalCount}</Badge>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex-1 overflow-hidden border rounded-xl bg-card shadow-sm flex flex-col">
+                <Table>
+                    <TableHeader className="bg-muted/50">
+                        <TableRow>
+                            <TableHead className="font-bold">Product Code</TableHead>
+                            <TableHead className="font-bold">Product Name</TableHead>
+                            <TableHead className="text-right font-bold">Price</TableHead>
+                            <TableHead className="text-center font-bold">Current Qty</TableHead>
+                            <TableHead className="text-right font-bold">Status</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {restockData === undefined ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <TableRow key={i}>
+                                    <TableCell colSpan={5} className="h-12 animate-pulse bg-muted/20" />
+                                </TableRow>
+                            ))
+                        ) : items.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={5} className="h-40 text-center text-muted-foreground">
+                                    <div className="flex flex-col items-center gap-2 opacity-50">
+                                        <Check className="h-8 w-8 text-green-500" />
+                                        <p className="font-medium">All products are currently in stock!</p>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            items.map((item) => (
+                                <TableRow key={item.stockId} className="hover:bg-muted/30 transition-colors">
+                                    <TableCell className="font-mono text-xs">{item.productCode}</TableCell>
+                                    <TableCell className="font-medium">{item.name}</TableCell>
+                                    <TableCell className="text-right">{item.price.toLocaleString()}</TableCell>
+                                    <TableCell className="text-center">
+                                        <Badge variant="outline" className="bg-destructive/5 text-destructive border-destructive/20 font-bold">
+                                            {item.qty}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Badge variant="destructive" className="uppercase text-[10px] tracking-tighter font-black shadow-sm">OUT OF STOCK</Badge>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+
+                <div className="mt-auto border-t bg-muted/20 px-4 py-3 flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium">
+                        Showing {items.length} out of {totalCount} items
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="h-8 text-[10px] uppercase font-bold"
+                        >
+                            Previous
+                        </Button>
+                        <span className="text-xs font-bold px-2">Page {currentPage} of {totalPages || 1}</span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage >= totalPages || totalPages === 0}
+                            className="h-8 text-[10px] uppercase font-bold"
+                        >
+                            Next
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+interface DistributorSearchProps {
+    selectedId: Id<"customers"> | "walk-in";
+    onSelect: (id: Id<"customers"> | "walk-in") => void;
+    customers: Doc<"customers">[];
+    error?: boolean;
+}
+
+function DistributorSearch({ selectedId, onSelect, customers, error }: DistributorSearchProps) {
+    const [open, setOpen] = useState(false);
+    const selectedCustomer = customers.find(c => c._id === selectedId);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className={cn(
+                        "w-full justify-between h-9 shadow-sm transition-colors bg-white/50 backdrop-blur-sm px-3",
+                        error ? "border-destructive ring-1 ring-destructive/20" : "border-primary/20 hover:border-primary/40"
+                    )}
+                >
+                    <span className="truncate">
+                        {selectedId === "walk-in" ? (
+                            <span className="flex items-center text-muted-foreground">
+                                <User className="mr-2 h-3 w-3" /> Walk-in Client
+                            </span>
+                        ) : selectedCustomer?.name}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start">
+                <Command>
+                    <CommandInput placeholder="Search name or ID..." />
+                    <CommandList>
+                        <CommandEmpty>No customer found.</CommandEmpty>
+                        <CommandGroup>
+                            <CommandItem
+                                value="walk-in"
+                                onSelect={() => {
+                                    onSelect("walk-in");
+                                    setOpen(false);
+                                }}
+                            >
+                                <Check
+                                    className={cn(
+                                        "mr-2 h-4 w-4",
+                                        selectedId === "walk-in" ? "opacity-100" : "opacity-0"
+                                    )}
+                                />
+                                <User className="mr-2 h-3 w-3 text-muted-foreground" />
+                                Walk-in Client
+                            </CommandItem>
+                            {customers.map((customer) => (
+                                <CommandItem
+                                    key={customer._id}
+                                    value={`${customer.name} ${customer.distributorId || ""}`}
+                                    onSelect={() => {
+                                        onSelect(customer._id);
+                                        setOpen(false);
+                                    }}
+                                >
+                                    <Check
+                                        className={cn(
+                                            "mr-2 h-4 w-4",
+                                            selectedId === customer._id ? "opacity-100" : "opacity-0"
+                                        )}
+                                    />
+                                    <div className="flex flex-col">
+                                        <span>{customer.name}</span>
+                                        {customer.distributorId && (
+                                            <span className="text-[10px] text-muted-foreground">
+                                                ID: {customer.distributorId}
+                                            </span>
+                                        )}
+                                    </div>
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
     );
 }

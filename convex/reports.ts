@@ -374,6 +374,9 @@ export const getStockSummary = query({
     handler: async (ctx, args) => {
         const results = await ctx.db.query("stocks").paginate(args.paginationOpts);
         const shops = await ctx.db.query("shops").collect();
+        const categories = await ctx.db.query("categories").collect();
+
+        const categoryMap = new Map(categories.map(c => [c._id, c.type]));
 
         // Efficiently compute shop stock via map
         const shopStockMap: Record<string, number> = {};
@@ -385,6 +388,7 @@ export const getStockSummary = query({
 
         const page = results.page.map(stock => ({
             ...stock,
+            categoryName: stock.categoryId ? (categoryMap.get(stock.categoryId as any) || "General") : "General",
             hqQty: stock.qty,
             shopQty: shopStockMap[stock._id] || 0,
             totalQty: stock.qty + (shopStockMap[stock._id] || 0)

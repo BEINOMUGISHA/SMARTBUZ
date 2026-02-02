@@ -62,6 +62,18 @@ export const getPaginated = query({
                 searchQ = searchQ.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
             }
             const all = await searchQ.collect();
+            // Fallback to exact code match if no name results
+            if (all.length === 0) {
+                const byCode = await ctx.db.query("stocks")
+                    .withIndex("by_productCode", q => q.eq("productCode", args.searchTerm!))
+                    .first();
+                if (byCode) {
+                    if ((args.halfPrice === undefined || byCode.halfPrice === args.halfPrice) &&
+                        (!args.categoryId || byCode.categoryId === args.categoryId)) {
+                        all.push(byCode);
+                    }
+                }
+            }
             return { page: all.slice(args.offset, args.offset + args.limit), totalCount: all.length };
         }
 
@@ -184,6 +196,7 @@ export const getShopStock = query({
     args: {
         searchTerm: v.optional(v.string()),
         halfPrice: v.optional(v.boolean()),
+        availability: v.optional(v.union(v.literal("inStock"), v.literal("outOfStock"), v.literal("all"))),
         email: v.optional(v.string()), // Pass email explicitly because we don't use Convex Auth
         limit: v.optional(v.number()),
         offset: v.optional(v.number()),
@@ -220,6 +233,13 @@ export const getShopStock = query({
         // Filter by halfPrice
         if (args.halfPrice !== undefined) {
             stocks = stocks.filter(s => !!s.halfPrice === args.halfPrice);
+        }
+
+        // Filter by availability
+        if (args.availability === "inStock") {
+            stocks = stocks.filter(s => s.qty > 0);
+        } else if (args.availability === "outOfStock") {
+            stocks = stocks.filter(s => s.qty === 0);
         }
 
         // Map to match the shape of the main 'stocks' table for UI consistency if needed

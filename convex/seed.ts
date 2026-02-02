@@ -113,12 +113,14 @@ async function runSeedSales(ctx: any) {
         saleDate.setDate(now.getDate() - Math.floor(Math.random() * 30));
         const stock = stocks[Math.floor(Math.random() * stocks.length)];
         const qty = Math.floor(Math.random() * 2) + 1;
+        const paymentModes = ["Cash", "Mobile Money", "Bank Transfer", "Bonus Transfer"];
         await ctx.db.insert("sales", {
             userId: users[0]._id,
             shopId: shops[0]?._id,
             total: stock.price * qty,
             date: saleDate.toISOString(),
             clientType: "Retail",
+            paymentMode: paymentModes[Math.floor(Math.random() * paymentModes.length)],
             items: [{ stockId: stock._id, name: stock.name, price: stock.price, quantity: qty, pv: stock.pv, bv: stock.bv }],
         });
     }
