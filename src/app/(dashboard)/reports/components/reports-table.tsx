@@ -7,6 +7,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { getStatsForVariant, SummaryVariant } from "./ReportSummary";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Printer, FileSpreadsheet, FileText } from "lucide-react";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
@@ -46,6 +47,8 @@ interface ReportTableProps<T> {
     footer?: React.ReactNode;
     summaryData?: any;
     compact?: boolean;
+    printId?: string;
+    variant?: SummaryVariant;
 }
 
 export function ReportTable<T>({
@@ -59,7 +62,8 @@ export function ReportTable<T>({
     summaryData,
     compact,
     printId,
-}: ReportTableProps<T> & { printId?: string }) {
+    variant,
+}: ReportTableProps<T>) {
     const internalId = React.useId().replace(/:/g, "");
     const actualPrintId = printId || `report-print-${internalId}`;
 
@@ -103,7 +107,25 @@ export function ReportTable<T>({
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => exportToPDF(data, columns as any, title.replace(/\s+/g, "_").toLowerCase(), title, summaryData)}
+                        onClick={async () => {
+                            const stats = summaryData ? getStatsForVariant(variant || "overview", summaryData) : [];
+
+                            // Fetch logo
+                            let logoBase64 = undefined;
+                            try {
+                                const response = await fetch("/logo.ico");
+                                const blob = await response.blob();
+                                logoBase64 = await new Promise<string>((resolve) => {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => resolve(reader.result as string);
+                                    reader.readAsDataURL(blob);
+                                });
+                            } catch (error) {
+                                console.error("Failed to load logo for PDF", error);
+                            }
+
+                            exportToPDF(data, columns as any, title.replace(/\s+/g, "_").toLowerCase(), title, stats, logoBase64);
+                        }}
                         className={cn("h-7 px-3 gap-2 text-[10px] font-black uppercase border-red-600/20 text-red-700 hover:bg-red-50", compact && "h-6 px-2 text-[8px]")}
                     >
                         <FileText className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> PDF
@@ -234,51 +256,36 @@ export function ReportTable<T>({
 
             {/* HIDDEN PRINT CONTENT */}
             {/* HIDDEN PRINT CONTENT */}
-            {/* HIDDEN PRINT CONTENT */}
             <div id={actualPrintId} className="hidden print:report-print-view bg-white text-black p-4 min-h-screen report-print-view">
                 {/* OFFICIAL TIENS HEADER (Matching Receipt Style) */}
-                <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans">
-                    <div className="flex justify-between items-start">
-                        <div className="flex-1 text-center">
-                            <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase">TIENS HEALTH PRODUCTS</h2>
-                            <p className="text-[11px] leading-tight font-bold text-gray-600">6th Floor, King Fahd Plaza, Plot 52 Kampala Rd</p>
-                            <p className="text-[11px] font-bold text-gray-500">P.O.Box .... Kampala, Tel: +256 (0) 702 794 458 | 0773 662 136</p>
-                            <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
-                                OFFICIAL {title}
-                            </div>
+                <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans relative">
+                    <div className="text-center px-20"> {/* Padding to prevent text overlapping logo if screen is small */}
+                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">TIENS HEALTH PRODUCTS</h2>
+                        <p className="text-[11px] leading-tight font-bold text-gray-600">6th Floor, King Fahd Plaza, Plot 52 Kampala Rd</p>
+                        <p className="text-[11px] font-bold text-gray-500">P.O.Box .... Kampala, Tel: +256 (0) 702 794 458 | 0773 662 136</p>
+                        <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
+                            OFFICIAL {title}
                         </div>
-                        <div className="w-[80px] h-[80px]">
-                            <img src="/logo.ico" alt="TIENS Logo" className="w-full h-full object-contain" />
-                        </div>
+                    </div>
+
+                    {/* Logo (Right Aligned Absolute) */}
+                    <div className="absolute right-0 top-0 h-full flex items-start pt-1">
+                        <img src="/logo.ico" alt="Logo" className="h-20 w-20 object-contain" />
                     </div>
                 </div>
 
-                {/* SUMMARY CARDS IN PRINT */}
+                {/* SUMMARY CARDS IN PRINT (Dynamic based on Variant) */}
                 {summaryData && (
                     <div className="grid grid-cols-4 gap-4 mb-4 border-b border-gray-100 pb-4">
-                        <div className="flex flex-col">
-                            <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">Total Sales</p>
-                            <p className="text-xs font-black text-black">UGX {summaryData.totalRevenue.toLocaleString()}</p>
-                            <p className="text-[7px] font-bold text-gray-400 italic font-mono">{summaryData.totalSalesCount || 0} Items</p>
-                        </div>
-                        <div className="flex flex-col border-l border-gray-100 pl-4">
-                            <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">Tied PV/BV</p>
-                            <p className="text-xs font-black text-black">{summaryData.totalPV.toLocaleString()} PV</p>
-                            <p className="text-[7px] font-bold text-gray-400 italic font-mono">{summaryData.totalBV.toLocaleString()} BV</p>
-                        </div>
-                        <div className="flex flex-col border-l border-gray-100 pl-4">
-                            <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">Net Profit</p>
-                            <p className="text-xs font-black text-black">UGX {summaryData.totalProfit.toLocaleString()}</p>
-                            <p className="text-[7px] font-bold text-gray-400 italic font-mono">After Expenses</p>
-                        </div>
-                        <div className="flex flex-col border-l border-gray-100 pl-4">
-                            <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">Stock Value</p>
-                            <p className="text-xs font-black text-black">UGX {summaryData.totalInventorySellingPrice.toLocaleString()}</p>
-                            <p className="text-[7px] font-bold text-gray-400 italic font-mono">Est. Revenue</p>
-                        </div>
+                        {getStatsForVariant(variant || "overview", summaryData).map((stat, idx) => (
+                            <div key={idx} className={cn("flex flex-col pl-4 border-l border-gray-100 first:pl-0 first:border-0")}>
+                                <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">{stat.title}</p>
+                                <p className="text-xs font-black text-black">{stat.value}</p>
+                                <p className="text-[7px] font-bold text-gray-400 italic font-mono">{stat.description}</p>
+                            </div>
+                        ))}
                     </div>
                 )}
-
                 <div className="mb-4">
                     <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">{title}</h3>
                     {subtitle && <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5 tracking-wide">{subtitle}</p>}

@@ -583,6 +583,22 @@ export const getReportsSummary = query({
         const totalInventorySellingPrice = stocks.reduce((sum, s) => sum + (s.price * s.qty), 0);
         const totalInventoryCostPrice = stocks.reduce((sum, s) => sum + (s.purchasePrice * s.qty), 0);
 
+        // [LOAN DATA] - Fetch loans and match with filtered sales
+        // We can't rely on sales.balance as it's not in the schema. We must check the loans table.
+        // 1. Fetch loans roughly within range (if date provided)
+        let loansQuery = ctx.db.query("loans");
+        if (args.startDate) loansQuery = loansQuery.filter(q => q.gte(q.field("date"), args.startDate!));
+        if (args.endDate) loansQuery = loansQuery.filter(q => q.lte(q.field("date"), args.endDate! + "T23:59:59.999"));
+        const loans = await loansQuery.collect();
+
+        // 2. Filter loans where the linked sale is in our filtered 'sales' list
+        const salesIdSet = new Set(sales.map(s => s._id));
+        const matchedLoans = loans.filter(l => salesIdSet.has(l.salesId));
+
+        const loanCount = matchedLoans.length;
+        const totalOutstandingBalance = matchedLoans.reduce((sum, l) => sum + (l.balance || 0), 0);
+        const totalLoanedAmount = matchedLoans.reduce((sum, l) => sum + l.amount, 0);
+
         return {
             totalRevenue,
             totalCostOfSales,
@@ -592,7 +608,11 @@ export const getReportsSummary = query({
             totalBV,
             totalInventorySellingPrice,
             totalInventoryCostPrice,
-            itemCount: sales.reduce((sum, s) => sum + s.items.reduce((iSum, i) => iSum + i.quantity, 0), 0)
+            itemCount: sales.reduce((sum, s) => sum + s.items.reduce((iSum, i) => iSum + i.quantity, 0), 0),
+            // Loan-specific metrics
+            loanCount,
+            totalOutstandingBalance,
+            totalLoanedAmount
         };
     }
 });

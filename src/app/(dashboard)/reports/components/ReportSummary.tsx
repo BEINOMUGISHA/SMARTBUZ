@@ -1,17 +1,5 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-    Users,
-    ShoppingCart,
-    ArrowUpRight,
-    ArrowDownRight,
-    DollarSign,
-    Zap,
-    Activity,
-    Package,
-    TrendingUp
-} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SummaryData {
@@ -24,9 +12,28 @@ interface SummaryData {
     totalInventorySellingPrice: number;
     totalInventoryCostPrice: number;
     itemCount: number;
+    // Optional loan-specific data
+    totalOutstandingBalance?: number;
+    totalLoanedAmount?: number;
+    loanCount?: number;
 }
 
-export function ReportSummary({ data, isLoading }: { data?: SummaryData; isLoading?: boolean }) {
+export type SummaryVariant = "sales" | "overview" | "shops" | "stock" | "loans";
+
+interface ReportSummaryProps {
+    data?: SummaryData;
+    isLoading?: boolean;
+    variant?: SummaryVariant;
+    // Optional override stats for custom displays
+    customStats?: Array<{
+        title: string;
+        value: string;
+        description: string;
+        color: string;
+    }>;
+}
+
+export function ReportSummary({ data, isLoading, variant = "overview", customStats }: ReportSummaryProps) {
     if (isLoading) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -37,38 +44,10 @@ export function ReportSummary({ data, isLoading }: { data?: SummaryData; isLoadi
         );
     }
 
-    if (!data) return null;
+    if (!data && !customStats) return null;
 
-    const stats = [
-        {
-            title: "Total Sales",
-            value: `UGX ${data.totalRevenue.toLocaleString()}`,
-            description: `${data.itemCount} ITEMS SOLD`,
-            color: "border-l-emerald-500",
-            textColor: "text-emerald-700"
-        },
-        {
-            title: "Tied PV / BV",
-            value: `${data.totalPV.toLocaleString()} PV`,
-            description: `${data.totalBV.toLocaleString()} BV TOTAL`,
-            color: "border-l-amber-500",
-            textColor: "text-amber-700"
-        },
-        {
-            title: "Est. Net Profit",
-            value: `UGX ${data.totalProfit.toLocaleString()}`,
-            description: "AFTER COS & EXPENSES",
-            color: "border-l-blue-500",
-            textColor: "text-blue-700"
-        },
-        {
-            title: "Inventory Value",
-            value: `UGX ${data.totalInventorySellingPrice.toLocaleString()}`,
-            description: `COST: UGX ${data.totalInventoryCostPrice.toLocaleString()}`,
-            color: "border-l-purple-500",
-            textColor: "text-purple-700"
-        }
-    ];
+    // Use custom stats if provided, otherwise generate based on variant
+    const stats = customStats || getStatsForVariant(variant, data!);
 
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -87,4 +66,124 @@ export function ReportSummary({ data, isLoading }: { data?: SummaryData; isLoadi
             ))}
         </div>
     );
+}
+
+export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
+    switch (variant) {
+        case "sales":
+        case "overview":
+            return [
+                {
+                    title: "Total Sales",
+                    value: `UGX ${data.totalRevenue.toLocaleString()}`,
+                    description: `${data.itemCount} ITEMS SOLD`,
+                    color: "border-l-emerald-500"
+                },
+                {
+                    title: "Tied PV / BV",
+                    value: `${data.totalPV.toLocaleString()} PV`,
+                    description: `${data.totalBV.toLocaleString()} BV TOTAL`,
+                    color: "border-l-amber-500"
+                },
+                {
+                    title: "Est. Net Profit",
+                    value: `UGX ${data.totalProfit.toLocaleString()}`,
+                    description: "AFTER COS & EXPENSES",
+                    color: "border-l-blue-500"
+                },
+                {
+                    title: "Inventory Value",
+                    value: `UGX ${data.totalInventorySellingPrice.toLocaleString()}`,
+                    description: `COST: UGX ${data.totalInventoryCostPrice.toLocaleString()}`,
+                    color: "border-l-purple-500"
+                }
+            ];
+
+        case "shops":
+            return [
+                {
+                    title: "Total Sales",
+                    value: `UGX ${data.totalRevenue.toLocaleString()}`,
+                    description: `${data.itemCount} TRANSACTIONS`,
+                    color: "border-l-emerald-500"
+                },
+                {
+                    title: "Tied PV / BV",
+                    value: `${data.totalPV.toLocaleString()} PV`,
+                    description: `${data.totalBV.toLocaleString()} BV TOTAL`,
+                    color: "border-l-amber-500"
+                },
+                {
+                    title: "Est. Net Profit",
+                    value: `UGX ${data.totalProfit.toLocaleString()}`,
+                    description: "AFTER COS & EXPENSES",
+                    color: "border-l-blue-500"
+                },
+                {
+                    title: "Expenses",
+                    value: `UGX ${data.totalExpenses.toLocaleString()}`,
+                    description: "TOTAL RECORDED",
+                    color: "border-l-red-500"
+                }
+            ];
+
+        case "stock":
+            return [
+                {
+                    title: "Inventory Value",
+                    value: `UGX ${data.totalInventorySellingPrice.toLocaleString()}`,
+                    description: "SELLING PRICE TOTAL",
+                    color: "border-l-emerald-500"
+                },
+                {
+                    title: "Cost Value",
+                    value: `UGX ${data.totalInventoryCostPrice.toLocaleString()}`,
+                    description: "PURCHASE PRICE TOTAL",
+                    color: "border-l-blue-500"
+                },
+                {
+                    title: "Total PV",
+                    value: `${data.totalPV.toLocaleString()} PV`,
+                    description: "TIED IN STOCK",
+                    color: "border-l-amber-500"
+                },
+                {
+                    title: "Total BV",
+                    value: `${data.totalBV.toLocaleString()} BV`,
+                    description: "TIED IN STOCK",
+                    color: "border-l-purple-500"
+                }
+            ];
+
+        case "loans":
+            return [
+                {
+                    title: "Total Loaned",
+                    value: `UGX ${data.totalRevenue.toLocaleString()}`,
+                    description: `${data.loanCount || 0} ACTIVE LOANS`,
+                    color: "border-l-red-500"
+                },
+                {
+                    title: "Outstanding",
+                    value: `UGX ${(data.totalOutstandingBalance || 0).toLocaleString()}`,
+                    description: "BALANCE DUE",
+                    color: "border-l-orange-500"
+                },
+                {
+                    title: "Tied PV / BV",
+                    value: `${data.totalPV.toLocaleString()} PV`,
+                    description: `${data.totalBV.toLocaleString()} BV ON CREDIT`,
+                    color: "border-l-amber-500"
+                },
+                {
+                    title: "Paid Amount",
+                    value: `UGX ${(data.totalRevenue - (data.totalOutstandingBalance || 0)).toLocaleString()}`,
+                    description: "ALREADY COLLECTED",
+                    color: "border-l-emerald-500"
+                }
+            ];
+
+        default:
+            return [];
+    }
 }

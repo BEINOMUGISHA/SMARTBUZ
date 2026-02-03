@@ -41,7 +41,7 @@ export function GlobalStockReport() {
                                 placeholder="Search by name or code..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                className="pl-10 h-10 text-xs border-muted-foreground/10 bg-muted/20 focus:bg-white rounded-xl transition-all"
+                                className="pl-10 h-10 text-xs border-input bg-background focus:bg-white rounded-xl transition-all shadow-sm"
                             />
                         </div>
                     )}
@@ -51,6 +51,7 @@ export function GlobalStockReport() {
                     <ReportSummary
                         data={summaryData || undefined}
                         isLoading={summaryData === undefined}
+                        variant="stock"
                     />
                 )}
 
@@ -95,6 +96,7 @@ function StockTable({ halfPrice, search, summaryData }: { halfPrice: boolean; se
             data={stockRecords?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
             summaryData={summaryData}
             isLoading={stockLoading}
+            variant="stock"
             pagination={{
                 currentPage: page,
                 totalPages: Math.ceil(totalStockCount / rowsPerPage),

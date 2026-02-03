@@ -68,80 +68,79 @@ export function ShopsReport() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-3 rounded-xl border shadow-xs flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <ReportFilters
-                        dateRange={dateRange}
-                        reportMode={reportMode}
-                        onDateRangeChange={setDateRange}
-                        onReportModeChange={setReportMode}
+            <div className="bg-white p-4 rounded-xl border shadow-xs flex flex-wrap items-end gap-3">
+
+                {/* 1. Date Filters */}
+                <ReportFilters
+                    dateRange={dateRange}
+                    reportMode={reportMode}
+                    onDateRangeChange={setDateRange}
+                    onReportModeChange={setReportMode}
+                />
+
+                {/* 2. Shop Select */}
+                <SearchableSelect
+                    options={[
+                        { value: "all", label: "Overview: All Branches" },
+                        ...(shops || []).map(s => ({ value: s._id, label: s.name }))
+                    ]}
+                    value={selectedShop}
+                    onValueChange={setSelectedShop}
+                    placeholder="Select Branch"
+                    width="180px"
+                />
+
+                {/* 3. Conditional Client Select */}
+                {selectedShop !== "all" && (
+                    <SearchableSelect
+                        options={[
+                            { value: "all", label: "All Distributors" },
+                            ...(customers || []).map(c => ({ value: c._id, label: c.name }))
+                        ]}
+                        value={customerId}
+                        onValueChange={setCustomerId}
+                        placeholder="Filter Client"
+                        width="160px"
                     />
+                )}
 
-                    <div className="flex items-center gap-2">
-                        <SearchableSelect
-                            options={[
-                                { value: "all", label: "Overview: All Branches" },
-                                ...(shops || []).map(s => ({ value: s._id, label: s.name }))
-                            ]}
-                            value={selectedShop}
-                            onValueChange={setSelectedShop}
-                            placeholder="Select Branch"
-                            width="180px"
-                        />
-
-                        {selectedShop !== "all" && (
-                            <>
-                                <SearchableSelect
-                                    options={[
-                                        { value: "all", label: "All Distributors" },
-                                        ...(customers || []).map(c => ({ value: c._id, label: c.name }))
-                                    ]}
-                                    value={customerId}
-                                    onValueChange={setCustomerId}
-                                    placeholder="Filter Client"
-                                    width="160px"
-                                />
-
-                                {/* VIEW TOGGLE: Sales OR Loans */}
-                                <div className="flex bg-muted/40 p-1 rounded-xl h-9 gap-1 border border-muted-foreground/5 shrink-0">
-                                    <button
-                                        onClick={() => setDashView("sales")}
-                                        className={cn(
-                                            "px-3 h-full rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                                            dashView === "sales" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted"
-                                        )}
-                                    >
-                                        Sales
-                                    </button>
-                                    <button
-                                        onClick={() => setDashView("loans")}
-                                        className={cn(
-                                            "px-3 h-full rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                                            dashView === "loans" ? "bg-destructive text-white shadow-sm" : "text-muted-foreground hover:bg-muted"
-                                        )}
-                                    >
-                                        Loans
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
+                {/* 4. Search Input (Flexible width, with border) */}
+                <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-50" />
+                    <Input
+                        placeholder={selectedShop === "all" ? "Search branches..." : "Search within branch transactions..."}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
+                    />
                 </div>
 
-                <div className="flex items-center justify-between gap-3 mt-1">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-50" />
-                        <Input
-                            placeholder={selectedShop === "all" ? "Search branches..." : "Search within branch transactions..."}
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="pl-9 h-9 text-xs border-muted-foreground/10 bg-muted/5 focus:bg-white transition-all"
-                        />
+                {/* 5. View Toggle (Right aligned if space permits, or wraps) */}
+                {selectedShop !== "all" && (
+                    <div className="flex bg-muted/40 p-1 rounded-lg h-10 gap-1 border border-border shrink-0 ml-auto md:ml-0">
+                        <button
+                            onClick={() => setDashView("sales")}
+                            className={cn(
+                                "px-3 h-full rounded-md text-[10px] font-black uppercase tracking-widest transition-all",
+                                dashView === "sales" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted"
+                            )}
+                        >
+                            Sales
+                        </button>
+                        <button
+                            onClick={() => setDashView("loans")}
+                            className={cn(
+                                "px-3 h-full rounded-md text-[10px] font-black uppercase tracking-widest transition-all",
+                                dashView === "loans" ? "bg-destructive text-white shadow-sm" : "text-muted-foreground hover:bg-muted"
+                            )}
+                        >
+                            Loans
+                        </button>
                     </div>
-                </div>
+                )}
             </div>
 
-            <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} />
+            <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} variant="shops" />
 
             {
                 selectedShop !== "all" && dashView === "loans" ? (
@@ -151,6 +150,7 @@ export function ShopsReport() {
                         data={shopLoans || []}
                         isLoading={loansLoading}
                         summaryData={summaryData}
+                        variant="loans"
                         columns={[
                             {
                                 header: "Date/Time",
@@ -232,6 +232,7 @@ export function ShopsReport() {
                         data={shopSales || []}
                         isLoading={salesLoading}
                         summaryData={summaryData}
+                        variant="sales"
                         columns={[
                             {
                                 header: "Date/Time",
@@ -305,6 +306,7 @@ export function ShopsReport() {
                         data={shopSummary || []}
                         summaryData={summaryData}
                         isLoading={shopSummary === undefined}
+                        variant="shops"
                         columns={[
                             { header: "Branch Name", accessor: (item: any) => <span className="font-bold">{item.name}</span> },
                             { header: "Location", accessor: "location" },

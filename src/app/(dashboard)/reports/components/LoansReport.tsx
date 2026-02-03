@@ -56,62 +56,60 @@ export function LoansReport() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-3 bg-white p-3 rounded-xl border shadow-xs">
-                <div className="flex flex-wrap items-center gap-3">
-                    <ReportFilters
-                        dateRange={dateRange}
-                        reportMode={reportMode}
-                        onDateRangeChange={setDateRange}
-                        onReportModeChange={setReportMode}
-                    />
+            <div className="bg-white p-4 rounded-xl border shadow-xs flex flex-wrap items-end gap-3">
+                <ReportFilters
+                    dateRange={dateRange}
+                    reportMode={reportMode}
+                    onDateRangeChange={setDateRange}
+                    onReportModeChange={setReportMode}
+                />
 
-                    <SearchableSelect
-                        options={[
-                            { value: "all", label: "All Branches" },
-                            ...(shops || []).map(s => ({ value: s._id, label: s.name }))
-                        ]}
-                        value={selectedShop}
-                        onValueChange={setSelectedShop}
-                        placeholder="Select Branch"
-                        width="180px"
-                    />
+                <SearchableSelect
+                    options={[
+                        { value: "all", label: "All Branches" },
+                        ...(shops || []).map(s => ({ value: s._id, label: s.name }))
+                    ]}
+                    value={selectedShop}
+                    onValueChange={setSelectedShop}
+                    placeholder="Select Branch"
+                    width="180px"
+                />
 
-                    <SearchableSelect
-                        options={[
-                            { value: "All", label: "All Client Types" },
-                            { value: "Standard Client", label: "Standard Client" },
-                            { value: "HP Client", label: "HP Client" }
-                        ]}
-                        value={clientType}
-                        onValueChange={setClientType}
-                        placeholder="Client Type"
-                        width="150px"
-                    />
+                <SearchableSelect
+                    options={[
+                        { value: "All", label: "All Client Types" },
+                        { value: "Standard Client", label: "Standard Client" },
+                        { value: "HP Client", label: "HP Client" }
+                    ]}
+                    value={clientType}
+                    onValueChange={setClientType}
+                    placeholder="Client Type"
+                    width="150px"
+                />
 
-                    <SearchableSelect
-                        options={[
-                            { value: "all", label: "All Distributors" },
-                            ...(customers || []).map(c => ({ value: c._id, label: c.name }))
-                        ]}
-                        value={customerId}
-                        onValueChange={setCustomerId}
-                        placeholder="Distributor"
-                        width="180px"
-                    />
-                </div>
+                <SearchableSelect
+                    options={[
+                        { value: "all", label: "All Distributors" },
+                        ...(customers || []).map(c => ({ value: c._id, label: c.name }))
+                    ]}
+                    value={customerId}
+                    onValueChange={setCustomerId}
+                    placeholder="Distributor"
+                    width="180px"
+                />
 
-                <div className="relative w-full">
+                <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
                         placeholder="Search debtors by name, phone or product..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="pl-9 h-9 text-xs border-muted-foreground/10 bg-muted/5 focus:bg-white transition-all"
+                        className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
                     />
                 </div>
             </div>
 
-            <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} />
+            <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} variant="loans" />
 
             <ReportTable
                 title="Outstanding Loans Report"
@@ -120,6 +118,7 @@ export function LoansReport() {
                 summaryData={summaryData || undefined}
                 isLoading={loansLoading}
                 search={search}
+                variant="loans"
                 pagination={{
                     currentPage: page,
                     totalPages: Math.ceil(totalLoansCount / rowsPerPage),

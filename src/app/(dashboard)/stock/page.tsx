@@ -30,7 +30,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Edit, Trash2, MoreHorizontal, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Plus, Search, Edit, Trash2, MoreHorizontal, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PackagePlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -80,6 +80,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingStock, setEditingStock] = useState<Doc<"stocks"> | null>(null);
+    const [restockingStock, setRestockingStock] = useState<Doc<"stocks"> | null>(null);
     const [deletingId, setDeletingId] = useState<Id<"stocks"> | null>(null);
     const { user } = useAuth();
 
@@ -109,6 +110,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
 
     const addStock = useMutation(api.stocks.add);
     const updateStock = useMutation(api.stocks.update);
+    const restockStock = useMutation(api.stocks.restock);
     const deleteStock = useMutation(api.stocks.remove);
 
     const totalItems = paginatedResult?.totalCount || 0;
@@ -182,6 +184,27 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
         }
     };
 
+    const handleRestock = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        if (!restockingStock) return;
+        const formData = new FormData(e.currentTarget);
+        try {
+            await restockStock({
+                id: restockingStock._id,
+                quantityToAdd: parseFloat(formData.get("quantityToAdd") as string),
+                price: restockingStock.price,
+                pv: restockingStock.pv,
+                bv: restockingStock.bv,
+                halfPrice: halfPrice,
+                date: new Date().toISOString(), // Or allow user to pick date? Stick to now for simplicity unless requested
+            });
+            toast.success("Stock restocked successfully");
+            setRestockingStock(null);
+        } catch (error) {
+            toast.error(formatError(error));
+        }
+    };
+
     return (
         <div className="space-y-4">
             <ConfirmDeleteModal
@@ -191,6 +214,40 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 title="Delete Stock Item?"
                 description="This will permanently delete this stock item and remove it from all shops. This action cannot be undone."
             />
+
+            <Dialog open={!!restockingStock} onOpenChange={(open) => !open && setRestockingStock(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Restock Product</DialogTitle>
+                    </DialogHeader>
+                    {restockingStock && (
+                        <form onSubmit={handleRestock} className="space-y-4">
+                            <div className="grid gap-2">
+                                <Label>Product</Label>
+                                <div className="font-medium">{restockingStock.name} ({restockingStock.productCode})</div>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="quantityToAdd">Quantity to Add</Label>
+                                <Input
+                                    id="quantityToAdd"
+                                    name="quantityToAdd"
+                                    type="number"
+                                    required
+                                    min="1"
+                                    defaultValue="1"
+                                    autoFocus
+                                />
+                            </div>
+                            <DialogFooter>
+                                <Button type="button" variant="outline" onClick={() => setRestockingStock(null)}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit">Confirm Restock</Button>
+                            </DialogFooter>
+                        </form>
+                    )}
+                </DialogContent>
+            </Dialog>
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2 bg-card p-2 rounded-lg border shadow-sm w-full sm:max-w-sm">
@@ -263,6 +320,9 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                                         </Button>
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => setRestockingStock(stock)}>
+                                                            <PackagePlus className="mr-2 h-4 w-4" /> Restock
+                                                        </DropdownMenuItem>
                                                         <DropdownMenuItem onClick={() => setEditingStock(stock)}>
                                                             <Edit className="mr-2 h-4 w-4" /> Edit
                                                         </DropdownMenuItem>

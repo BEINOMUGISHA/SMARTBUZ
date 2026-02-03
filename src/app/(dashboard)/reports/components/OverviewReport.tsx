@@ -42,7 +42,7 @@ export function OverviewReport() {
                 </div>
             </div>
 
-            <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} />
+            <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} variant="overview" />
 
             <div className="grid gap-6 md:grid-cols-2">
                 <Card className="rounded-xl shadow-sm border-muted/50 overflow-hidden">

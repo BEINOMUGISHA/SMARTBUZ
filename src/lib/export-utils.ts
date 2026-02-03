@@ -76,71 +76,100 @@ export async function exportToExcel(data: any[], columns: Column[], filename: st
 /**
  * Exports data to a PDF file with Tiens branding and formatted tables.
  */
-/**
- * Exports data to a PDF file with Tiens branding and formatted tables.
- */
-export function exportToPDF(data: any[], columns: Column[], filename: string, title: string, summaryData?: any) {
+export function exportToPDF(data: any[], columns: Column[], filename: string, title: string, summaryStats?: any[], logoBase64?: string) {
     const doc = new jsPDF() as any;
 
-    // Add Branding Header
-    doc.setFillColor(0, 133, 66); // Tiens Green
-    doc.rect(0, 0, 210, 45, "F");
+    // --- HEADER SECTION (White BG) ---
+    // 0. Logo (Right Side)
+    // Design matching screenshot: "TIENS HEALTH PRODUCTS" is roughly centered. Logo usually goes left or above.
+    // User requested "logo.ico in ... headers". I'll put it top-center or to the left of the title.
+    // Let's place it Top-Left or Top-Center. The text is centered. Placing logo at x=80, y=10?
+    // Let's try placing it to the left of the text block if possible, or just centered above.
 
-    doc.setTextColor(255, 255, 255);
+    if (logoBase64) {
+        try {
+            // Add logo on the right side
+            doc.addImage(logoBase64, 'PNG', 170, 15, 25, 25);
+        } catch (e) {
+            console.warn("Failed to add logo to PDF", e);
+        }
+    }
+    // 1. Title: Tiens Green, Bold, Centered
+    doc.setTextColor(0, 133, 66); // #008542
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.text("TIENS HEALTH PRODUCTS", 105, 18, { align: "center" });
+    doc.text("TIENS HEALTH PRODUCTS", 105, 25, { align: "center" });
 
+    // 2. Address: Dark Gray, Normal, Centered
+    doc.setTextColor(80, 80, 80);
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("6th Floor, King Fahd Plaza, Plot 52 Kampala Rd", 105, 25, { align: "center" });
-    doc.text("Tel: +256 (0) 702 794 458 | 0773 662 136", 105, 29, { align: "center" });
+    doc.text("6th Floor, King Fahd Plaza, Plot 52 Kampala Rd", 105, 33, { align: "center" }); // 33 for clearance
+    doc.text("Tel: +256 (0) 702 794 458 | 0773 662 136", 105, 38, { align: "center" });   // 38 for legibility
 
-    doc.setFontSize(11);
+    // 3. Report Badge: Green Pill with White Text
+    const titleText = `OFFICIAL ${title.toUpperCase()}`;
+    doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
-    doc.text(`OFFICIAL ${title.toUpperCase()}`, 105, 38, { align: "center" });
+    const textWidth = doc.getTextWidth(titleText) + 20; // Padding
+    const pillX = 105 - (textWidth / 2);
 
-    doc.setFontSize(8);
-    doc.setTextColor(200, 200, 200);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 200, 42, { align: "right" });
+    doc.setFillColor(0, 133, 66);
+    doc.roundedRect(pillX, 44, textWidth, 8, 3, 3, "F"); // 44 to clear address
 
-    let currentY = 55;
+    doc.setTextColor(255, 255, 255);
+    doc.text(titleText, 105, 49.5, { align: "center" }); // Centered in 44-52 pill
 
-    // Summary Section in PDF
-    if (summaryData) {
-        doc.setFillColor(245, 250, 248);
-        doc.rect(10, currentY, 190, 25, "F");
-        doc.setDrawColor(0, 133, 66);
-        doc.setLineWidth(0.5);
-        doc.rect(10, currentY, 190, 25, "D");
+    // 4. Horizontal Green Line
+    doc.setDrawColor(0, 133, 66);
+    doc.setLineWidth(1);
+    doc.line(10, 58, 200, 58); // 58 to clear pill
 
-        doc.setTextColor(0, 133, 66);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
+    // --- SUMMARY SECTION ---
+    let currentY = 66;
 
-        // Sales
-        doc.text("TOTAL SALES", 20, currentY + 8);
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(11);
-        doc.text(`UGX ${summaryData.totalRevenue.toLocaleString()}`, 20, currentY + 18);
+    if (summaryStats && summaryStats.length > 0) {
+        // Calculate Grid
+        const pageWidth = 210; // A4 width in mm
+        const margin = 14;     // Left margin to match table
+        const cardWidth = 45; // Fixed width per card to ensure spacing
 
-        // PV/BV
-        doc.setTextColor(180, 110, 0);
-        doc.setFontSize(9);
-        doc.text("TIED PV/BV", 75, currentY + 8);
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(11);
-        doc.text(`${summaryData.totalPV.toLocaleString()} PV / ${summaryData.totalBV.toLocaleString()} BV`, 75, currentY + 18);
+        summaryStats.forEach((stat: any, index: number) => {
+            const xPos = margin + (index * cardWidth); // Grid layout
+            const textX = xPos;
 
-        // Profit
-        doc.setTextColor(0, 80, 180);
-        doc.setFontSize(9);
-        doc.text("NET PROFIT", 145, currentY + 8);
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(11);
-        doc.text(`UGX ${summaryData.totalProfit.toLocaleString()}`, 145, currentY + 18);
+            // Vertical Separator Line (except for the first item)
+            if (index > 0) {
+                doc.setDrawColor(220, 220, 220); // Light gray
+                doc.setLineWidth(0.2);
+                doc.line(xPos - 4, currentY, xPos - 4, currentY + 15);
+            }
 
-        currentY += 35;
+            // Title: Green, Uppercase, Bold, Small
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7);
+            doc.setTextColor(0, 133, 66);
+            doc.text(String(stat.title).toUpperCase(), textX, currentY + 5);
+
+            // Value: Black, Large, Extra Bold
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.text(String(stat.value), textX, currentY + 11);
+
+            // Description: Gray, Italic, Tiny
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(6);
+            doc.setTextColor(150, 150, 150);
+            doc.text(String(stat.description), textX, currentY + 15);
+        });
+
+        // Bottom Line for Summary (Optional)
+        doc.setDrawColor(240, 240, 240);
+        doc.setLineWidth(0.1);
+        doc.line(10, currentY + 22, 200, currentY + 22);
+
+        currentY += 28; // Move down for table
     }
 
     // Prepare table data
@@ -167,9 +196,9 @@ export function exportToPDF(data: any[], columns: Column[], filename: string, ti
         head: [tableHeaders],
         body: tableData,
         startY: currentY,
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 8, cellPadding: 2, font: "helvetica" },
         headStyles: { fillColor: [0, 133, 66], textColor: [255, 255, 255], fontStyle: "bold" },
-        alternateRowStyles: { fillColor: [245, 245, 245] },
+        alternateRowStyles: { fillColor: [248, 250, 248] }, // Very light green/gray tint
         margin: { top: 20 },
     });
 
