@@ -58,9 +58,26 @@ export function ReportTable<T>({
     footer,
     summaryData,
     compact,
-}: ReportTableProps<T>) {
+    printId,
+}: ReportTableProps<T> & { printId?: string }) {
+    const internalId = React.useId().replace(/:/g, "");
+    const actualPrintId = printId || `report-print-${internalId}`;
+
     const handlePrint = () => {
+        // We need to set a temporary class on the body to target THIS specific report
+        const style = document.createElement('style');
+        style.id = 'print-style-temp';
+        style.innerHTML = `
+            @media print {
+                #${actualPrintId} { visibility: visible !important; display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; }
+            }
+        `;
+        document.head.appendChild(style);
         window.print();
+        setTimeout(() => {
+            const el = document.getElementById('print-style-temp');
+            if (el) el.remove();
+        }, 1000);
     };
 
     // Pagination calculations
@@ -200,40 +217,25 @@ export function ReportTable<T>({
                     /* Hide EVERYTHING */
                     body { visibility: hidden !important; background: white !important; }
                     
-                    /* Show ONLY the print container */
-                    #report-print-container { 
-                        visibility: visible !important;
-                        display: block !important; 
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        width: 100% !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
+                    /* Common print styles for ANY report container */
+                    .report-print-view { 
+                        visibility: hidden;
+                        display: none;
                     }
                     
-                    #report-print-container * { 
-                        visibility: visible !important; 
+                    .report-print-view * { 
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
                     }
 
                     @page { margin: 0; size: auto; }
-                    
-                    #report-print-container {
-                        padding: 1.5cm !important;
-                    }
-                    
-                    .print-break-inside-avoid {
-                        page-break-inside: avoid;
-                    }
                 }
             `}</style>
 
             {/* HIDDEN PRINT CONTENT */}
             {/* HIDDEN PRINT CONTENT */}
             {/* HIDDEN PRINT CONTENT */}
-            <div id="report-print-container" className="hidden print:block bg-white text-black p-4 min-h-screen">
+            <div id={actualPrintId} className="hidden print:report-print-view bg-white text-black p-4 min-h-screen report-print-view">
                 {/* OFFICIAL TIENS HEADER (Matching Receipt Style) */}
                 <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans">
                     <div className="flex justify-between items-start">
@@ -253,26 +255,26 @@ export function ReportTable<T>({
 
                 {/* SUMMARY CARDS IN PRINT */}
                 {summaryData && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8 border-b-2 border-gray-100 pb-8">
-                        <div className="flex flex-col gap-1">
-                            <p className="text-[10px] font-black text-[#008542] uppercase tracking-widest">Total Sales</p>
-                            <p className="text-sm font-black text-black">UGX {summaryData.totalRevenue.toLocaleString()}</p>
-                            <p className="text-[8px] font-bold text-gray-400 italic font-mono">{summaryData.totalSalesCount || 0} Items Sold</p>
+                    <div className="grid grid-cols-4 gap-4 mb-4 border-b border-gray-100 pb-4">
+                        <div className="flex flex-col">
+                            <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">Total Sales</p>
+                            <p className="text-xs font-black text-black">UGX {summaryData.totalRevenue.toLocaleString()}</p>
+                            <p className="text-[7px] font-bold text-gray-400 italic font-mono">{summaryData.totalSalesCount || 0} Items</p>
                         </div>
-                        <div className="flex flex-col gap-1">
-                            <p className="text-[10px] font-black text-[#008542] uppercase tracking-widest">Tied PV/BV</p>
-                            <p className="text-sm font-black text-black">{summaryData.totalPV.toLocaleString()} PV</p>
-                            <p className="text-[8px] font-bold text-gray-400 italic font-mono">{summaryData.totalBV.toLocaleString()} BV</p>
+                        <div className="flex flex-col border-l border-gray-100 pl-4">
+                            <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">Tied PV/BV</p>
+                            <p className="text-xs font-black text-black">{summaryData.totalPV.toLocaleString()} PV</p>
+                            <p className="text-[7px] font-bold text-gray-400 italic font-mono">{summaryData.totalBV.toLocaleString()} BV</p>
                         </div>
-                        <div className="flex flex-col gap-1">
-                            <p className="text-[10px] font-black text-[#008542] uppercase tracking-widest">Net Profit</p>
-                            <p className="text-sm font-black text-black">UGX {summaryData.totalProfit.toLocaleString()}</p>
-                            <p className="text-[8px] font-bold text-gray-400 italic font-mono">After Expenses</p>
+                        <div className="flex flex-col border-l border-gray-100 pl-4">
+                            <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">Net Profit</p>
+                            <p className="text-xs font-black text-black">UGX {summaryData.totalProfit.toLocaleString()}</p>
+                            <p className="text-[7px] font-bold text-gray-400 italic font-mono">After Expenses</p>
                         </div>
-                        <div className="flex flex-col gap-1">
-                            <p className="text-[10px] font-black text-[#008542] uppercase tracking-widest">Stock Value</p>
-                            <p className="text-sm font-black text-black">UGX {summaryData.totalInventorySellingPrice.toLocaleString()}</p>
-                            <p className="text-[8px] font-bold text-gray-400 italic font-mono">Est. Revenue</p>
+                        <div className="flex flex-col border-l border-gray-100 pl-4">
+                            <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">Stock Value</p>
+                            <p className="text-xs font-black text-black">UGX {summaryData.totalInventorySellingPrice.toLocaleString()}</p>
+                            <p className="text-[7px] font-bold text-gray-400 italic font-mono">Est. Revenue</p>
                         </div>
                     </div>
                 )}
@@ -308,7 +310,7 @@ export function ReportTable<T>({
                     <tbody>
                         {data.map((item, rowIdx) => (
                             <tr key={rowIdx} className={cn("border-b border-gray-200", rowIdx % 2 === 1 ? "bg-gray-50" : "bg-white")}>
-                                <td className="px-1 py-2 text-[10px] border-r border-gray-300 text-center font-bold text-gray-500 w-8">{rowIdx + 1}</td>
+                                <td className="px-1 py-2 text-[10px] border-r border-gray-300 text-center font-bold text-gray-500 w-8">{(startIndex || 0) + rowIdx + 1}</td>
                                 {columns.map((col, colIdx) => (
                                     <td
                                         key={colIdx}

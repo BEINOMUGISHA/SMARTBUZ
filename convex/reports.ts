@@ -207,6 +207,7 @@ export const getLoanSummary = query({
         shopId: v.optional(v.id("shops")),
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
+        clientType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         let loanQuery = ctx.db.query("loans");
@@ -233,8 +234,13 @@ export const getLoanSummary = query({
         const salesMapForFilter = new Map(salesDocsForJoin.filter(s => !!s).map(s => [s!._id, s]));
 
         let filteredResults = results;
-        if (args.shopId) {
-            filteredResults = results.filter(l => salesMapForFilter.get(l.salesId)?.shopId === args.shopId);
+        if (args.shopId || args.clientType) {
+            filteredResults = results.filter(l => {
+                const sale = salesMapForFilter.get(l.salesId);
+                const matchesShop = !args.shopId || sale?.shopId === args.shopId;
+                const matchesClient = !args.clientType || args.clientType === "All" || sale?.clientType === args.clientType;
+                return matchesShop && matchesClient;
+            });
         }
 
         // Apply pagination manually after filtering
@@ -288,6 +294,7 @@ export const getLoanSummaryCount = query({
         shopId: v.optional(v.id("shops")),
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
+        clientType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         let loanQuery = ctx.db.query("loans");
@@ -298,11 +305,16 @@ export const getLoanSummaryCount = query({
         }
         const loans = await loanQuery.collect();
 
-        if (args.shopId) {
+        if (args.shopId || args.clientType) {
             const salesIds = [...new Set(loans.map(l => l.salesId))];
             const salesDocs = await Promise.all(salesIds.map(id => ctx.db.get(id)));
             const salesMap = new Map(salesDocs.filter(s => !!s).map(s => [s!._id, s]));
-            return loans.filter(l => salesMap.get(l.salesId)?.shopId === args.shopId).length;
+            return loans.filter(l => {
+                const sale = salesMap.get(l.salesId);
+                const matchesShop = !args.shopId || sale?.shopId === args.shopId;
+                const matchesClient = !args.clientType || args.clientType === "All" || sale?.clientType === args.clientType;
+                return matchesShop && matchesClient;
+            }).length;
         }
 
         return loans.length;

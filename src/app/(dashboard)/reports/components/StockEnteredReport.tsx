@@ -123,26 +123,36 @@ export function StockEnteredReport() {
                         )
                     },
                     {
-                        header: "Total PV/BV",
+                        header: "Total PV",
                         accessor: (e: any) => (
-                            <div className="flex flex-col text-right text-[10px] font-mono whitespace-nowrap">
-                                <span className="font-black">{(e.pv * e.quantity).toLocaleString()} PV</span>
-                                <span className="font-black text-muted-foreground">{(e.bv * e.quantity).toLocaleString()} BV</span>
-                            </div>
+                            <span className="font-black text-amber-600 text-xs">{(e.pv * e.quantity).toLocaleString()}</span>
                         ),
-                        exportValue: (e: any) => `${(e.pv * e.quantity).toLocaleString()} PV / ${(e.bv * e.quantity).toLocaleString()} BV`,
-                        className: "text-right bg-amber-50/10"
+                        exportValue: (e: any) => (e.pv * e.quantity).toLocaleString(),
+                        className: "text-right"
                     },
                     {
-                        header: "Total Financials",
+                        header: "Total BV",
                         accessor: (e: any) => (
-                            <div className="flex flex-col text-right text-[10px] font-mono whitespace-nowrap">
-                                <span className="font-black text-emerald-700">UGX {(e.purchasePrice * e.quantity).toLocaleString()}</span>
-                                <span className="font-black text-primary">UGX {(e.price * e.quantity).toLocaleString()}</span>
-                            </div>
+                            <span className="font-black text-blue-600 text-xs">{(e.bv * e.quantity).toLocaleString()}</span>
                         ),
-                        exportValue: (e: any) => `Cost: ${(e.purchasePrice * e.quantity).toLocaleString()} | Value: ${(e.price * e.quantity).toLocaleString()}`,
-                        className: "text-right bg-primary/5"
+                        exportValue: (e: any) => (e.bv * e.quantity).toLocaleString(),
+                        className: "text-right"
+                    },
+                    {
+                        header: "Total Cost",
+                        accessor: (e: any) => (
+                            <span className="font-black text-emerald-700 text-xs">{(e.purchasePrice * e.quantity).toLocaleString()}</span>
+                        ),
+                        exportValue: (e: any) => (e.purchasePrice * e.quantity).toLocaleString(),
+                        className: "text-right"
+                    },
+                    {
+                        header: "Total Value",
+                        accessor: (e: any) => (
+                            <span className="font-black text-primary text-xs">{(e.price * e.quantity).toLocaleString()}</span>
+                        ),
+                        exportValue: (e: any) => (e.price * e.quantity).toLocaleString(),
+                        className: "text-right"
                     },
                     {
                         header: "Verified By",

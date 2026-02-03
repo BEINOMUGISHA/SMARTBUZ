@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/input";
 import { ReportTable } from "./reports-table";
 import { ReportFilters } from "./ReportFilters";
 import { ReportSummary } from "./ReportSummary";
+import { SearchableSelect } from "./SearchableSelect";
+import { Id } from "../../../../../convex/_generated/dataModel";
+import { CreditCard, Store, Users, UserCircle } from "lucide-react";
 
 export function LoansReport() {
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
@@ -19,12 +22,22 @@ export function LoansReport() {
         to: format(new Date(), "yyyy-MM-dd")
     });
 
+    const [selectedShop, setSelectedShop] = useState<string>("all");
+    const [customerId, setCustomerId] = useState<string>("all");
+    const [clientType, setClientType] = useState<string>("All");
+
+    const shops = useQuery(api.shops.listAll);
+    const customers = useQuery(api.customers.listAll);
+
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
     const loansArgs = {
         startDate: dateRange.from,
-        endDate: dateRange.to
+        endDate: dateRange.to,
+        shopId: selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
+        customerId: customerId === "all" ? undefined : (customerId as Id<"customers">),
+        clientType: clientType === "All" ? undefined : clientType,
     };
 
     const { results: loansRecords, status: loansStatus, loadMore: loadMoreLoans, isLoading: loansLoading } = usePaginatedQuery(
@@ -35,8 +48,7 @@ export function LoansReport() {
 
     const totalLoansCount = useQuery(api.reports.getLoanSummaryCount, loansArgs) || 0;
     const summaryData = useQuery(api.reports.getReportsSummary, {
-        startDate: dateRange.from,
-        endDate: dateRange.to,
+        ...loansArgs,
         search: search || undefined
     });
 
@@ -45,22 +57,53 @@ export function LoansReport() {
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-3 bg-white p-3 rounded-xl border shadow-xs">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <ReportFilters
                         dateRange={dateRange}
                         reportMode={reportMode}
                         onDateRangeChange={setDateRange}
                         onReportModeChange={setReportMode}
                     />
-                    <div className="text-[10px] font-black text-muted-foreground italic px-3 bg-muted/20 h-8 flex items-center rounded-lg">
-                        CREDIT OVERSIGHT
-                    </div>
+
+                    <SearchableSelect
+                        options={[
+                            { value: "all", label: "All Branches" },
+                            ...(shops || []).map(s => ({ value: s._id, label: s.name }))
+                        ]}
+                        value={selectedShop}
+                        onValueChange={setSelectedShop}
+                        placeholder="Select Branch"
+                        width="180px"
+                    />
+
+                    <SearchableSelect
+                        options={[
+                            { value: "All", label: "All Client Types" },
+                            { value: "Standard Client", label: "Standard Client" },
+                            { value: "HP Client", label: "HP Client" }
+                        ]}
+                        value={clientType}
+                        onValueChange={setClientType}
+                        placeholder="Client Type"
+                        width="150px"
+                    />
+
+                    <SearchableSelect
+                        options={[
+                            { value: "all", label: "All Distributors" },
+                            ...(customers || []).map(c => ({ value: c._id, label: c.name }))
+                        ]}
+                        value={customerId}
+                        onValueChange={setCustomerId}
+                        placeholder="Distributor"
+                        width="180px"
+                    />
                 </div>
 
                 <div className="relative w-full">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search debtors by name or phone..."
+                        placeholder="Search debtors by name, phone or product..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-9 text-xs border-muted-foreground/10 bg-muted/5 focus:bg-white transition-all"
