@@ -144,19 +144,22 @@ export function exportToPDF(data: any[], columns: Column[], filename: string, ti
     }
 
     // Prepare table data
-    const tableHeaders = columns.map(c => c.header.toUpperCase());
-    const tableData = data.map(item => {
-        return columns.map(col => {
-            if (col.exportValue) {
-                return String(col.exportValue(item));
-            }
+    const tableHeaders = ["#", ...columns.map(c => c.header.toUpperCase())];
+    const tableData = data.map((item, rowIdx) => {
+        return [
+            String(rowIdx + 1),
+            ...columns.map(col => {
+                if (col.exportValue) {
+                    return String(col.exportValue(item));
+                }
 
-            let value = typeof col.accessor === "function" ? col.accessor(item) : item[col.accessor];
-            if (typeof value === "object" && value !== null && "props" in value) {
-                value = extractTextFromReact(value);
-            }
-            return value;
-        });
+                let value = typeof col.accessor === "function" ? col.accessor(item) : item[col.accessor as string];
+                if (typeof value === "object" && value !== null && "props" in value) {
+                    value = extractTextFromReact(value);
+                }
+                return value;
+            })
+        ];
     });
 
     // Generate Table
@@ -167,7 +170,7 @@ export function exportToPDF(data: any[], columns: Column[], filename: string, ti
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: [0, 133, 66], textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [245, 245, 245] },
-        margin: { top: currentY },
+        margin: { top: 20 },
     });
 
     doc.save(`${filename}.pdf`);
@@ -176,7 +179,7 @@ export function exportToPDF(data: any[], columns: Column[], filename: string, ti
 /**
  * Helper to extract plain text from React elements in accessor functions
  */
-function extractTextFromReact(element: any): string {
+export function extractTextFromReact(element: any): string {
     if (typeof element === "string" || typeof element === "number") return String(element);
     if (!element) return "";
 

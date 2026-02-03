@@ -147,17 +147,7 @@ function StockTable({ halfPrice, search, summaryData }: { halfPrice: boolean; se
                     className: "text-center"
                 },
                 {
-                    header: "Unit Price",
-                    accessor: (item: any) => (
-                        <div className="flex flex-col text-right">
-                            <span className="font-black">UGX {item.price.toLocaleString()}</span>
-                            <span className="text-[9px] text-muted-foreground">Cost: {item.purchasePrice.toLocaleString()}</span>
-                        </div>
-                    ),
-                    className: "text-right"
-                },
-                {
-                    header: "PV/BV",
+                    header: "PV/BV Units",
                     accessor: (item: any) => (
                         <div className="flex flex-col text-right text-[10px] font-mono">
                             <span className="text-amber-600 font-bold">{item.pv} PV</span>
@@ -165,6 +155,28 @@ function StockTable({ halfPrice, search, summaryData }: { halfPrice: boolean; se
                         </div>
                     ),
                     className: "text-right"
+                },
+                {
+                    header: "Total PV/BV",
+                    accessor: (item: any) => (
+                        <div className="flex flex-col text-right text-[10px] font-mono whitespace-nowrap">
+                            <span className="font-black">{(item.pv * item.totalQty).toLocaleString()} PV</span>
+                            <span className="font-black text-muted-foreground">{(item.bv * item.totalQty).toLocaleString()} BV</span>
+                        </div>
+                    ),
+                    exportValue: (item: any) => `${(item.pv * item.totalQty).toLocaleString()} PV / ${(item.bv * item.totalQty).toLocaleString()} BV`,
+                    className: "text-right bg-amber-50/10"
+                },
+                {
+                    header: "Total Cost/Value",
+                    accessor: (item: any) => (
+                        <div className="flex flex-col text-right text-[10px] font-mono whitespace-nowrap">
+                            <span className="font-black text-emerald-700">{(item.purchasePrice * item.totalQty).toLocaleString()}</span>
+                            <span className="font-black text-primary">{(item.price * item.totalQty).toLocaleString()}</span>
+                        </div>
+                    ),
+                    exportValue: (item: any) => `Cost: ${(item.purchasePrice * item.totalQty).toLocaleString()} | Value: ${(item.price * item.totalQty).toLocaleString()}`,
+                    className: "text-right bg-primary/5"
                 },
             ]}
         />

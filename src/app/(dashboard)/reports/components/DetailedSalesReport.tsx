@@ -148,7 +148,8 @@ export function DetailedSalesReport() {
                         header: "Date/Time",
                         accessor: (s: any) => (
                             <div className="font-mono leading-tight">
-                                <div className="font-black">{format(new Date(s._creationTime), "dd MMM yyyy")}</div>
+                                <div className="font-black text-[10px]">{format(new Date(s._creationTime), "dd MMM")}</div>
+                                <div className="font-black text-[10px]">{format(new Date(s._creationTime), "yyyy")}</div>
                                 <div className="text-[9px] text-muted-foreground">{format(new Date(s._creationTime), "HH:mm:ss")}</div>
                             </div>
                         )

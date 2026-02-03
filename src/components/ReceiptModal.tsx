@@ -42,8 +42,12 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                                 visibility: visible !important; 
                             }
                             
-                            /* Reset margins */
-                            @page { margin: 0.5cm; size: auto; }
+                            /* Reset margins to hide browser header/footer */
+                            @page { margin: 0; size: auto; }
+                            
+                            #print-portal {
+                                padding: 0.5cm !important;
+                            }
                         }
                         /* Hide print container on screen */
                         @media screen {

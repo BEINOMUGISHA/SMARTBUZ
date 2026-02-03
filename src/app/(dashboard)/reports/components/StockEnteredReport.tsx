@@ -123,6 +123,28 @@ export function StockEnteredReport() {
                         )
                     },
                     {
+                        header: "Total PV/BV",
+                        accessor: (e: any) => (
+                            <div className="flex flex-col text-right text-[10px] font-mono whitespace-nowrap">
+                                <span className="font-black">{(e.pv * e.quantity).toLocaleString()} PV</span>
+                                <span className="font-black text-muted-foreground">{(e.bv * e.quantity).toLocaleString()} BV</span>
+                            </div>
+                        ),
+                        exportValue: (e: any) => `${(e.pv * e.quantity).toLocaleString()} PV / ${(e.bv * e.quantity).toLocaleString()} BV`,
+                        className: "text-right bg-amber-50/10"
+                    },
+                    {
+                        header: "Total Financials",
+                        accessor: (e: any) => (
+                            <div className="flex flex-col text-right text-[10px] font-mono whitespace-nowrap">
+                                <span className="font-black text-emerald-700">UGX {(e.purchasePrice * e.quantity).toLocaleString()}</span>
+                                <span className="font-black text-primary">UGX {(e.price * e.quantity).toLocaleString()}</span>
+                            </div>
+                        ),
+                        exportValue: (e: any) => `Cost: ${(e.purchasePrice * e.quantity).toLocaleString()} | Value: ${(e.price * e.quantity).toLocaleString()}`,
+                        className: "text-right bg-primary/5"
+                    },
+                    {
                         header: "Verified By",
                         accessor: (e: any) => (
                             <div className="flex items-center gap-2">

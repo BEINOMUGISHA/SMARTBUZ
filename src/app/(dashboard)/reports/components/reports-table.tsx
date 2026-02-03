@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Printer, FileSpreadsheet, FileText } from "lucide-react";
-import { exportToExcel, exportToPDF } from "@/lib/export-utils";
+import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
 import { cn } from "@/lib/utils";
 import {
     Select,
@@ -214,9 +214,15 @@ export function ReportTable<T>({
                     
                     #report-print-container * { 
                         visibility: visible !important; 
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
                     }
 
-                    @page { margin: 1.5cm; size: auto; }
+                    @page { margin: 0; size: auto; }
+                    
+                    #report-print-container {
+                        padding: 1.5cm !important;
+                    }
                     
                     .print-break-inside-avoid {
                         page-break-inside: avoid;
@@ -247,26 +253,26 @@ export function ReportTable<T>({
 
                 {/* SUMMARY CARDS IN PRINT */}
                 {summaryData && (
-                    <div className="grid grid-cols-4 gap-4 mb-8 print-break-inside-avoid">
-                        <div className="border-2 border-emerald-100 p-3 rounded-xl bg-emerald-50/10">
-                            <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Sales</p>
-                            <p className="text-sm font-black">UGX {summaryData.totalRevenue.toLocaleString()}</p>
-                            <p className="text-[8px] font-bold text-gray-500 italic">{summaryData.itemCount} Items Sold</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8 border-b-2 border-gray-100 pb-8">
+                        <div className="flex flex-col gap-1">
+                            <p className="text-[10px] font-black text-[#008542] uppercase tracking-widest">Total Sales</p>
+                            <p className="text-sm font-black text-black">UGX {summaryData.totalRevenue.toLocaleString()}</p>
+                            <p className="text-[8px] font-bold text-gray-400 italic font-mono">{summaryData.totalSalesCount || 0} Items Sold</p>
                         </div>
-                        <div className="border-2 border-amber-100 p-3 rounded-xl bg-amber-50/10">
-                            <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest mb-1">Tied PV/BV</p>
-                            <p className="text-sm font-black">{summaryData.totalPV.toLocaleString()} PV</p>
-                            <p className="text-[8px] font-bold text-gray-500 italic">{summaryData.totalBV.toLocaleString()} BV</p>
+                        <div className="flex flex-col gap-1">
+                            <p className="text-[10px] font-black text-[#008542] uppercase tracking-widest">Tied PV/BV</p>
+                            <p className="text-sm font-black text-black">{summaryData.totalPV.toLocaleString()} PV</p>
+                            <p className="text-[8px] font-bold text-gray-400 italic font-mono">{summaryData.totalBV.toLocaleString()} BV</p>
                         </div>
-                        <div className="border-2 border-blue-100 p-3 rounded-xl bg-blue-50/10">
-                            <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mb-1">Net Profit</p>
-                            <p className="text-sm font-black">UGX {summaryData.totalProfit.toLocaleString()}</p>
-                            <p className="text-[8px] font-bold text-gray-500 italic">After Expenses</p>
+                        <div className="flex flex-col gap-1">
+                            <p className="text-[10px] font-black text-[#008542] uppercase tracking-widest">Net Profit</p>
+                            <p className="text-sm font-black text-black">UGX {summaryData.totalProfit.toLocaleString()}</p>
+                            <p className="text-[8px] font-bold text-gray-400 italic font-mono">After Expenses</p>
                         </div>
-                        <div className="border-2 border-purple-100 p-3 rounded-xl bg-purple-50/10">
-                            <p className="text-[8px] font-black text-purple-600 uppercase tracking-widest mb-1">Stock Value</p>
-                            <p className="text-sm font-black">UGX {summaryData.totalInventorySellingPrice.toLocaleString()}</p>
-                            <p className="text-[8px] font-bold text-gray-500 italic">Est. Revenue</p>
+                        <div className="flex flex-col gap-1">
+                            <p className="text-[10px] font-black text-[#008542] uppercase tracking-widest">Stock Value</p>
+                            <p className="text-sm font-black text-black">UGX {summaryData.totalInventorySellingPrice.toLocaleString()}</p>
+                            <p className="text-[8px] font-bold text-gray-400 italic font-mono">Est. Revenue</p>
                         </div>
                     </div>
                 )}
@@ -276,11 +282,24 @@ export function ReportTable<T>({
                     {subtitle && <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5 tracking-wide">{subtitle}</p>}
                 </div>
 
-                <table className="w-full border-collapse border border-gray-200">
+                <table className="w-full border-collapse border border-gray-300 print:text-[10px]">
                     <thead>
-                        <tr className="bg-gray-100 border-b-2 border-gray-300">
+                        <tr className="!bg-[#008542] !print:bg-[#008542] border-b-2 border-emerald-800">
+                            <th className="px-1 py-3 text-center font-black uppercase text-[10px] border-r border-emerald-700 w-8 text-white !print:text-white">#</th>
                             {columns.map((col, idx) => (
-                                <th key={idx} className={cn("px-3 py-2 text-left font-black uppercase text-[9px] border-r border-gray-300 last:border-0 text-gray-700", col.className)}>
+                                <th
+                                    key={idx}
+                                    className={cn(
+                                        "px-3 py-2 text-[10px] border-r border-gray-300 last:border-0 !text-white !print:text-white",
+                                        // Filter alignment: only keep text-center, text-right, text-left
+                                        // This ensures it stays white even if col.className has text-primary
+                                        col.className?.split(" ").filter(c =>
+                                            c === "text-center" || c === "text-right" || c === "text-left" || (!c.startsWith("text-") && !c.startsWith("bg-"))
+                                        ).join(" "),
+                                        // Override global text-left if center/right is provided in col.className
+                                        (col.className?.includes("text-center") || col.className?.includes("text-right")) ? "" : "text-left"
+                                    )}
+                                >
                                     {col.header}
                                 </th>
                             ))}
@@ -288,14 +307,26 @@ export function ReportTable<T>({
                     </thead>
                     <tbody>
                         {data.map((item, rowIdx) => (
-                            <tr key={rowIdx} className="border-b border-gray-100">
+                            <tr key={rowIdx} className={cn("border-b border-gray-200", rowIdx % 2 === 1 ? "bg-gray-50" : "bg-white")}>
+                                <td className="px-1 py-2 text-[10px] border-r border-gray-300 text-center font-bold text-gray-500 w-8">{rowIdx + 1}</td>
                                 {columns.map((col, colIdx) => (
-                                    <td key={colIdx} className={cn("px-3 py-1.5 text-[9px] border-r border-gray-100 last:border-0", col.className)}>
+                                    <td
+                                        key={colIdx}
+                                        className={cn(
+                                            "px-3 py-2 text-[10px] border-r border-gray-300 last:border-0 !text-black font-medium whitespace-pre-line",
+                                            // Strip background and non-alignment text colors
+                                            col.className?.split(" ").filter(c =>
+                                                c === "text-center" || c === "text-right" || c === "text-left" || (!c.startsWith("text-") && !c.startsWith("bg-"))
+                                            ).join(" ")
+                                        )}
+                                    >
                                         {(col as any).exportValue
                                             ? (col as any).exportValue(item)
-                                            : (typeof col.accessor === "function"
-                                                ? (col as any).accessor(item)
-                                                : (item as any)[col.accessor as any])}
+                                            : extractTextFromReact(
+                                                typeof col.accessor === "function"
+                                                    ? col.accessor(item)
+                                                    : (item as any)[col.accessor as any]
+                                            )}
                                     </td>
                                 ))}
                             </tr>
