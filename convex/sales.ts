@@ -50,6 +50,7 @@ export const create = mutation({
         })),
         isLoan: v.optional(v.boolean()),
         paymentDueDate: v.optional(v.string()),
+        initialDeposit: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
         console.log(`Creating sale for user ${args.userId} (Client: ${args.clientType})`);
@@ -124,17 +125,34 @@ export const create = mutation({
             items: args.items,
             isLoan: args.isLoan,
             paymentDueDate: args.paymentDueDate,
+            initialDeposit: args.initialDeposit,
         });
 
         // Handle Loans
-        if (args.isLoan && args.customerId && args.paymentDueDate) {
-            await ctx.db.insert("loans", {
-                customerId: args.customerId,
+        if (args.isLoan && args.paymentDueDate) {
+            const deposit = args.initialDeposit || 0;
+            const loanBalance = args.total - deposit;
+
+            const loanId = await ctx.db.insert("loans", {
+                customerId: args.customerId !== undefined ? args.customerId : undefined, // Explicitly undefined if missing
+                manualCustomerName: args.manualCustomerName,
                 salesId: saleId,
                 amount: args.total,
-                balance: args.total,
+                balance: loanBalance,
                 date: new Date().toISOString(),
             });
+
+            // If there's an initial deposit, record it as a payment
+            if (deposit > 0) {
+                await ctx.db.insert("payments", {
+                    loanId: loanId,
+                    shopId: shop?._id,
+                    customerId: args.customerId,
+                    amount: deposit,
+                    date: new Date().toISOString(),
+                    balance: loanBalance,
+                });
+            }
         }
 
         // Log activity
@@ -205,7 +223,7 @@ export const mySalesStats = query({
             );
         }
 
-        // 2. Apply Filters
+        // 2. Apply Filters (REMOVE loan exclusion for Hybrid view)
         if (args.customerId) {
             salesQuery = salesQuery.filter((q: any) => q.eq(q.field("customerId"), args.customerId));
         }
@@ -214,36 +232,84 @@ export const mySalesStats = query({
             if (args.filterType === "HP") {
                 salesQuery = salesQuery.filter((q: any) => q.eq(q.field("clientType"), "HP Client"));
             } else if (args.filterType === "Loans") {
-                salesQuery = salesQuery.filter((q: any) => q.eq(q.field("isLoan"), true));
+                salesQuery = salesQuery.filter((q: any) =>
+                    q.or(
+                        q.eq(q.field("isLoan"), true),
+                        q.eq(q.field("paymentMode"), "Loan")
+                    )
+                );
+            } else if (args.filterType === "Walk-in") {
+                salesQuery = salesQuery.filter((q: any) => q.eq(q.field("customerId"), undefined));
             } else {
                 salesQuery = salesQuery.filter((q: any) => q.neq(q.field("clientType"), "HP Client"));
             }
         }
 
-        // 3. Collect & Search
+        // 3. Fetch Data for Audit
         const sales = await salesQuery.collect();
+        const paymentsQuery = ctx.db
+            .query("payments")
+            .withIndex("by_shop_date", (q: any) =>
+                q.eq("shopId", shop._id)
+                    .gte("date", args.from || "0")
+                    .lte("date", args.to || "z")
+            );
+
+        const allPayments = await paymentsQuery.collect();
+
+        // 4. apply Search/Customer filters to both Sales AND Payments for consistent auditing
         let filteredSales = sales;
+        let filteredPayments = allPayments;
+
+        if (args.customerId) {
+            filteredPayments = allPayments.filter((p: any) => p.customerId === args.customerId);
+        }
 
         if (args.searchTerm) {
             const lowerSearch = args.searchTerm.toLowerCase();
-            filteredSales = sales.filter((s: any) =>
-                s.manualCustomerName?.toLowerCase().includes(lowerSearch) ||
-                s._id.toLowerCase().includes(lowerSearch)
-            );
+            const customerIds = [...new Set(sales.map((s: any) => s.customerId).filter((id: any): id is Id<"customers"> => !!id))];
+            const customers = await Promise.all(customerIds.map((id: any) => ctx.db.get(id)));
+            const customerMap = new Map(customers.filter(c => c !== null).map(c => [c!._id, c]));
+
+            filteredSales = sales.filter((s: any) => {
+                const customer = s.customerId ? (customerMap.get(s.customerId) as any) : null;
+                return s.manualCustomerName?.toLowerCase().includes(lowerSearch) ||
+                    s._id.toLowerCase().includes(lowerSearch) ||
+                    customer?.name?.toLowerCase().includes(lowerSearch) ||
+                    customer?.distributorId?.toLowerCase().includes(lowerSearch);
+            });
+
+            // For payments search, we'd need to fetch loans/sales... For now, we'll audit against filtered sales
+            // A professional audit usually filters Volume by search, but Collection is often "All Cash In".
+            // However, for consistency, let's just use the shop-scoped flows if no specific customer is selected.
         }
 
-        // Calculate Stats
-        const totalSales = filteredSales.reduce((sum: number, s: any) => sum + s.total, 0);
-        const totalHP = filteredSales
-            .filter((s: any) => s.clientType === "HP Client")
-            .reduce((sum: number, s: any) => sum + s.total, 0);
+        // 5. Calculate Stats (Comprehensive Net Audit Model)
+        let totalVolume = 0;
+        let totalCollected = 0;
+        let totalOutstanding = 0;
 
-        const totalRegular = totalSales - totalHP;
+        // VOLUME: Value of goods moved in this period
+        filteredSales.forEach((s: any) => {
+            totalVolume += (s.total || 0);
+        });
+
+        // COLLECTION: Total physical cash received in this period (Retail + Deposits + Installments)
+        // Includes non-loan sales + all payments in the period
+        const cashSalesOnly = filteredSales.filter((s: any) => !s.isLoan && s.paymentMode !== "Loan");
+        const cashTotals = cashSalesOnly.reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+        const paymentTotals = filteredPayments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+        totalCollected = cashTotals + paymentTotals;
+
+        // OUTSTANDING: The net growth/reduction of debt in the shop's books for this period
+        // Identity: Volume (Items Out) = Collection (Cash In) + Outstanding (Unpaid Gap)
+        totalOutstanding = totalVolume - totalCollected;
 
         return {
-            totalSales,
-            totalRegular,
-            totalHP,
+            totalVolume,
+            totalCollected,
+            totalOutstanding,
             count: filteredSales.length
         };
     },
@@ -292,7 +358,7 @@ export const mySales = query({
             salesQuery = salesQuery.withIndex("by_shop_date", (q: any) => q.eq("shopId", shop._id));
         }
 
-        // 2. Apply Filters
+        // 2. Apply Filters (REMOVE restriction for Hybrid view)
         let filteredQuery = salesQuery;
 
         if (args.customerId) { // Apply customer filter if present, after shop scope
@@ -303,7 +369,14 @@ export const mySales = query({
             if (args.filterType === "HP") {
                 filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("clientType"), "HP Client"));
             } else if (args.filterType === "Loans") {
-                filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("isLoan"), true));
+                filteredQuery = filteredQuery.filter((q: any) =>
+                    q.or(
+                        q.eq(q.field("isLoan"), true),
+                        q.eq(q.field("paymentMode"), "Loan")
+                    )
+                );
+            } else if (args.filterType === "Walk-in") {
+                filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("customerId"), undefined));
             } else {
                 filteredQuery = filteredQuery.filter((q: any) => q.neq(q.field("clientType"), "HP Client"));
             }
@@ -325,15 +398,19 @@ export const mySales = query({
         const shopIds = [...new Set(results.page.map((s: any) => s.shopId).filter((id: any): id is Id<"shops"> => !!id))];
         const userIds = [...new Set(results.page.map((s: any) => s.userId))];
 
-        const [customers, shops, users] = await Promise.all([
+        const [customers, shops, users, loans] = await Promise.all([
             Promise.all(customerIds.map((id: any) => ctx.db.get(id))),
             Promise.all(shopIds.map((id: any) => ctx.db.get(id))),
             Promise.all(userIds.map((id: any) => ctx.db.get(id))),
+            Promise.all(results.page.filter((s: any) => s.isLoan === true || s.paymentMode === "Loan").map((s: any) =>
+                ctx.db.query("loans").withIndex("by_salesId", (q: any) => q.eq("salesId", s._id)).first()
+            )),
         ]);
 
         const customerMap = new Map(customers.filter(c => c !== null).map(c => [c!._id, c]));
         const shopMap = new Map(shops.filter(s => s !== null).map(s => [s!._id, s]));
         const userMap = new Map(users.filter(u => u !== null).map(u => [u!._id, u]));
+        const loanMap = new Map(loans.filter(l => l !== null).map(l => [l!.salesId, l]));
 
         // 4. Enrich & Client-Side Filter for Search (Paginated page only - acceptable for now)
         // To do full search properly, we'd need a separate endpoint or search index.
@@ -342,6 +419,7 @@ export const mySales = query({
             const customer = sale.customerId ? (customerMap.get(sale.customerId) ?? null) : null;
             const shop = sale.shopId ? (shopMap.get(sale.shopId) ?? null) : null;
             const userDoc = userMap.get(sale.userId) as Doc<"users"> | undefined;
+            const loan = loanMap.get(sale._id) ?? null;
 
             const operatorName = userDoc
                 ? `${userDoc.first_name} ${userDoc.last_name}${userDoc.middle_name ? ` ${userDoc.middle_name}` : ""}`
@@ -351,6 +429,7 @@ export const mySales = query({
                 ...sale,
                 customer,
                 shop,
+                loan,
                 operator: userDoc ? {
                     name: operatorName,
                     phone: userDoc.phone_number,
@@ -360,22 +439,19 @@ export const mySales = query({
         });
 
         // Filter enriched page by search term if exists (Note: this effectively reduces page size, which is a trade-off)
-        if (args.searchTerm) {
-            const lowerSearch = args.searchTerm.toLowerCase();
-            const filteredPage = enrichedPage.filter((s: any) =>
-                s.manualCustomerName?.toLowerCase().includes(lowerSearch) ||
-                s.customer?.name.toLowerCase().includes(lowerSearch) ||
-                s._id.toLowerCase().includes(lowerSearch)
+        const filteredPage = enrichedPage.filter((s: any) => {
+            const matchesSearch = !args.searchTerm || (
+                s.manualCustomerName?.toLowerCase().includes(args.searchTerm.toLowerCase()) ||
+                s.customer?.name.toLowerCase().includes(args.searchTerm.toLowerCase()) ||
+                s.customer?.distributorId?.toLowerCase().includes(args.searchTerm.toLowerCase()) ||
+                s._id.toLowerCase().includes(args.searchTerm.toLowerCase())
             );
-            return {
-                ...results,
-                page: filteredPage
-            };
-        }
+            return matchesSearch;
+        });
 
         return {
             ...results,
-            page: enrichedPage,
+            page: filteredPage,
         };
     },
 });
@@ -415,7 +491,7 @@ export const mySalesCount = query({
             salesQuery = salesQuery.withIndex("by_shop_date", (q: any) => q.eq("shopId", shop._id));
         }
 
-        // Apply Filters
+        // Apply Filters (REMOVE restriction for Hybrid view)
         let filteredQuery = salesQuery;
 
         if (args.customerId) {
@@ -426,10 +502,36 @@ export const mySalesCount = query({
             if (args.filterType === "HP") {
                 filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("clientType"), "HP Client"));
             } else if (args.filterType === "Loans") {
-                filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("isLoan"), true));
+                filteredQuery = filteredQuery.filter((q: any) =>
+                    q.or(
+                        q.eq(q.field("isLoan"), true),
+                        q.eq(q.field("paymentMode"), "Loan")
+                    )
+                );
+            } else if (args.filterType === "Walk-in") {
+                filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("customerId"), undefined));
             } else {
                 filteredQuery = filteredQuery.filter((q: any) => q.neq(q.field("clientType"), "HP Client"));
             }
+        }
+
+        // Apply Search Filter if needed
+        if (args.searchTerm) {
+            const lowerSearch = args.searchTerm.toLowerCase();
+            const sales = await filteredQuery.collect();
+
+            const customerIds = [...new Set(sales.map((s: any) => s.customerId).filter((id: any): id is Id<"customers"> => !!id))];
+            const customers = await Promise.all(customerIds.map((id: any) => ctx.db.get(id)));
+            const customerMap = new Map(customers.filter(c => c !== null).map(c => [c!._id, c]));
+
+            const searchedSales = sales.filter((s: any) => {
+                const customer = s.customerId ? (customerMap.get(s.customerId) as any) : null;
+                return s.manualCustomerName?.toLowerCase().includes(lowerSearch) ||
+                    s._id.toLowerCase().includes(lowerSearch) ||
+                    customer?.name?.toLowerCase().includes(lowerSearch) ||
+                    customer?.distributorId?.toLowerCase().includes(lowerSearch);
+            });
+            return searchedSales.length;
         }
 
         return (await filteredQuery.collect()).length;

@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 
 import { ReceiptModal } from "@/components/ReceiptModal";
 import { MySalesView } from "./my-sales-view";
+import { LoansView } from "./loans-view";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn, formatError } from "@/lib/utils";
@@ -40,12 +41,13 @@ export default function SalesPage() {
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
             <SalesHeader />
             <Tabs defaultValue="regular" className="flex-1 flex flex-col">
-                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 lg:w-[750px] h-auto p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-sm rounded-xl">
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 lg:w-[850px] h-auto p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-sm rounded-xl">
                     <TabsTrigger value="regular" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Regular Sales</TabsTrigger>
                     <TabsTrigger value="hp" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">HP Sales</TabsTrigger>
-                    <TabsTrigger value="restock" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-destructive">Restock</TabsTrigger>
                     <TabsTrigger value="packages" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Packages</TabsTrigger>
+                    <TabsTrigger value="restock" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-destructive">Restock</TabsTrigger>
                     <TabsTrigger value="mysales" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">My Sales</TabsTrigger>
+                    <TabsTrigger value="loans" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-orange-600">Loans</TabsTrigger>
                 </TabsList>
 
                 <div className="flex-1 mt-4 overflow-hidden">
@@ -54,6 +56,9 @@ export default function SalesPage() {
                     </TabsContent>
                     <TabsContent value="hp" className="h-full m-0">
                         <SalesInterface isHp={true} />
+                    </TabsContent>
+                    <TabsContent value="loans" className="h-full m-0">
+                        <LoansView />
                     </TabsContent>
                     <TabsContent value="restock" className="h-full m-0">
                         <RestockView />
@@ -122,6 +127,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [isLoan, setIsLoan] = useState(false);
     const [manualName, setManualName] = useState("");
     const [paymentDate, setPaymentDate] = useState<string>("");
+    const [initialDeposit, setInitialDeposit] = useState<string>(""); // New State
     const [isLoading, setIsLoading] = useState(false);
     const [receiptData, setReceiptData] = useState<any | null>(null);
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
@@ -275,9 +281,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         }
 
         if (isLoan) {
-            if (selectedCustomerId === "walk-in") {
+            // RELAXED: Loans CAN be for walk-ins, but must have a manual name
+            if (selectedCustomerId === "walk-in" && !manualName) {
                 newErrors.customer = true;
-                toast.error("Loans require a selected customer.");
+                toast.error("Walk-in loans require a customer Name.");
             }
             if (!paymentDate) {
                 newErrors.paymentDate = true;
@@ -296,6 +303,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             toast.error("You must be logged in to process sales.");
             return;
         }
+
+        const depositValue = initialDeposit ? parseInt(initialDeposit.replace(/,/g, "")) : 0;
 
         try {
             setIsLoading(true);
@@ -317,6 +326,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 customerId: selectedCustomerId === "walk-in" ? undefined : selectedCustomerId,
                 isLoan,
                 paymentDueDate: isLoan ? paymentDate : undefined,
+                initialDeposit: isLoan ? depositValue : undefined, // Pass deposit
             });
 
             // Prepare Receipt Data
@@ -353,6 +363,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 total: cartTotal,
                 totalPV: totalPV,
                 totalBV: totalBV,
+                initialDeposit: isLoan ? depositValue : undefined,
+                balance: isLoan ? (cartTotal - depositValue) : undefined,
             };
 
             setReceiptData(receipt);
@@ -364,9 +376,11 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             localStorage.removeItem(key);
             setManualName("");
             setPaymentDate("");
+            setInitialDeposit("");
             setIsLoan(false);
 
         } catch (error) {
+            console.error(error);
             toast.error(formatError(error));
         } finally {
             setIsLoading(false);
@@ -417,7 +431,6 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                     <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
                                                     <TableCell className="font-medium">
                                                         {stock.name}
-                                                        {isShopUser && <Badge variant="secondary" className="ml-2 text-[10px] h-4">Shop Stock</Badge>}
                                                     </TableCell>
                                                     <TableCell className="text-right font-mono">{stock.price.toLocaleString()}</TableCell>
                                                     <TableCell className="text-right text-xs text-muted-foreground">
@@ -658,7 +671,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     </div>
                                 </div>
 
-                                {(clientType === "HP Client" || (clientType === "Non-Member" && selectedCustomerId === "walk-in")) && (
+                                {(clientType === "HP Client" || (clientType === "Non-Member" && selectedCustomerId === "walk-in") || (isLoan && selectedCustomerId === "walk-in")) && (
                                     <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
                                         <Label className="text-xs">Customer/Walk-in Name (Optional)</Label>
                                         <Input
@@ -671,21 +684,36 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 )}
 
                                 {isLoan && (
-                                    <div className={`space-y-1 animate-in fade-in slide-in-from-top-2 p-2 rounded-md border ${formErrors.paymentDate ? "bg-destructive/5 border-destructive" : "bg-orange-50 border-orange-100"}`}>
-                                        <Label className={`text-xs font-medium flex items-center gap-2 ${formErrors.paymentDate ? "text-destructive" : "text-orange-700"}`}>
-                                            <CalendarIcon className="h-3 w-3" />
-                                            Payment Due Date
-                                        </Label>
-                                        <Input
-                                            type="date"
-                                            value={paymentDate}
-                                            onChange={(e) => {
-                                                setPaymentDate(e.target.value);
-                                                setFormErrors(prev => ({ ...prev, paymentDate: false }));
-                                            }}
-                                            className={`h-8 bg-white focus-visible:ring-orange-500 ${formErrors.paymentDate ? "border-destructive" : "border-orange-200"}`}
-                                            min={new Date().toISOString().split("T")[0]}
-                                        />
+                                    <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
+                                        <div className={`space-y-1 p-2 rounded-md border ${formErrors.paymentDate ? "bg-destructive/5 border-destructive" : "bg-orange-50 border-orange-100"}`}>
+                                            <Label className={`text-xs font-medium flex items-center gap-2 ${formErrors.paymentDate ? "text-destructive" : "text-orange-700"}`}>
+                                                <CalendarIcon className="h-3 w-3" />
+                                                Due Date
+                                            </Label>
+                                            <Input
+                                                type="date"
+                                                value={paymentDate}
+                                                onChange={(e) => {
+                                                    setPaymentDate(e.target.value);
+                                                    setFormErrors(prev => ({ ...prev, paymentDate: false }));
+                                                }}
+                                                className={`h-8 bg-white focus-visible:ring-orange-500 ${formErrors.paymentDate ? "border-destructive" : "border-orange-200"}`}
+                                                min={new Date().toISOString().split("T")[0]}
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1 p-2 rounded-md border bg-blue-50 border-blue-100">
+                                            <Label className="text-xs font-medium flex items-center gap-2 text-blue-700">
+                                                <Banknote className="h-3 w-3" />
+                                                Initial Deposit
+                                            </Label>
+                                            <Input
+                                                placeholder="Amount"
+                                                value={initialDeposit}
+                                                onChange={(e) => setInitialDeposit(e.target.value)}
+                                                className="h-8 bg-white border-blue-200 focus-visible:ring-blue-500"
+                                            />
+                                        </div>
                                     </div>
                                 )}
                             </div>

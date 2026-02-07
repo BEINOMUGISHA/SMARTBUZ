@@ -14,6 +14,7 @@ export interface ReceiptData {
     totalPV: number;
     totalBV: number;
     balance?: number;
+    initialDeposit?: number; // Added field
 }
 
 export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
@@ -37,13 +38,13 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                     <div className="flex items-center gap-2">
                         <span>DISTRIBUTOR'S NAME:</span>
                         <div className="border border-black h-6 w-full px-2 flex items-center">
-                            {data.customer?.name || "Walk-in Customer"}
+                            {data.customer?.name || ""}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
                         <span>DISTRIBUTOR'S CONTACTS:</span>
                         <div className="border border-black h-6 w-full px-2 flex items-center">
-                            {data.customer?.phone || "-"}
+                            {data.customer?.phone || ""}
                         </div>
                     </div>
                 </div>
@@ -55,7 +56,7 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                         <div className="flex gap-[2px]">
                             {(data.customer?.distributorId || data.customer?.email || "").slice(0, 8).padEnd(8, " ").split("").map((char, i) => (
                                 <div key={i} className="border border-black w-6 h-6 flex items-center justify-center">
-                                    {char}
+                                    {char.trim() || ""}
                                 </div>
                             ))}
                         </div>
@@ -63,7 +64,7 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                     <div className="flex items-center gap-2">
                         <span>SHOP SERIAL NO:</span>
                         <div className="border border-black h-6 px-2 flex items-center justify-center text-xs w-24">
-                            {data.shop.serialNumber || "-"}
+                            {data.shop.serialNumber || ""}
                         </div>
                     </div>
                 </div>
@@ -102,7 +103,7 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
 
                     return (
                         <div key={i} className="grid grid-cols-12 border-b border-black text-black last:border-0">
-                            <div className="p-2 border-r border-black break-words">{item.productCode || "-"}</div>
+                            <div className="p-2 border-r border-black break-words">{item.productCode || ""}</div>
                             <div className="p-2 border-r border-black break-words col-span-3">{item.name}</div>
                             <div className="p-2 border-r border-black break-words">{item.qty}</div>
                             <div className="p-2 border-r border-black break-words">{item.pv}</div>
@@ -130,7 +131,7 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
             </div>
 
             {/* Footer Infos */}
-            <div className="mt-8 text-sm border-t border-gray-300 pt-4 print:break-inside-avoid">
+            <div className="mt-2 text-sm  pt-4 print:break-inside-avoid">
                 <div className="mb-4">
                     <p className="font-semibold mb-1">Mode of Payment</p>
                     <p className="font-bold">{data.paymentMode}</p>
@@ -140,22 +141,38 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                         </p>
                     )}
                 </div>
-                <div className="mb-4">
-                    <p className="font-bold">GRAND TOTAL</p>
-                    <p className="text-lg font-semibold">UGX {data.total.toLocaleString()}</p>
+
+                <div className="mb-2 space-y-1">
+                    <div className="flex justify-between items-baseline">
+                        <p className="font-bold">GRAND TOTAL</p>
+                        <p className="text-lg font-semibold">UGX {data.total.toLocaleString()}</p>
+                    </div>
+
+                    {/* NEW: Initial Deposit Display */}
+                    {(data.initialDeposit !== undefined && data.initialDeposit > 0) && (
+                        <div className="flex justify-between items-baseline text-green-700">
+                            <p className="font-medium">Initial Deposit</p>
+                            <p className="font-bold">UGX {data.initialDeposit.toLocaleString()}</p>
+                        </div>
+                    )}
+
+                    {/* NEW: Balance Due Display */}
+                    {data.balance !== undefined && (
+                        <div className="flex justify-between items-baseline text-red-600 border-t border-dashed border-gray-300 pt-1 mt-1">
+                            <p className="font-bold">BALANCE DUE</p>
+                            <p className="font-bold">UGX {data.balance.toLocaleString()}</p>
+                        </div>
+                    )}
                 </div>
-                <div className="grid grid-cols-2 gap-6 mt-6">
+
+                <div className="grid grid-cols-2 gap-6 mt-2">
                     <p>Date:</p>
                     <div className="border-b border-gray-300 h-6 mt-1 text-xs text-gray-700">
                         {new Date(data.date).toLocaleDateString()}
                     </div>
                 </div>
-                <p className="italic text-xs text-gray-500 mt-4">Please confirm that the Tianshi ID Number is correctly filled.</p>
-                <p className="text-xs text-center mt-6">
-                    <strong>Copies:</strong> First - Office | Second - Distributors | Third - Speciality Shop
-                </p>
 
-                <div className="grid grid-cols-2 gap-6 p-4 mt-4 text-sm text-gray-800 border-t border-gray-300 pt-4">
+                <div className="grid grid-cols-2 gap-6 p-4 mt-4 text-sm text-gray-800  pt-2">
                     <div className="space-y-1">
                         <p className="font-bold mb-2 border-b border-dashed border-black pb-1">Shop Info</p>
                         <div className="flex"><span className="w-24 font-semibold">Name:</span> <span>{data.shop.name}</span></div>
@@ -164,9 +181,9 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                     </div>
                     <div className="space-y-1">
                         <p className="font-bold mb-2 border-b border-dashed border-black pb-1">Shop Operator</p>
-                        <div className="flex"><span className="w-24 font-semibold">Name:</span> <span>{data.operator?.name || "N/A"}</span></div>
-                        <div className="flex"><span className="w-24 font-semibold">Phone:</span> <span>{data.operator?.phone || "N/A"}</span></div>
-                        <div className="flex"><span className="w-24 font-semibold">Email:</span> <span>{data.operator?.email || "N/A"}</span></div>
+                        <div className="flex"><span className="w-24 font-semibold">Name:</span> <span>{data.operator?.name || ""}</span></div>
+                        <div className="flex"><span className="w-24 font-semibold">Phone:</span> <span>{data.operator?.phone || ""}</span></div>
+                        <div className="flex"><span className="w-24 font-semibold">Email:</span> <span>{data.operator?.email || ""}</span></div>
                     </div>
                 </div>
             </div>

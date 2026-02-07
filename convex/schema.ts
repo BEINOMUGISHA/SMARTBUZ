@@ -80,6 +80,7 @@ export default defineSchema({
         paymentDueDate: v.optional(v.string()),
         paymentMode: v.optional(v.string()), // Cash, Mobile Money, Bank Transfer, Loan, Bonus Transfer, None
         manualCustomerName: v.optional(v.string()), // For walk-in customers
+        initialDeposit: v.optional(v.number()), // Recorded deposit for loans
         items: v.array(
             v.object({
                 stockId: v.id("stocks"),
@@ -96,19 +97,27 @@ export default defineSchema({
         .index("by_customer_date", ["customerId", "date"]),
 
     loans: defineTable({
-        customerId: v.id("customers"),
+        customerId: v.optional(v.id("customers")), // Made optional for Walk-ins
+        manualCustomerName: v.optional(v.string()), // For walk-in tracking
         salesId: v.id("sales"),
         amount: v.number(),
         balance: v.number(),
         date: v.string(),
-    }).index("by_customer", ["customerId"]),
+    })
+        .index("by_customer", ["customerId"])
+        .index("by_salesId", ["salesId"]),
 
     payments: defineTable({
         loanId: v.id("loans"),
+        shopId: v.optional(v.id("shops")), // Scoped for auditing
+        customerId: v.optional(v.id("customers")), // Scoped for auditing
         amount: v.number(),
         date: v.string(),
         balance: v.number(),
-    }).index("by_loan", ["loanId"]),
+    })
+        .index("by_loan", ["loanId"])
+        .index("by_date", ["date"])
+        .index("by_shop_date", ["shopId", "date"]),
 
     expenses: defineTable({
         date: v.string(),

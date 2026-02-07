@@ -252,7 +252,7 @@ export const getLoanSummary = query({
 
         // Wait, convex pagination is cursor based.
         // For reports with complex filters, we often collect all and paginate manually.
-        const customerIds = [...new Set(filteredResults.map(l => l.customerId))];
+        const customerIds = [...new Set(filteredResults.map(l => l.customerId).filter((id): id is Id<"customers"> => !!id))];
         const salesIds = [...new Set(filteredResults.map(l => l.salesId))];
 
         const [customers, salesDocs] = await Promise.all([
@@ -260,15 +260,15 @@ export const getLoanSummary = query({
             Promise.all(salesIds.map(id => ctx.db.get(id))),
         ]);
 
-        const customerMap = new Map(customers.filter(c => c !== null).map(c => [c!._id, c]));
-        const salesMap = new Map(salesDocs.filter(s => s !== null).map(s => [s!._id, s]));
+        const customerMap = new Map(customers.filter((c): c is NonNullable<typeof c> => c !== null).map(c => [c._id, c]));
+        const salesMap = new Map(salesDocs.filter((s): s is NonNullable<typeof s> => s !== null).map(s => [s._id, s]));
 
         const page = pageItems.map(l => {
-            const customer = customerMap.get(l.customerId);
+            const customer = l.customerId ? customerMap.get(l.customerId) : undefined;
             const sale = salesMap.get(l.salesId);
             return {
                 ...l,
-                customerName: customer?.name || "Unknown",
+                customerName: customer?.name || l.manualCustomerName || "Walk-in/Unknown",
                 customerPhone: customer?.phone || "-",
                 date: l.date || sale?.date || "-",
                 items: sale?.items || [],
