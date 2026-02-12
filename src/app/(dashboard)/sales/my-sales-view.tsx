@@ -409,8 +409,8 @@ export function MySalesView() {
                                     </TableRow>
                                 ) : currentView.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                                            {status === "LoadingFirstPage" ? <Loader2 className="animate-spin mx-auto" /> : "No sales found for this period."}
+                                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                            No sales found for this period.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
