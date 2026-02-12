@@ -51,6 +51,8 @@ export const create = mutation({
         isLoan: v.optional(v.boolean()),
         paymentDueDate: v.optional(v.string()),
         initialDeposit: v.optional(v.number()),
+        packageType: v.optional(v.string()), // Bronze, Silver, Gold
+        deliveryStatus: v.optional(v.string()), // Taken, Pending
     },
     handler: async (ctx, args) => {
         console.log(`Creating sale for user ${args.userId} (Client: ${args.clientType})`);
@@ -64,7 +66,7 @@ export const create = mutation({
 
         // Deduct Stock
         if (shop) {
-            // SHOP SALE: Deduct from shop.issuedStocks
+            // SHOP SALE: Deduct from shop.issuedStocks (ALLOW NEGATIVE)
             const updatedStocks = [...shop.issuedStocks];
 
             for (const item of args.items) {
@@ -74,9 +76,10 @@ export const create = mutation({
                 }
 
                 const currentQty = updatedStocks[stockIndex].qty;
-                if (currentQty < item.quantity) {
-                    throw new Error(`Insufficient stock for ${item.name} in shop. Available: ${currentQty}`);
-                }
+                // [CHANGED] We allow negative stock now as per user request
+                // if (currentQty < item.quantity) {
+                //     throw new Error(`Insufficient stock for ${item.name} in shop. Available: ${currentQty}`);
+                // }
 
                 updatedStocks[stockIndex] = {
                     ...updatedStocks[stockIndex],
@@ -90,7 +93,7 @@ export const create = mutation({
             });
 
         } else {
-            // HQ SALE: Deduct from main warehouse 'stocks'
+            // HQ SALE: Deduct from main warehouse 'stocks' (ALLOW NEGATIVE)
             // [OPTIMIZED] Batch fetch all stocks first to avoid N+1
             const stockIds = args.items.map(i => i.stockId);
             const stockDocs = await Promise.all(stockIds.map(id => ctx.db.get(id)));
@@ -102,9 +105,10 @@ export const create = mutation({
                     throw new Error(`Item ${item.name} not found in warehouse`);
                 }
 
-                if (stock.qty < item.quantity) {
-                    throw new Error(`Insufficient stock for ${item.name} in warehouse. Available: ${stock.qty}`);
-                }
+                // [CHANGED] We allow negative stock now as per user request
+                // if (stock.qty < item.quantity) {
+                //     throw new Error(`Insufficient stock for ${item.name} in warehouse. Available: ${stock.qty}`);
+                // }
 
                 await ctx.db.patch(item.stockId, {
                     qty: stock.qty - item.quantity,
@@ -126,7 +130,68 @@ export const create = mutation({
             isLoan: args.isLoan,
             paymentDueDate: args.paymentDueDate,
             initialDeposit: args.initialDeposit,
+            packageType: args.packageType,
+            deliveryStatus: args.deliveryStatus,
         });
+
+        // ---------------------------------------------------------
+        // PROMOTION TRIGGER LOGIC
+        // ---------------------------------------------------------
+        const triggeredRedemptions = [];
+
+        // 1. Fetch all active promotions
+        const activePromotions = await ctx.db
+            .query("promotions")
+            .filter(q => q.eq(q.field("isActive"), true))
+            .collect();
+
+        if (activePromotions.length > 0) {
+            const activePromoIds = new Set(activePromotions.map(p => p._id));
+
+            // 2. Fetch products linked to these promotions
+            // Optimization: We only care about products that are IN the cart.
+            const cartStockIds = new Set(args.items.map(i => i.stockId));
+
+            const allPromotionProducts = await ctx.db
+                .query("promotionProducts")
+                .collect(); // Table scan is acceptable if not huge. Indexed query would be better if we could `in` query.
+
+            // Filter in memory for now
+            const relevantPromoProducts = allPromotionProducts.filter(pp =>
+                activePromoIds.has(pp.promotionId) && cartStockIds.has(pp.stockId)
+            );
+
+            // 3. Check for triggers
+            for (const item of args.items) {
+                const triggers = relevantPromoProducts.filter(pp => pp.stockId === item.stockId);
+
+                for (const trigger of triggers) {
+                    const promotion = activePromotions.find(p => p._id === trigger.promotionId);
+                    if (!promotion) continue;
+
+                    const redemptionCount = Math.floor(item.quantity / trigger.requiredQuantity);
+
+                    if (redemptionCount > 0) {
+                        const redemptionData = {
+                            promotionId: promotion._id,
+                            salesId: saleId,
+                            customerId: args.customerId,
+                            userId: args.userId,
+                            shopId: shop ? shop._id : args.shopId,
+                            date,
+                            redeemedQuantity: redemptionCount,
+                            productName: item.name,
+                            productCode: item.productCode,
+                            prize: promotion.prize,
+                        };
+
+                        await ctx.db.insert("promotionRedemptions", redemptionData);
+                        triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
+                    }
+                }
+            }
+        }
+        // ---------------------------------------------------------
 
         // Handle Loans
         if (args.isLoan && args.paymentDueDate) {
@@ -163,7 +228,7 @@ export const create = mutation({
             timestamp: new Date().toISOString(),
         });
 
-        return saleId;
+        return { saleId, redemptions: triggeredRedemptions };
     },
 });
 
@@ -176,6 +241,8 @@ export const mySalesStats = query({
         email: v.optional(v.string()), // Manual Auth
         customerId: v.optional(v.id("customers")),
         searchTerm: v.optional(v.string()),
+        packageType: v.optional(v.string()),
+        deliveryStatus: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         if (!args.email) throw new Error("Unauthorized");
@@ -243,6 +310,14 @@ export const mySalesStats = query({
             } else {
                 salesQuery = salesQuery.filter((q: any) => q.neq(q.field("clientType"), "HP Client"));
             }
+        }
+
+        if (args.packageType) {
+            salesQuery = salesQuery.filter((q: any) => q.eq(q.field("packageType"), args.packageType));
+        }
+
+        if (args.deliveryStatus) {
+            salesQuery = salesQuery.filter((q: any) => q.eq(q.field("deliveryStatus"), args.deliveryStatus));
         }
 
         // 3. Fetch Data for Audit
@@ -325,6 +400,8 @@ export const mySales = query({
         email: v.optional(v.string()), // Manual Auth
         customerId: v.optional(v.id("customers")),
         searchTerm: v.optional(v.string()),
+        packageType: v.optional(v.string()),
+        deliveryStatus: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         if (!args.email) throw new Error("Unauthorized");
@@ -380,6 +457,14 @@ export const mySales = query({
             } else {
                 filteredQuery = filteredQuery.filter((q: any) => q.neq(q.field("clientType"), "HP Client"));
             }
+        }
+
+        if (args.packageType) {
+            filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("packageType"), args.packageType));
+        }
+
+        if (args.deliveryStatus) {
+            filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("deliveryStatus"), args.deliveryStatus));
         }
 
         // 3. Search Logic (Pre-pagination filter is tricky without dedicated search index)
@@ -464,6 +549,8 @@ export const mySalesCount = query({
         email: v.optional(v.string()),
         customerId: v.optional(v.id("customers")),
         searchTerm: v.optional(v.string()), // Added for consistency
+        packageType: v.optional(v.string()),
+        deliveryStatus: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         if (!args.email) return 0;
@@ -513,6 +600,14 @@ export const mySalesCount = query({
             } else {
                 filteredQuery = filteredQuery.filter((q: any) => q.neq(q.field("clientType"), "HP Client"));
             }
+        }
+
+        if (args.packageType) {
+            filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("packageType"), args.packageType));
+        }
+
+        if (args.deliveryStatus) {
+            filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("deliveryStatus"), args.deliveryStatus));
         }
 
         // Apply Search Filter if needed

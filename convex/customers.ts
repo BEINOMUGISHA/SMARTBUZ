@@ -56,7 +56,6 @@ export const add = mutation({
         email: v.optional(v.string()),
         distributorId: v.optional(v.string()),
         address: v.optional(v.string()),
-        packageId: v.optional(v.id("packages")),
     },
     handler: async (ctx, args) => {
         return await ctx.db.insert("customers", args);
@@ -72,7 +71,6 @@ export const update = mutation({
         email: v.optional(v.string()),
         distributorId: v.optional(v.string()),
         address: v.optional(v.string()),
-        packageId: v.optional(v.id("packages")),
     },
     handler: async (ctx, args) => {
         const { id, ...rest } = args;

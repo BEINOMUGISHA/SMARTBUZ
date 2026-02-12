@@ -126,31 +126,25 @@ async function runSeedSales(ctx: any) {
     }
 }
 
-async function runSeedPackages(ctx: any) {
-    const packages = [
-        { name: "Silver Package", amount: 500000, bv: 100, pv: 50, registrationFee: 20000, isPaid: true },
-        { name: "Gold Package", amount: 1500000, bv: 300, pv: 150, registrationFee: 20000, isPaid: true },
-        { name: "Platinum Package", amount: 3000000, bv: 600, pv: 300, registrationFee: 20000, isPaid: true },
+async function runSeedPromotions(ctx: any) {
+    const promotions = [
+        { name: "New Year Promo", prize: "Free T-Shirt & Cap", isActive: true },
+        { name: "Mega Sales Event", prize: "UGX 50,000 Voucher", isActive: true },
     ];
-    const packageIds = [];
-    for (const pkg of packages) {
-        const existing = await ctx.db.query("packages").filter((q: any) => q.eq(q.field("name"), pkg.name)).first();
-        if (existing) {
-            packageIds.push(existing._id);
-        } else {
-            const id = await ctx.db.insert("packages", pkg);
-            packageIds.push(id);
+    for (const promo of promotions) {
+        const existing = await ctx.db.query("promotions").filter((q: any) => q.eq(q.field("name"), promo.name)).first();
+        if (!existing) {
+            await ctx.db.insert("promotions", promo);
         }
     }
-    return packageIds;
 }
 
-async function runSeedDistributors(ctx: any, packageIds: Id<"packages">[]) {
+async function runSeedDistributors(ctx: any) {
     const distributors = [
-        { name: "Kato Joseph", phone: "0771112233", email: "kato@tiens.com", distributorId: "UG00112233", address: "Kampala, Katwe", packageId: packageIds[0] },
-        { name: "Nabaasa Sarah", phone: "0755443322", email: "sarah@tiens.com", distributorId: "UG44556677", address: "Mbarara, High Street", packageId: packageIds[1] },
-        { name: "Mukasa David", phone: "0700112233", email: "david@tiens.com", distributorId: "UG99887766", address: "Entebbe, Abayita Ababiri", packageId: packageIds[2] },
-        { name: "Atuhaire Peace", phone: "0788990011", email: "peace@tiens.com", distributorId: "UG11224455", address: "Gulu, Gulu Main Street", packageId: packageIds[0] },
+        { name: "Kato Joseph", phone: "0771112233", email: "kato@tiens.com", distributorId: "UG00112233", address: "Kampala, Katwe" },
+        { name: "Nabaasa Sarah", phone: "0755443322", email: "sarah@tiens.com", distributorId: "UG44556677", address: "Mbarara, High Street" },
+        { name: "Mukasa David", phone: "0700112233", email: "david@tiens.com", distributorId: "UG99887766", address: "Entebbe, Abayita Ababiri" },
+        { name: "Atuhaire Peace", phone: "0788990011", email: "peace@tiens.com", distributorId: "UG11224455", address: "Gulu, Gulu Main Street" },
     ];
     for (const d of distributors) {
         const existing = await ctx.db.query("customers").withIndex("by_phone", (q: any) => q.eq("phone", d.phone)).unique();
@@ -259,8 +253,8 @@ export const seedEverything = mutation({
         await seedUsersInternal(ctx);
         await runSeedStocks(ctx, catIds);
         await runSeedLargeStock(ctx, catIds);
-        const pkgIds = await runSeedPackages(ctx);
-        await runSeedDistributors(ctx, pkgIds);
+        await runSeedPromotions(ctx);
+        await runSeedDistributors(ctx);
         await runSeedShops(ctx);
         await runSeedSales(ctx);
         await runSeedHPSales(ctx);

@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "@/lib/utils";
 
 export interface ReceiptData {
     customer?: { name: string; phone: string; email: string; distributorId?: string };
@@ -14,7 +15,15 @@ export interface ReceiptData {
     totalPV: number;
     totalBV: number;
     balance?: number;
-    initialDeposit?: number; // Added field
+    initialDeposit?: number;
+    packageType?: string;
+    deliveryStatus?: string;
+    promotions?: {
+        promotionName: string;
+        prize: string;
+        redeemedQuantity: number;
+        productName: string;
+    }[];
 }
 
 export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
@@ -76,6 +85,12 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                             {data.clientType}
                         </div>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <span>DELIVERY STATUS:</span>
+                        <div className={cn("border border-black h-6 w-full px-2 flex items-center font-bold", data.deliveryStatus === "Pending" ? "text-red-600 bg-red-50" : "text-green-700 bg-green-50")}>
+                            {data.deliveryStatus === "Pending" ? "PAID BUT NOT TAKEN" : "FULLY DELIVERED"}
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -128,6 +143,27 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                     <div className="col-span-1 p-2 border-r border-black text-right">{data.totalBV}</div>
                     <div className="col-span-1 p-2 text-right">{data.total.toLocaleString()}</div>
                 </div>
+
+                {/* Promotions Section */}
+                {data.promotions && data.promotions.length > 0 && (
+                    <div className="border-t-2 border-dashed border-black mt-4 pt-2">
+                        <div className="font-bold text-center uppercase mb-2">Promotions Won</div>
+                        <div className="grid grid-cols-12 font-bold border-b border-black text-[10px]">
+                            <div className="col-span-4 p-1 border-r border-black">PROMOTION</div>
+                            <div className="col-span-4 p-1 border-r border-black">PRIZE</div>
+                            <div className="col-span-2 p-1 border-r border-black text-center">QTY</div>
+                            <div className="col-span-2 p-1 text-center">SOURCE</div>
+                        </div>
+                        {data.promotions.map((promo, i) => (
+                            <div key={i} className="grid grid-cols-12 border-b border-black text-[10px]">
+                                <div className="col-span-4 p-1 border-r border-black">{promo.promotionName || "Promo"}</div>
+                                <div className="col-span-4 p-1 border-r border-black">{promo.prize}</div>
+                                <div className="col-span-2 p-1 border-r border-black text-center">{promo.redeemedQuantity}</div>
+                                <div className="col-span-2 p-1 text-center truncate">{promo.productName}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Footer Infos */}
@@ -139,6 +175,12 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                         <p className="text-red-600 text-xs mt-1 italic">
                             Due Date: {new Date(data.paymentDueDate).toLocaleDateString()}
                         </p>
+                    )}
+                    {data.packageType && (
+                        <div className="mt-2 p-2 bg-indigo-50 border border-indigo-200 rounded text-indigo-800">
+                            <p className="text-[10px] font-bold uppercase tracking-widest">Package Applied</p>
+                            <p className="text-sm font-black">{data.packageType} Package</p>
+                        </div>
                     )}
                 </div>
 

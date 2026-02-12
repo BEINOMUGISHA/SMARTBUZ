@@ -240,7 +240,7 @@ export const getShopStock = query({
         if (args.availability === "inStock") {
             stocks = stocks.filter(s => s.qty > 0);
         } else if (args.availability === "outOfStock") {
-            stocks = stocks.filter(s => s.qty === 0);
+            stocks = stocks.filter(s => s.qty <= 0);
         }
 
         // Map to match the shape of the main 'stocks' table for UI consistency if needed

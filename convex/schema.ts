@@ -50,24 +50,34 @@ export default defineSchema({
         email: v.optional(v.string()),
         distributorId: v.optional(v.string()), // Custom ID for receipts
         address: v.optional(v.string()),
-        packageId: v.optional(v.id("packages")),
     }).index("by_phone", ["phone"]),
 
-    packages: defineTable({
+    promotions: defineTable({
         name: v.string(),
-        amount: v.number(),
-        bv: v.number(),
-        pv: v.number(),
-        registrationFee: v.number(),
-        isPaid: v.boolean(),
-        distributorId: v.optional(v.id("customers")),
-    }),
+        prize: v.string(), // "what you win"
+        isActive: v.boolean(),
+    }).searchIndex("search_name", { searchField: "name" }),
 
-    packageProducts: defineTable({
-        packageId: v.id("packages"),
+    promotionProducts: defineTable({
+        promotionId: v.id("promotions"),
         stockId: v.id("stocks"),
-        quantity: v.number(),
-    }).index("by_package", ["packageId"]),
+        requiredQuantity: v.number(),
+    }).index("by_promotion", ["promotionId"]),
+
+    promotionRedemptions: defineTable({
+        promotionId: v.id("promotions"),
+        salesId: v.id("sales"),
+        customerId: v.optional(v.id("customers")),
+        userId: v.id("users"),
+        shopId: v.optional(v.id("shops")),
+        date: v.string(),
+        redeemedQuantity: v.number(), // How many times it was triggered
+        productName: v.string(), // Name of product that triggered it (snapshot)
+        productCode: v.optional(v.string()),
+        prize: v.string(), // Snapshot of prize
+    })
+        .index("by_shop_date", ["shopId", "date"])
+        .index("by_salesId", ["salesId"]),
 
     sales: defineTable({
         customerId: v.optional(v.id("customers")),
@@ -92,6 +102,8 @@ export default defineSchema({
                 bv: v.number(),
             })
         ),
+        packageType: v.optional(v.string()), // Bronze, Silver, Gold
+        deliveryStatus: v.optional(v.string()), // Taken, Pending
     }).index("by_date", ["date"])
         .index("by_shop_date", ["shopId", "date"])
         .index("by_customer_date", ["customerId", "date"]),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id, Doc } from "../../../../convex/_generated/dataModel";
@@ -24,6 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn, formatError } from "@/lib/utils";
 import { generateRestockPDF } from "@/lib/restock-pdf";
+import { PromotionsReportView } from "./promotions-report-view";
 // Types
 type CartItem = {
     stockId: Id<"stocks">;
@@ -44,7 +45,7 @@ export default function SalesPage() {
                 <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 lg:w-[850px] h-auto p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-sm rounded-xl">
                     <TabsTrigger value="regular" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Regular Sales</TabsTrigger>
                     <TabsTrigger value="hp" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">HP Sales</TabsTrigger>
-                    <TabsTrigger value="packages" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Packages</TabsTrigger>
+                    <TabsTrigger value="promotions" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Promotions</TabsTrigger>
                     <TabsTrigger value="restock" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-destructive">Restock</TabsTrigger>
                     <TabsTrigger value="mysales" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">My Sales</TabsTrigger>
                     <TabsTrigger value="loans" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-orange-600">Loans</TabsTrigger>
@@ -63,12 +64,8 @@ export default function SalesPage() {
                     <TabsContent value="restock" className="h-full m-0">
                         <RestockView />
                     </TabsContent>
-                    <TabsContent value="packages" className="h-full m-0">
-                        <div className="flex flex-col items-center justify-center h-full text-muted-foreground bg-muted/10 rounded-lg border border-dashed border-muted p-12">
-                            <Package className="h-16 w-16 mb-4 opacity-50" />
-                            <h3 className="text-xl font-semibold">Package Sales Module</h3>
-                            <p className="mt-2 text-center max-w-sm">This module is currently under development. Please check back later for package selling capabilities.</p>
-                        </div>
+                    <TabsContent value="promotions" className="h-full m-0">
+                        <PromotionsReportView />
                     </TabsContent>
                     <TabsContent value="mysales" className="h-full m-0">
                         <MySalesView />
@@ -131,6 +128,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [isLoading, setIsLoading] = useState(false);
     const [receiptData, setReceiptData] = useState<any | null>(null);
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
+    const [packageType, setPackageType] = useState<string>("Bronze"); // Bronze, Silver, Gold
+    const [deliveryStatus, setDeliveryStatus] = useState<string>("Taken"); // Taken, Pending
 
     // Auto-select "Loan" payment method when isLoan is true
     useEffect(() => {
@@ -151,7 +150,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const shopData = useQuery(api.stocks.getShopStock, {
         searchTerm: debouncedSearch || undefined,
         halfPrice: isHp,
-        availability: "inStock",
+        availability: "all",
         email: user?.email || undefined,
         limit: rowsPerPage,
         offset: (currentPage - 1) * rowsPerPage,
@@ -165,6 +164,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
     const customers = useQuery(api.customers.listAll);
     const createSale = useMutation(api.sales.create);
+    const activePromotions = useQuery(api.promotions.getActivePromotionsWithProducts);
 
     useEffect(() => {
         const saved = localStorage.getItem("pos_sales_rows_per_page");
@@ -213,10 +213,11 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             const stockId = stock._id || stock.stockId;
 
             if (existing) {
-                if (existing.qty >= existing.maxQty) {
-                    toast.error("Not enough stock available");
-                    return prev;
-                }
+                // [CHANGED] Removed stock limit check to allow negative stock selling
+                // if (existing.qty >= existing.maxQty) {
+                //     toast.error("Not enough stock available");
+                //     return prev;
+                // }
                 return prev.map(i => i.stockId === stockId ? { ...i, qty: i.qty + 1 } : i);
             }
             return [...prev, {
@@ -238,10 +239,11 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 if (item.stockId === stockId) {
                     const newQty = item.qty + delta;
                     if (newQty <= 0) return null;
-                    if (newQty > item.maxQty) {
-                        toast.error("Max stock reached");
-                        return item;
-                    }
+                    // [CHANGED] Removed maxQty check to allow negative stock selling
+                    // if (newQty > item.maxQty) {
+                    //     toast.error("Max stock reached");
+                    //     return item;
+                    // }
                     return { ...item, qty: newQty };
                 }
                 return item;
@@ -308,7 +310,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
         try {
             setIsLoading(true);
-            const saleId = await createSale({
+            const result = await createSale({
                 userId: user._id,
                 total: cartTotal,
                 clientType,
@@ -327,7 +329,13 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 isLoan,
                 paymentDueDate: isLoan ? paymentDate : undefined,
                 initialDeposit: isLoan ? depositValue : undefined, // Pass deposit
+                packageType: paymentMethod === "Package" ? packageType : undefined,
+                deliveryStatus,
             });
+
+            // Handle both legacy (string ID) and new (object) return types for safety
+            // const saleId = typeof result === "object" ? result.saleId : result;
+            const promotions = typeof result === "object" ? result.redemptions : [];
 
             // Prepare Receipt Data
             const selectedCustomer = customers?.find(c => c._id === selectedCustomerId);
@@ -365,6 +373,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 totalBV: totalBV,
                 initialDeposit: isLoan ? depositValue : undefined,
                 balance: isLoan ? (cartTotal - depositValue) : undefined,
+                promotions,
+                packageType: paymentMethod === "Package" ? packageType : undefined,
+                deliveryStatus,
             };
 
             setReceiptData(receipt);
@@ -430,7 +441,15 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                 <TableRow key={stock._id || stock.stockId} className={virtualQty === 0 ? "opacity-50" : ""}>
                                                     <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
                                                     <TableCell className="font-medium">
-                                                        {stock.name}
+                                                        <div className="flex flex-col">
+                                                            <span>{stock.name}</span>
+                                                            {/* PROMO BADGE */}
+                                                            {(!isHp && activePromotions && activePromotions[(stock._id || stock.stockId)]) && (
+                                                                <Badge variant="secondary" className="w-fit mt-1 bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200 text-[10px] px-1 py-0 h-5">
+                                                                    PROMO: {activePromotions[(stock._id || stock.stockId)].promotionName}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell className="text-right font-mono">{stock.price.toLocaleString()}</TableCell>
                                                     <TableCell className="text-right text-xs text-muted-foreground">
@@ -452,11 +471,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                         <Button
                                                             size="sm"
                                                             className="h-8 rounded-lg font-bold transition-transform active:scale-95"
-                                                            variant={virtualQty > 0 ? "secondary" : "outline"}
-                                                            disabled={virtualQty <= 0}
+                                                            variant={virtualQty > 0 ? "secondary" : "destructive"}
                                                             onClick={() => addToCart(stock)}
                                                         >
-                                                            {virtualQty > 0 ? "Add" : "Empty"}
+                                                            {virtualQty > 0 ? "Add" : "Sell Negative"}
                                                         </Button>
                                                     </TableCell>
                                                 </TableRow>
@@ -550,36 +568,57 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     </TableHeader>
                                     <TableBody>
                                         {cart.map(item => (
-                                            <TableRow key={item.stockId}>
-                                                <TableCell className="py-2">
-                                                    <div className="font-medium text-[11px] lg:text-sm line-clamp-1 mb-1">{item.name}</div>
-                                                    <Input
-                                                        className="h-7 w-20 lg:w-24 text-[10px] lg:text-xs"
-                                                        value={item.price}
-                                                        type="number"
-                                                        onChange={(e) => updatePrice(item.stockId, e.target.value)}
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="p-0">
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, -1)}>
-                                                            <Minus className="h-3 w-3" />
+                                            <React.Fragment key={item.stockId}>
+                                                <TableRow className="border-b last:border-0 relative">
+                                                    <TableCell className="py-2 w-[45%]">
+                                                        <div className="font-medium text-[11px] lg:text-sm line-clamp-1 mb-1">{item.name}</div>
+                                                        <Input
+                                                            className="h-7 w-20 lg:w-24 text-[10px] lg:text-xs"
+                                                            value={item.price}
+                                                            type="number"
+                                                            onChange={(e) => updatePrice(item.stockId, e.target.value)}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="p-0 w-[20%]">
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, -1)}>
+                                                                <Minus className="h-3 w-3" />
+                                                            </Button>
+                                                            <span className="w-5 text-center text-xs font-medium">{item.qty}</span>
+                                                            <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, 1)}>
+                                                                <Plus className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-medium text-[11px] flex-1">
+                                                        {(item.price * item.qty).toLocaleString()}
+                                                    </TableCell>
+                                                    <TableCell className="p-2 text-right w-[10%]">
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => removeFromCart(item.stockId)}>
+                                                            <Trash2 className="h-4 w-4" />
                                                         </Button>
-                                                        <span className="w-5 text-center text-xs font-medium">{item.qty}</span>
-                                                        <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, 1)}>
-                                                            <Plus className="h-3 w-3" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="text-right font-medium text-[11px]">
-                                                    {(item.price * item.qty).toLocaleString()}
-                                                </TableCell>
-                                                <TableCell className="p-2 text-right">
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => removeFromCart(item.stockId)}>
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
+                                                    </TableCell>
+                                                </TableRow>
+
+                                                {/* PROMOTION TRIGGER FEEDBACK */}
+                                                {(!isHp && activePromotions && activePromotions[item.stockId]) && (
+                                                    <TableRow className="border-none">
+                                                        <TableCell colSpan={4} className="p-0">
+                                                            <div className="w-full px-2 pb-2">
+                                                                {item.qty >= activePromotions[item.stockId].requiredQty ? (
+                                                                    <div className="text-[10px] text-green-600 font-bold bg-green-50 p-1 rounded-sm border border-green-200 flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                                                                        🎉 Promotion Triggered: {Math.floor(item.qty / activePromotions[item.stockId].requiredQty)}x {activePromotions[item.stockId].prize}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-[10px] text-purple-600 bg-purple-50 p-1 rounded-sm border border-purple-100">
+                                                                        Add {activePromotions[item.stockId].requiredQty - (item.qty % activePromotions[item.stockId].requiredQty)} more for {activePromotions[item.stockId].prize}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </React.Fragment>
                                         ))}
                                     </TableBody>
                                 </Table>
@@ -652,82 +691,121 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                 <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
                                                 <SelectItem value="Bonus Transfer">Bonus Transfer</SelectItem>
                                                 <SelectItem value="Loan">Loan</SelectItem>
+                                                <SelectItem value="Package">Package</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
 
-                                    <div className="flex items-center justify-between bg-background p-2 px-3 rounded-lg border h-9 mt-6">
-                                        <Label htmlFor="loan-toggle" className="text-xs font-medium cursor-pointer">Loan Sale?</Label>
-                                        <Switch
-                                            id="loan-toggle"
-                                            checked={isLoan}
-                                            onCheckedChange={(val) => {
-                                                setIsLoan(val);
-                                                if (!val && paymentMethod === "Loan") setPaymentMethod("Cash");
-                                                if (val) setPaymentMethod("Loan");
-                                                setFormErrors(prev => ({ ...prev, paymentDate: false }));
-                                            }}
-                                        />
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Delivery Status</Label>
+                                        <Select
+                                            value={deliveryStatus}
+                                            onValueChange={setDeliveryStatus}
+                                        >
+                                            <SelectTrigger className="h-9">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Taken">Fully Delivered</SelectItem>
+                                                <SelectItem value="Pending">Paid But Not Taken</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
 
-                                {(clientType === "HP Client" || (clientType === "Non-Member" && selectedCustomerId === "walk-in") || (isLoan && selectedCustomerId === "walk-in")) && (
-                                    <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
-                                        <Label className="text-xs">Customer/Walk-in Name (Optional)</Label>
-                                        <Input
-                                            placeholder="Type customer name..."
-                                            className="h-8 shadow-sm border-primary/20"
-                                            value={manualName}
-                                            onChange={(e) => setManualName(e.target.value)}
-                                        />
+                                {paymentMethod === "Package" && (
+                                    <div className="space-y-1 p-3 bg-indigo-50 border border-indigo-100 rounded-lg animate-in fade-in slide-in-from-top-1">
+                                        <Label className="text-xs font-bold text-indigo-700 flex items-center gap-2">
+                                            <Package className="h-4 w-4" />
+                                            Select Package Type
+                                        </Label>
+                                        <Select
+                                            value={packageType}
+                                            onValueChange={setPackageType}
+                                        >
+                                            <SelectTrigger className="h-9 bg-white border-indigo-200">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Bronze">Bronze Package</SelectItem>
+                                                <SelectItem value="Silver">Silver Package</SelectItem>
+                                                <SelectItem value="Gold">Gold Package</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 )}
 
-                                {isLoan && (
-                                    <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
-                                        <div className={`space-y-1 p-2 rounded-md border ${formErrors.paymentDate ? "bg-destructive/5 border-destructive" : "bg-orange-50 border-orange-100"}`}>
-                                            <Label className={`text-xs font-medium flex items-center gap-2 ${formErrors.paymentDate ? "text-destructive" : "text-orange-700"}`}>
-                                                <CalendarIcon className="h-3 w-3" />
-                                                Due Date
-                                            </Label>
-                                            <Input
-                                                type="date"
-                                                value={paymentDate}
-                                                onChange={(e) => {
-                                                    setPaymentDate(e.target.value);
-                                                    setFormErrors(prev => ({ ...prev, paymentDate: false }));
-                                                }}
-                                                className={`h-8 bg-white focus-visible:ring-orange-500 ${formErrors.paymentDate ? "border-destructive" : "border-orange-200"}`}
-                                                min={new Date().toISOString().split("T")[0]}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1 p-2 rounded-md border bg-blue-50 border-blue-100">
-                                            <Label className="text-xs font-medium flex items-center gap-2 text-blue-700">
-                                                <Banknote className="h-3 w-3" />
-                                                Initial Deposit
-                                            </Label>
-                                            <Input
-                                                placeholder="Amount"
-                                                value={initialDeposit}
-                                                onChange={(e) => setInitialDeposit(e.target.value)}
-                                                className="h-8 bg-white border-blue-200 focus-visible:ring-blue-500"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
+                                <div className="flex items-center justify-between bg-background p-2 px-3 rounded-lg border h-9 mt-6">
+                                    <Label htmlFor="loan-toggle" className="text-xs font-medium cursor-pointer">Loan Sale?</Label>
+                                    <Switch
+                                        id="loan-toggle"
+                                        checked={isLoan}
+                                        onCheckedChange={(val) => {
+                                            setIsLoan(val);
+                                            if (!val && paymentMethod === "Loan") setPaymentMethod("Cash");
+                                            if (val) setPaymentMethod("Loan");
+                                            setFormErrors(prev => ({ ...prev, paymentDate: false }));
+                                        }}
+                                    />
+                                </div>
                             </div>
 
-                            <Button
-                                size="lg"
-                                className={`w-full font-bold text-lg ${isLoan ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"}`}
-                                disabled={cart.length === 0 || !user}
-                                onClick={handleCheckout}
-                            >
-                                {isLoading || !user ? <Loader2 className="animate-spin mr-2" /> : isLoan ? <CreditCard className="mr-2 h-5 w-5" /> : <Banknote className="mr-2 h-5 w-5" />}
-                                {isLoan ? "Record Loan Sale" : "Complete Sale"}
-                            </Button>
+                            {(clientType === "HP Client" || (clientType === "Non-Member" && selectedCustomerId === "walk-in") || (isLoan && selectedCustomerId === "walk-in")) && (
+                                <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                                    <Label className="text-xs">Customer/Walk-in Name (Optional)</Label>
+                                    <Input
+                                        placeholder="Type customer name..."
+                                        className="h-8 shadow-sm border-primary/20"
+                                        value={manualName}
+                                        onChange={(e) => setManualName(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
+                            {isLoan && (
+                                <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
+                                    <div className={`space-y-1 p-2 rounded-md border ${formErrors.paymentDate ? "bg-destructive/5 border-destructive" : "bg-orange-50 border-orange-100"}`}>
+                                        <Label className={`text-xs font-medium flex items-center gap-2 ${formErrors.paymentDate ? "text-destructive" : "text-orange-700"}`}>
+                                            <CalendarIcon className="h-3 w-3" />
+                                            Due Date
+                                        </Label>
+                                        <Input
+                                            type="date"
+                                            value={paymentDate}
+                                            onChange={(e) => {
+                                                setPaymentDate(e.target.value);
+                                                setFormErrors(prev => ({ ...prev, paymentDate: false }));
+                                            }}
+                                            className={`h-8 bg-white focus-visible:ring-orange-500 ${formErrors.paymentDate ? "border-destructive" : "border-orange-200"}`}
+                                            min={new Date().toISOString().split("T")[0]}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1 p-2 rounded-md border bg-blue-50 border-blue-100">
+                                        <Label className="text-xs font-medium flex items-center gap-2 text-blue-700">
+                                            <Banknote className="h-3 w-3" />
+                                            Initial Deposit
+                                        </Label>
+                                        <Input
+                                            placeholder="Amount"
+                                            value={initialDeposit}
+                                            onChange={(e) => setInitialDeposit(e.target.value)}
+                                            className="h-8 bg-white border-blue-200 focus-visible:ring-blue-500"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
+
+                        <Button
+                            size="lg"
+                            className={`w-full font-bold text-lg ${isLoan ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"}`}
+                            disabled={cart.length === 0 || !user}
+                            onClick={handleCheckout}
+                        >
+                            {isLoading || !user ? <Loader2 className="animate-spin mr-2" /> : isLoan ? <CreditCard className="mr-2 h-5 w-5" /> : <Banknote className="mr-2 h-5 w-5" />}
+                            {isLoan ? "Record Loan Sale" : "Complete Sale"}
+                        </Button>
                     </div>
                 </Card>
             </div>

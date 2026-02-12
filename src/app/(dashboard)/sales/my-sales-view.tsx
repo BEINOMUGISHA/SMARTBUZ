@@ -61,6 +61,8 @@ export function MySalesView() {
     const [filterType, setFilterType] = useState("All");
     const [selectedCustomerId, setSelectedCustomerId] = useState<Id<"customers"> | undefined>(undefined);
     const [searchTerm, setSearchTerm] = useState("");
+    const [filterPackageType, setFilterPackageType] = useState("All");
+    const [filterDeliveryStatus, setFilterDeliveryStatus] = useState("All");
 
     // Receipt Modal State
     const [printReceiptData, setPrintReceiptData] = useState<ReceiptData | null>(null);
@@ -83,7 +85,9 @@ export function MySalesView() {
         filterType,
         customerId: selectedCustomerId,
         searchTerm,
-        email: user?.email || undefined
+        email: user?.email || undefined,
+        packageType: filterPackageType === "All" ? undefined : filterPackageType,
+        deliveryStatus: filterDeliveryStatus === "All" ? undefined : filterDeliveryStatus,
     };
 
     // 1. Stats
@@ -135,7 +139,26 @@ export function MySalesView() {
         },
         {
             header: "Client Type",
-            accessor: (s: any) => s.clientType,
+            accessor: (s: any) => (
+                <div className="flex flex-col gap-1">
+                    <Badge variant={s.clientType === "HP Client" ? "secondary" : "outline"}>{s.clientType}</Badge>
+                    {s.packageType && (
+                        <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px]">
+                            {s.packageType}
+                        </Badge>
+                    )}
+                </div>
+            ),
+            exportValue: (s: any) => s.packageType ? `${s.clientType} (${s.packageType})` : s.clientType
+        },
+        {
+            header: "Delivery",
+            accessor: (s: any) => (
+                <Badge variant={s.deliveryStatus === "Pending" ? "destructive" : "default"} className="text-[10px]">
+                    {s.deliveryStatus === "Pending" ? "Pending" : "Taken"}
+                </Badge>
+            ),
+            exportValue: (s: any) => s.deliveryStatus || "Taken"
         },
         {
             header: "Customer",
@@ -241,20 +264,31 @@ export function MySalesView() {
                         )}
                     </div>
 
-                    <div className="h-6 w-px bg-border hidden lg:block" />
-
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Type:</Label>
-                        <Select value={filterType} onValueChange={setFilterType}>
-                            <SelectTrigger className="w-[120px] bg-white h-9 text-xs">
+                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Package:</Label>
+                        <Select value={filterPackageType} onValueChange={setFilterPackageType}>
+                            <SelectTrigger className="w-[110px] bg-white h-9 text-xs">
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="All">All Transactions</SelectItem>
-                                <SelectItem value="Regular">Standard Sales</SelectItem>
-                                <SelectItem value="HP">HP Client Sales</SelectItem>
-                                <SelectItem value="Walk-in">Walk-in Sales</SelectItem>
-                                <SelectItem value="Loans">Credit / Loans Only</SelectItem>
+                            <SelectContent side="top">
+                                <SelectItem value="All">All</SelectItem>
+                                <SelectItem value="Bronze">Bronze</SelectItem>
+                                <SelectItem value="Silver">Silver</SelectItem>
+                                <SelectItem value="Gold">Gold</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Delivery:</Label>
+                        <Select value={filterDeliveryStatus} onValueChange={setFilterDeliveryStatus}>
+                            <SelectTrigger className="w-[110px] bg-white h-9 text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent side="top">
+                                <SelectItem value="All">All</SelectItem>
+                                <SelectItem value="Taken">Taken</SelectItem>
+                                <SelectItem value="Pending">Pending</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -350,10 +384,10 @@ export function MySalesView() {
                             <p className="text-[10px] text-orange-600/70 mt-1">Remaining balance on credit</p>
                         </CardContent>
                     </Card>
-                </div>
+                </div >
 
                 {/* Sales Table */}
-                <div className="flex-1 border rounded-md overflow-hidden bg-background flex flex-col">
+                < div className="flex-1 border rounded-md overflow-hidden bg-background flex flex-col" >
                     <div className="flex-1 overflow-auto">
                         <Table>
                             <TableHeader className="sticky top-0 bg-background z-10">
@@ -367,10 +401,10 @@ export function MySalesView() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {!results ? (
+                                {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="h-24 text-center">
-                                            <Loader2 className="animate-spin mx-auto" />
+                                        <TableCell colSpan={6} className="h-24 text-center">
+                                            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                                         </TableCell>
                                     </TableRow>
                                 ) : currentView.length === 0 ? (
@@ -551,7 +585,7 @@ export function MySalesView() {
                             <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
-                </div>
+                </div >
 
                 {
                     printReceiptData && (
@@ -565,7 +599,7 @@ export function MySalesView() {
             </div >
 
             {/* HIDDEN PRINT CONTENT */}
-            <div id="my-sales-print" className="hidden print:report-print-view bg-white text-black p-4 min-h-screen report-print-view">
+            < div id="my-sales-print" className="hidden print:report-print-view bg-white text-black p-4 min-h-screen report-print-view" >
                 <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans relative">
                     <div className="text-center px-20">
                         <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">TIENS HEALTH PRODUCTS</h2>
@@ -638,7 +672,7 @@ export function MySalesView() {
                     <span>Generated by System on {new Date().toLocaleString()}</span>
                     <span>Verified Official Document</span>
                 </div>
-            </div>
+            </div >
         </>
     );
 }
