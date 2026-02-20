@@ -9,15 +9,25 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Printer, Download, FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay, endOfDay, startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Calendar as CalendarIcon, Loader2, Printer, Download, FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { DatePickerWithRange } from "@/components/date-range-picker";
+import { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
 
 export function PromotionsReportView() {
     const { user } = useAuth();
-    const [fromDate, setFromDate] = useState("");
-    const [toDate, setToDate] = useState("");
+    const [dateMode, setDateMode] = useState<"audit" | "range">("audit");
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+    const [date, setDate] = useState<DateRange | undefined>({
+        from: startOfMonth(new Date()),
+        to: endOfDay(new Date()),
+    });
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -29,8 +39,8 @@ export function PromotionsReportView() {
 
     const queryArgs = {
         email: user?.email,
-        from: fromDate || undefined,
-        to: toDate || undefined,
+        from: dateMode === "audit" ? (selectedDate ? startOfDay(selectedDate).toISOString() : undefined) : date?.from?.toISOString(),
+        to: dateMode === "audit" ? (selectedDate ? endOfDay(selectedDate).toISOString() : undefined) : date?.to?.toISOString(),
     };
 
     // 1. Stats
@@ -90,7 +100,7 @@ export function PromotionsReportView() {
                     padding: 15mm !important;
                     background: white !important;
                 }
-                @page { size: auto; margin: 0mm; }
+                @page { size: A5; margin: 5mm; }
             }
         `;
         document.head.appendChild(style);
@@ -107,25 +117,29 @@ export function PromotionsReportView() {
         <div className="flex flex-col h-full space-y-4">
             {/* Filters & Export Buttons */}
             <div className="flex flex-wrap items-center gap-4 bg-muted/20 p-3 rounded-xl border shadow-sm print:hidden">
-                <div className="flex flex-wrap gap-3">
-                    <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">From:</label>
-                        <Input
-                            type="date"
-                            value={fromDate}
-                            onChange={(e) => setFromDate(e.target.value)}
-                            className="bg-white h-9 text-xs w-36"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">To:</label>
-                        <Input
-                            type="date"
-                            value={toDate}
-                            onChange={(e) => setToDate(e.target.value)}
-                            className="bg-white h-9 text-xs w-36"
-                        />
-                    </div>
+                <div className="flex items-center gap-3">
+                    <Tabs value={dateMode} onValueChange={(v: any) => setDateMode(v)} className="w-auto">
+                        <TabsList className="h-9 p-1 bg-linear-to-b from-muted double border shadow-xs rounded-lg">
+                            <TabsTrigger value="audit" className="text-[10px] font-bold uppercase tracking-wider h-7 px-3">Daily Audit</TabsTrigger>
+                            <TabsTrigger value="range" className="text-[10px] font-bold uppercase tracking-wider h-7 px-3">Date Range</TabsTrigger>
+                        </TabsList>
+                    </Tabs>
+
+                    {dateMode === "audit" ? (
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className={cn("w-[160px] justify-start text-left font-normal h-9 bg-white", !selectedDate && "text-muted-foreground")}>
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
+                            </PopoverContent>
+                        </Popover>
+                    ) : (
+                        <DatePickerWithRange date={date} setDate={setDate} />
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2 ml-auto">
@@ -331,7 +345,7 @@ export function PromotionsReportView() {
                 <div className="mb-4">
                     <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Redemption Records</h3>
                     <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5 tracking-wide">
-                        Period: {fromDate || "Beginning"} to {toDate || "Today"}
+                        {dateMode === "audit" ? `Audit Date: ${format(selectedDate || new Date(), "PPP")}` : `Range: ${format(date?.from || new Date(), "PP")} - ${format(date?.to || new Date(), "PP")}`}
                     </p>
                 </div>
 

@@ -56,12 +56,24 @@ export function LoansReport() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-4 rounded-xl border shadow-xs flex flex-wrap items-end gap-3">
+            <div className="bg-white p-4 rounded-xl border shadow-xs flex flex-wrap items-center gap-3">
                 <ReportFilters
                     dateRange={dateRange}
                     reportMode={reportMode}
                     onDateRangeChange={setDateRange}
                     onReportModeChange={setReportMode}
+                    onClearFilters={() => {
+                        setDateRange({
+                            from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
+                            to: format(new Date(), "yyyy-MM-dd")
+                        });
+                        setReportMode("range");
+                        setSearch("");
+                        setSelectedShop("all");
+                        setCustomerId("all");
+                        setClientType("All");
+                        setPage(1);
+                    }}
                 />
 
                 <SearchableSelect

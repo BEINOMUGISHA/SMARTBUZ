@@ -18,7 +18,7 @@ interface SummaryData {
     loanCount?: number;
 }
 
-export type SummaryVariant = "sales" | "overview" | "shops" | "stock" | "loans";
+export type SummaryVariant = "sales" | "overview" | "shops" | "stock" | "loans" | "promotions";
 
 interface ReportSummaryProps {
     data?: SummaryData;
@@ -180,6 +180,28 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
                     value: `UGX ${(data.totalRevenue - (data.totalOutstandingBalance || 0)).toLocaleString()}`,
                     description: "ALREADY COLLECTED",
                     color: "border-l-emerald-500"
+                }
+            ];
+
+        case "promotions":
+            return [
+                {
+                    title: "Total Redemptions",
+                    value: (data as any).totalRedemptions?.toLocaleString() || "0",
+                    description: "TIMES REWARDED",
+                    color: "border-l-primary"
+                },
+                {
+                    title: "Unique Customers",
+                    value: (data as any).uniqueCustomers?.toLocaleString() || "0",
+                    description: "BENEFICIARIES",
+                    color: "border-l-emerald-500"
+                },
+                {
+                    title: "Driving Products",
+                    value: (data as any).uniqueProducts?.toLocaleString() || "0",
+                    description: "SOURCE ITEMS",
+                    color: "border-l-amber-500"
                 }
             ];
 

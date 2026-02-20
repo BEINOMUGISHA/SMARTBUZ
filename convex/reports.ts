@@ -116,6 +116,7 @@ export const getDetailedSalesReport = query({
         customerId: v.optional(v.id("customers")),
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
+        transactionType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         // [OPTIMIZED with Index Search]
@@ -148,6 +149,10 @@ export const getDetailedSalesReport = query({
 
         if (args.customerId) {
             salesQuery = salesQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
+        }
+
+        if (args.transactionType && args.transactionType !== "All") {
+            salesQuery = salesQuery.filter(q => q.eq(q.field("transactionType"), args.transactionType!));
         }
 
         const results = await salesQuery.order("desc").paginate(args.paginationOpts);
@@ -185,6 +190,7 @@ export const getDetailedSalesReportCount = query({
         customerId: v.optional(v.id("customers")),
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
+        transactionType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         let salesQuery = ctx.db.query("sales");
@@ -194,6 +200,9 @@ export const getDetailedSalesReportCount = query({
         if (args.startDate && args.endDate) {
             const endStr = args.endDate + "T23:59:59.999";
             salesQuery = salesQuery.filter(q => q.and(q.gte(q.field("date"), args.startDate!), q.lte(q.field("date"), endStr)));
+        }
+        if (args.transactionType && args.transactionType !== "All") {
+            salesQuery = salesQuery.filter(q => q.eq(q.field("transactionType"), args.transactionType!));
         }
         const sales = await salesQuery.collect();
         return sales.length;
@@ -434,23 +443,60 @@ export const getStockSummary = query({
         paginationOpts: paginationOptsValidator,
         halfPrice: v.optional(v.boolean()),
         search: v.optional(v.string()),
+        searchType: v.optional(v.string()), // "name", "code", "supplier", "category"
     },
     handler: async (ctx, args) => {
-        // Fetch all dependencies
-        const stocks = await ctx.db.query("stocks").collect();
-        const shops = await ctx.db.query("shops").collect();
+        // Fetch dependencies for enrichment
         const categories = await ctx.db.query("categories").collect();
+        const categoryMap = new Map(categories.map(c => [c._id, c.type]));
+        const shops = await ctx.db.query("shops").collect();
 
-        // 1. Filter in memory for robust search/halfPrice support
+        // 1. Optimized filtering
+        let stocks: any[] = [];
+        const searchLower = args.search?.toLowerCase();
+
+        if (args.search && args.searchType === "name") {
+            stocks = await ctx.db.query("stocks")
+                .withSearchIndex("search_name", q => q.search("name", args.search!))
+                .collect();
+        } else if (args.search && args.searchType === "supplier") {
+            stocks = await ctx.db.query("stocks")
+                .withSearchIndex("search_supplier", q => q.search("supplier", args.search!))
+                .collect();
+        } else if (args.search && args.searchType === "code") {
+            // Product code is often exact or prefix
+            stocks = await ctx.db.query("stocks")
+                .withIndex("by_productCode", q => q.gte("productCode", args.search!).lte("productCode", args.search! + "\uffff"))
+                .collect();
+        } else {
+            // Default or Category search (Category doesn't have search index, so fetch all or filter)
+            stocks = await ctx.db.query("stocks").collect();
+        }
+
+        // Apply secondary filters in memory
         let filtered = stocks.filter(s => {
             const matchesHalfPrice = args.halfPrice === undefined || s.halfPrice === args.halfPrice;
-            const matchesSearch = !args.search ||
-                s.name.toLowerCase().includes(args.search.toLowerCase()) ||
-                s.productCode.toLowerCase().includes(args.search.toLowerCase());
-            return matchesHalfPrice && matchesSearch;
+
+            if (!args.search) return matchesHalfPrice;
+
+            // If we already used a search index, just check halfPrice
+            if (["name", "supplier", "code"].includes(args.searchType || "")) {
+                return matchesHalfPrice;
+            }
+
+            // Fallback for Category search or multi-field fallback
+            if (args.searchType === "category") {
+                const catName = categoryMap.get(s.categoryId)?.toLowerCase() || "";
+                return matchesHalfPrice && catName.includes(searchLower!);
+            }
+
+            // Default fallback search (name or code)
+            return matchesHalfPrice && (
+                s.name.toLowerCase().includes(searchLower!) ||
+                s.productCode.toLowerCase().includes(searchLower!)
+            );
         });
 
-        const categoryMap = new Map(categories.map(c => [c._id, c.type]));
         const shopStockMap: Record<string, number> = {};
         for (const shop of shops) {
             for (const is of shop.issuedStocks) {
@@ -466,13 +512,6 @@ export const getStockSummary = query({
             totalQty: stock.qty + (shopStockMap[stock._id] || 0)
         }));
 
-        // 2. Manual Pagination for in-memory results
-        // Since we are returning this to a usePaginatedQuery client, we need a compatible shape.
-        // For simplicity with 'load more', if the client asks for N items, we give them.
-        // We'll treat the cursor as the number of items skipped if we wanted real pagination,
-        // but often for reports, users just load everything or we can mock it.
-
-        // We'll just return the slice.
         const numItems = args.paginationOpts.numItems;
         const page = enriched.slice(0, numItems);
 
@@ -488,15 +527,35 @@ export const getStockSummaryCount = query({
     args: {
         halfPrice: v.optional(v.boolean()),
         search: v.optional(v.string()),
+        searchType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const stocks = await ctx.db.query("stocks").collect();
+        // Use the same logic as getStockSummary but return length
+        const categories = await ctx.db.query("categories").collect();
+        const categoryMap = new Map(categories.map(c => [c._id, c.type]));
+
+        let stocks: any[] = [];
+        const searchLower = args.search?.toLowerCase();
+
+        if (args.search && args.searchType === "name") {
+            stocks = await ctx.db.query("stocks").withSearchIndex("search_name", q => q.search("name", args.search!)).collect();
+        } else if (args.search && args.searchType === "supplier") {
+            stocks = await ctx.db.query("stocks").withSearchIndex("search_supplier", q => q.search("supplier", args.search!)).collect();
+        } else if (args.search && args.searchType === "code") {
+            stocks = await ctx.db.query("stocks").withIndex("by_productCode", q => q.gte("productCode", args.search!).lte("productCode", args.search! + "\uffff")).collect();
+        } else {
+            stocks = await ctx.db.query("stocks").collect();
+        }
+
         const filtered = stocks.filter(s => {
             const matchesHalfPrice = args.halfPrice === undefined || s.halfPrice === args.halfPrice;
-            const matchesSearch = !args.search ||
-                s.name.toLowerCase().includes(args.search.toLowerCase()) ||
-                s.productCode.toLowerCase().includes(args.search.toLowerCase());
-            return matchesHalfPrice && matchesSearch;
+            if (!args.search) return matchesHalfPrice;
+            if (["name", "supplier", "code"].includes(args.searchType || "")) return matchesHalfPrice;
+            if (args.searchType === "category") {
+                const catName = categoryMap.get(s.categoryId)?.toLowerCase() || "";
+                return matchesHalfPrice && catName.includes(searchLower!);
+            }
+            return matchesHalfPrice && (s.name.toLowerCase().includes(searchLower!) || s.productCode.toLowerCase().includes(searchLower!));
         });
         return filtered.length;
     }
@@ -511,6 +570,7 @@ export const getReportsSummary = query({
         customerId: v.optional(v.id("customers")),
         search: v.optional(v.string()),
         halfPrice: v.optional(v.boolean()),
+        transactionType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         // [SALES DATA]
@@ -530,7 +590,8 @@ export const getReportsSummary = query({
                     (s.manualCustomerName || "").toLowerCase().includes(searchLower) ||
                     s.items.some(i => i.name.toLowerCase().includes(searchLower))
                 );
-                return matchesShop && matchesClient && matchesSearch && matchesCustomer;
+                const matchesTransactionType = !args.transactionType || args.transactionType === "All" || s.transactionType === args.transactionType;
+                return matchesShop && matchesClient && matchesSearch && matchesCustomer && matchesTransactionType;
             });
         }
 
@@ -620,18 +681,24 @@ export const getReportsSummary = query({
 export const getStockEntries = query({
     args: {
         date: v.string(), // YYYY-MM-DD
+        search: v.optional(v.string()),
+        searchType: v.optional(v.string()), // "name", "code", "supplier", "category"
     },
     handler: async (ctx, args) => {
         const startOfToday = args.date;
         const endOfToday = args.date + "T23:59:59.999";
 
+        // 1. Fetch entries for the day
         const entries = await ctx.db
             .query("stockEntries")
             .withIndex("by_date", q => q.gte("date", startOfToday).lte("date", endOfToday))
             .collect();
 
+        // 2. Fetch dependencies for enrichment and filtering
         const stockIds = [...new Set(entries.map(e => e.stockId))];
         const userIds = [...new Set(entries.map(e => e.userId))];
+        const categories = await ctx.db.query("categories").collect();
+        const categoryMap = new Map(categories.map(c => [c._id, c.type]));
 
         const [stocks, users] = await Promise.all([
             Promise.all(stockIds.map(id => ctx.db.get(id))),
@@ -641,15 +708,33 @@ export const getStockEntries = query({
         const stockMap = new Map(stocks.filter(s => !!s).map(s => [s!._id, s!]));
         const userMap = new Map(users.filter(u => !!u).map(u => [u!._id, u!]));
 
-        return entries.map(e => {
+        // 3. Enrich and filter
+        const searchLower = args.search?.toLowerCase();
+
+        const enriched = entries.map(e => {
             const stock = stockMap.get(e.stockId);
             const user = userMap.get(e.userId);
             return {
                 ...e,
                 productName: stock?.name || "Unknown Product",
                 productCode: stock?.productCode || "N/A",
+                categoryName: stock?.categoryId ? (categoryMap.get(stock.categoryId as any) || "General") : "General",
                 userName: user ? `${user.first_name} ${user.last_name}` : "System",
             };
+        });
+
+        if (!args.search) return enriched;
+
+        return enriched.filter(e => {
+            if (args.searchType === "name") return e.productName.toLowerCase().includes(searchLower!);
+            if (args.searchType === "code") return e.productCode.toLowerCase().includes(searchLower!);
+            if (args.searchType === "supplier") return (e.supplier || "").toLowerCase().includes(searchLower!);
+            if (args.searchType === "category") return e.categoryName.toLowerCase().includes(searchLower!);
+
+            // Fallback: search Name, Code or Supplier
+            return e.productName.toLowerCase().includes(searchLower!) ||
+                e.productCode.toLowerCase().includes(searchLower!) ||
+                (e.supplier || "").toLowerCase().includes(searchLower!);
         });
     }
 });

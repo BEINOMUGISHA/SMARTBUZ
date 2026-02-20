@@ -379,6 +379,10 @@ function PromotionManager() {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
 
+    // Filter state for dialogs
+    const [addTriggerType, setAddTriggerType] = useState("Product");
+    const [editTriggerType, setEditTriggerType] = useState("Product");
+
     const paginatedResult = useQuery(api.promotions.getPaginated, {
         limit: rowsPerPage,
         offset: (currentPage - 1) * rowsPerPage,
@@ -403,10 +407,13 @@ function PromotionManager() {
             await createPromo({
                 name: formData.get("name") as string,
                 prize: formData.get("prize") as string,
+                triggerType: formData.get("triggerType") as string,
+                threshold: formData.get("threshold") ? parseFloat(formData.get("threshold") as string) : undefined,
                 isActive: true,
             });
             toast.success("Promotion created");
             setIsAddOpen(false);
+            setAddTriggerType("Product"); // Reset
         } catch (error) { toast.error(formatError(error)); }
     };
 
@@ -419,6 +426,8 @@ function PromotionManager() {
                 id: editingItem._id,
                 name: formData.get("name") as string,
                 prize: formData.get("prize") as string,
+                triggerType: formData.get("triggerType") as string,
+                threshold: formData.get("threshold") ? parseFloat(formData.get("threshold") as string) : undefined,
                 isActive: formData.get("isActive") === "on",
             });
             toast.success("Promotion updated");
@@ -450,7 +459,7 @@ function PromotionManager() {
                             <Search className="h-4 w-4 text-muted-foreground ml-2" />
                             <Input placeholder="Search promotions..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
                         </div>
-                        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add Promotion</Button>
+                        <Button onClick={() => { setIsAddOpen(true); setAddTriggerType("Product"); }} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add Promotion</Button>
                     </div>
 
                     <div className="rounded-md border overflow-x-auto">
@@ -459,15 +468,30 @@ function PromotionManager() {
                                 <TableHeader className="bg-muted/50">
                                     <TableRow>
                                         <TableHead>Promotion Name</TableHead>
+                                        <TableHead>Type</TableHead>
                                         <TableHead>Prize (What you win)</TableHead>
                                         <TableHead className="text-center">Status</TableHead>
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {!promotions ? <TableRow><TableCell colSpan={4}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((promo) => (
+                                    {!promotions ? <TableRow><TableCell colSpan={5}><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : currentItems.map((promo) => (
                                         <TableRow key={promo._id}>
-                                            <TableCell className="font-medium">{promo.name}</TableCell>
+                                            <TableCell className="font-medium">
+                                                <div className="flex flex-col">
+                                                    <span>{promo.name}</span>
+                                                    {(promo.triggerType === "TotalPV" || promo.triggerType === "TotalBV") && (
+                                                        <span className="text-[10px] text-muted-foreground font-mono">
+                                                            Target: {promo.threshold} {promo.triggerType.replace("Total", "")}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+                                                    {promo.triggerType || "Product"}
+                                                </Badge>
+                                            </TableCell>
                                             <TableCell className="font-bold text-primary">{promo.prize}</TableCell>
                                             <TableCell className="text-center">
                                                 {promo.isActive ? <Badge className="bg-green-100 text-green-800 hover:bg-green-200">Active</Badge> : <Badge variant="outline">Inactive</Badge>}
@@ -476,8 +500,10 @@ function PromotionManager() {
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem onClick={() => setManagingProductsId(promo._id)}><Plus className="mr-2 h-4 w-4" /> Manage Products</DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => setEditingItem(promo)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                                        {(promo.triggerType === "Product" || !promo.triggerType) && (
+                                                            <DropdownMenuItem onClick={() => setManagingProductsId(promo._id)}><Plus className="mr-2 h-4 w-4" /> Manage Products</DropdownMenuItem>
+                                                        )}
+                                                        <DropdownMenuItem onClick={() => { setEditingItem(promo); setEditTriggerType(promo.triggerType || "Product"); }}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
                                                         <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(promo._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
@@ -498,6 +524,25 @@ function PromotionManager() {
                     <form onSubmit={handleCreate} className="space-y-4">
                         <div className="space-y-2"><Label>Promotion Name</Label><Input name="name" required /></div>
                         <div className="space-y-2"><Label>Prize (What you win)</Label><Input name="prize" required placeholder="e.g. Free T-Shirt, UGX 10,000" /></div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Trigger Type</Label>
+                                <Select name="triggerType" value={addTriggerType} onValueChange={setAddTriggerType}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Product">Product Specific</SelectItem>
+                                        <SelectItem value="TotalPV">Total PV Sum</SelectItem>
+                                        <SelectItem value="TotalBV">Total BV Sum</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {addTriggerType !== "Product" && (
+                                <div className="space-y-2">
+                                    <Label>Threshold ({addTriggerType.replace("Total", "")})</Label>
+                                    <Input name="threshold" type="number" required placeholder="e.g. 50" />
+                                </div>
+                            )}
+                        </div>
                         <DialogFooter><Button type="submit">Create</Button></DialogFooter>
                     </form>
                 </DialogContent>
@@ -510,6 +555,25 @@ function PromotionManager() {
                         <form onSubmit={handleUpdate} className="space-y-4">
                             <div className="space-y-2"><Label>Promotion Name</Label><Input name="name" defaultValue={editingItem.name} required /></div>
                             <div className="space-y-2"><Label>Prize (What you win)</Label><Input name="prize" defaultValue={editingItem.prize} required /></div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Trigger Type</Label>
+                                    <Select name="triggerType" value={editTriggerType} onValueChange={setEditTriggerType}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Product">Product Specific</SelectItem>
+                                            <SelectItem value="TotalPV">Total PV Sum</SelectItem>
+                                            <SelectItem value="TotalBV">Total BV Sum</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {editTriggerType !== "Product" && (
+                                    <div className="space-y-2">
+                                        <Label>Threshold ({editTriggerType.replace("Total", "")})</Label>
+                                        <Input name="threshold" type="number" defaultValue={editingItem.threshold} required placeholder="e.g. 50" />
+                                    </div>
+                                )}
+                            </div>
                             <div className="flex items-center space-x-2"><Switch name="isActive" defaultChecked={editingItem.isActive} /><Label>Active</Label></div>
                             <DialogFooter><Button type="submit">Update</Button></DialogFooter>
                         </form>
@@ -542,6 +606,13 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
         const quantity = Number(formData.get("quantity"));
 
         if (!stockId || !quantity) return;
+
+        // Check for duplicate
+        const isDuplicate = promotionProducts?.some(p => p.stockId === stockId);
+        if (isDuplicate) {
+            toast.error("Product already added to this promotion! Please edit the existing entry instead.");
+            return;
+        }
 
         try {
             setIsSubmitting(true);

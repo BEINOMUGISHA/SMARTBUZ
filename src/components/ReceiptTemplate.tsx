@@ -24,11 +24,15 @@ export interface ReceiptData {
         redeemedQuantity: number;
         productName: string;
     }[];
+    customerPhone?: string;
+    customerLocation?: string;
+    transactionType?: string;
+    returnedItems?: { stockId: string; name: string; productCode?: string; quantity: number }[];
 }
 
 export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
     return (
-        <div id="receipt-content" className="p-8 text-sm text-gray-700 bg-white border border-gray-300 print:border-none print:p-0 print:m-0 print:w-full">
+        <div id="receipt-content" className="p-4 text-sm text-gray-700 bg-white border border-gray-300 print:border-none print:p-0 print:m-0 print:w-full print-shrink">
             {/* Header */}
             <div className="pb-4 print:break-inside-avoid">
                 <div className="flex justify-between items-start">
@@ -43,52 +47,68 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                 </div>
 
                 {/* Customer & Shop Info - Input Style */}
-                <div className="grid grid-cols-2 gap-4 mt-4 text-sm font-semibold">
+                <div className="grid grid-cols-2 gap-2 mt-4 text-[11px] font-semibold uppercase">
                     <div className="flex items-center gap-2">
-                        <span>DISTRIBUTOR'S NAME:</span>
-                        <div className="border border-black h-6 w-full px-2 flex items-center">
+                        <span className="shrink-0">D-NAME:</span>
+                        <div className="border border-black h-5 w-full px-1 flex items-center truncate">
                             {data.customer?.name || ""}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span>DISTRIBUTOR'S CONTACTS:</span>
-                        <div className="border border-black h-6 w-full px-2 flex items-center">
-                            {data.customer?.phone || ""}
+                        <span className="shrink-0">CONTACT:</span>
+                        <div className="border border-black h-5 w-full px-1 flex items-center">
+                            {data.customerPhone || data.customer?.phone || ""}
+                        </div>
+                    </div>
+                </div>
+
+                {/* NEW: Location Row */}
+                <div className="grid grid-cols-2 gap-2 mt-1 text-[11px] font-semibold uppercase">
+                    <div className="flex items-center gap-2">
+                        <span className="shrink-0">LOCATION:</span>
+                        <div className="border border-black h-5 w-full px-1 flex items-center truncate">
+                            {data.customerLocation || ""}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="shrink-0">TRANS TYPE:</span>
+                        <div className="border border-black h-5 w-full px-1 flex items-center font-bold">
+                            {data.transactionType || "SALE"}
                         </div>
                     </div>
                 </div>
 
                 {/* ID & Serial */}
-                <div className="flex justify-between items-center mt-2 text-sm font-semibold">
+                <div className="flex justify-between items-center mt-1 text-[11px] font-semibold uppercase">
                     <div className="flex items-center gap-2">
-                        <span>DISTRIBUTOR ID NO:</span>
-                        <div className="flex gap-[2px]">
+                        <span className="shrink-0">D-ID NO:</span>
+                        <div className="flex gap-[1px]">
                             {(data.customer?.distributorId || data.customer?.email || "").slice(0, 8).padEnd(8, " ").split("").map((char, i) => (
-                                <div key={i} className="border border-black w-6 h-6 flex items-center justify-center">
+                                <div key={i} className="border border-black w-5 h-5 flex items-center justify-center">
                                     {char.trim() || ""}
                                 </div>
                             ))}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span>SHOP SERIAL NO:</span>
-                        <div className="border border-black h-6 px-2 flex items-center justify-center text-xs w-24">
+                        <span className="shrink-0">SHOP S/N:</span>
+                        <div className="border border-black h-5 px-1 flex items-center justify-center text-[10px] w-20">
                             {data.shop.serialNumber || ""}
                         </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mt-2 text-sm font-semibold">
+                <div className="grid grid-cols-2 gap-2 mt-1 text-[11px] font-semibold uppercase">
                     <div className="flex items-center gap-2">
-                        <span>CLIENT TYPE:</span>
-                        <div className="border border-black h-6 w-full px-2 flex items-center">
+                        <span className="shrink-0">CLIENT TYPE:</span>
+                        <div className="border border-black h-5 w-full px-1 flex items-center">
                             {data.clientType}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span>DELIVERY STATUS:</span>
-                        <div className={cn("border border-black h-6 w-full px-2 flex items-center font-bold", data.deliveryStatus === "Pending" ? "text-red-600 bg-red-50" : "text-green-700 bg-green-50")}>
-                            {data.deliveryStatus === "Pending" ? "PAID BUT NOT TAKEN" : "FULLY DELIVERED"}
+                        <span className="shrink-0">DELIVERY:</span>
+                        <div className={cn("border border-black h-5 w-full px-1 flex items-center font-bold", data.deliveryStatus === "Pending" ? "text-red-600 bg-red-50" : "text-green-700 bg-green-50")}>
+                            {data.deliveryStatus === "Pending" ? "NOT TAKEN" : "DELIVERED"}
                         </div>
                     </div>
                 </div>
@@ -160,6 +180,25 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                                 <div className="col-span-4 p-1 border-r border-black">{promo.prize}</div>
                                 <div className="col-span-2 p-1 border-r border-black text-center">{promo.redeemedQuantity}</div>
                                 <div className="col-span-2 p-1 text-center truncate">{promo.productName}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Returned Items Section (for Swaps) */}
+                {data.transactionType === "Swap" && data.returnedItems && data.returnedItems.length > 0 && (
+                    <div className="border-t-2 border-dashed border-black mt-4 pt-2">
+                        <div className="font-bold text-center uppercase mb-2 bg-gray-100 p-1">Items Returned (Exchanged)</div>
+                        <div className="grid grid-cols-12 font-bold border-b border-black text-[10px]">
+                            <div className="col-span-3 p-1 border-r border-black">CODE</div>
+                            <div className="col-span-7 p-1 border-r border-black">NAME</div>
+                            <div className="col-span-2 p-1 text-center">QTY</div>
+                        </div>
+                        {data.returnedItems.map((item, i) => (
+                            <div key={i} className="grid grid-cols-12 border-b border-black text-[10px] bg-gray-50/50">
+                                <div className="col-span-3 p-1 border-r border-black">{item.productCode || "N/A"}</div>
+                                <div className="col-span-7 p-1 border-r border-black">{item.name}</div>
+                                <div className="col-span-2 p-1 text-center">{item.quantity}</div>
                             </div>
                         ))}
                     </div>

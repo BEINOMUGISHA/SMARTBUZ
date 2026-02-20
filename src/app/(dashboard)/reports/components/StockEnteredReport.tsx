@@ -16,11 +16,15 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { ReportTable } from "./reports-table";
 
-export function StockEnteredReport() {
+export function StockEnteredReport({ search, searchType }: { search?: string; searchType?: string }) {
     const [date, setDate] = useState<Date>(new Date());
 
     const formattedDate = format(date, "yyyy-MM-dd");
-    const entries = useQuery(api.reports.getStockEntries, { date: formattedDate });
+    const entries = useQuery(api.reports.getStockEntries, {
+        date: formattedDate,
+        search: search || undefined,
+        searchType: searchType || undefined
+    });
 
     const handlePrevDay = () => setDate(d => subDays(d, 1));
     const handleNextDay = () => setDate(d => addDays(d, 1));
@@ -153,6 +157,15 @@ export function StockEnteredReport() {
                         ),
                         exportValue: (e: any) => (e.price * e.quantity).toLocaleString(),
                         className: "text-right"
+                    },
+                    {
+                        header: "Supplier",
+                        accessor: (e: any) => (
+                            <span className="italic text-muted-foreground font-black text-[10px]">
+                                {e.supplier || "-"}
+                            </span>
+                        ),
+                        className: "text-left"
                     },
                     {
                         header: "Verified By",

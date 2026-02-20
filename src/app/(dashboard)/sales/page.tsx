@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { ReceiptModal } from "@/components/ReceiptModal";
 import { MySalesView } from "./my-sales-view";
 import { LoansView } from "./loans-view";
+// import { ActivityLogView } from "../reports/components/ActivityLogView";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn, formatError } from "@/lib/utils";
@@ -42,9 +43,10 @@ export default function SalesPage() {
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
             <SalesHeader />
             <Tabs defaultValue="regular" className="flex-1 flex flex-col">
-                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 lg:w-[850px] h-auto p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-sm rounded-xl">
+                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 h-auto p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-sm rounded-xl">
                     <TabsTrigger value="regular" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Regular Sales</TabsTrigger>
                     <TabsTrigger value="hp" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">HP Sales</TabsTrigger>
+                    <TabsTrigger value="swap" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-blue-600">Product Swap</TabsTrigger>
                     <TabsTrigger value="promotions" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Promotions</TabsTrigger>
                     <TabsTrigger value="restock" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-destructive">Restock</TabsTrigger>
                     <TabsTrigger value="mysales" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">My Sales</TabsTrigger>
@@ -58,6 +60,9 @@ export default function SalesPage() {
                     <TabsContent value="hp" className="h-full m-0">
                         <SalesInterface isHp={true} />
                     </TabsContent>
+                    <TabsContent value="swap" className="h-full m-0">
+                        <SwapView />
+                    </TabsContent>
                     <TabsContent value="loans" className="h-full m-0">
                         <LoansView />
                     </TabsContent>
@@ -70,6 +75,7 @@ export default function SalesPage() {
                     <TabsContent value="mysales" className="h-full m-0">
                         <MySalesView />
                     </TabsContent>
+
                 </div>
             </Tabs>
         </div>
@@ -130,6 +136,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
     const [packageType, setPackageType] = useState<string>("Bronze"); // Bronze, Silver, Gold
     const [deliveryStatus, setDeliveryStatus] = useState<string>("Taken"); // Taken, Pending
+    const [customerPhone, setCustomerPhone] = useState("");
+    const [customerLocation, setCustomerLocation] = useState("");
 
     // Auto-select "Loan" payment method when isLoan is true
     useEffect(() => {
@@ -331,6 +339,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 initialDeposit: isLoan ? depositValue : undefined, // Pass deposit
                 packageType: paymentMethod === "Package" ? packageType : undefined,
                 deliveryStatus,
+                customerPhone: customerPhone || undefined,
+                customerLocation: customerLocation || undefined,
+                transactionType: "Sale",
             });
 
             // Handle both legacy (string ID) and new (object) return types for safety
@@ -376,6 +387,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 promotions,
                 packageType: paymentMethod === "Package" ? packageType : undefined,
                 deliveryStatus,
+                customerPhone: customerPhone || selectedCustomer?.phone,
+                customerLocation: customerLocation,
+                transactionType: "Sale",
             };
 
             setReceiptData(receipt);
@@ -436,6 +450,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                         {paginatedStocks.map((stock: any) => {
                                             const cartItem = cart.find(i => i.stockId === (stock._id || stock.stockId));
                                             const virtualQty = stock.qty - (cartItem?.qty || 0);
+                                            const promoData = activePromotions?.productPromotions?.[(stock._id || stock.stockId)];
 
                                             return (
                                                 <TableRow key={stock._id || stock.stockId} className={virtualQty === 0 ? "opacity-50" : ""}>
@@ -444,9 +459,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                         <div className="flex flex-col">
                                                             <span>{stock.name}</span>
                                                             {/* PROMO BADGE */}
-                                                            {(!isHp && activePromotions && activePromotions[(stock._id || stock.stockId)]) && (
+                                                            {(!isHp && promoData) && (
                                                                 <Badge variant="secondary" className="w-fit mt-1 bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200 text-[10px] px-1 py-0 h-5">
-                                                                    PROMO: {activePromotions[(stock._id || stock.stockId)].promotionName}
+                                                                    PROMO: {promoData.promotionName}
                                                                 </Badge>
                                                             )}
                                                         </div>
@@ -548,6 +563,31 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                         </CardTitle>
                     </CardHeader>
 
+                    {/* GLOBAL PROMOTION BANNER */}
+                    {(!isHp && activePromotions?.globalPromotions) && (
+                        <div className="px-4 pt-2 space-y-2">
+                            {activePromotions.globalPromotions.map((p: any) => {
+                                const isQualified = (p.triggerType === "TotalPV" && totalPV >= p.threshold) ||
+                                    (p.triggerType === "TotalBV" && totalBV >= p.threshold);
+                                if (!isQualified) return null;
+                                return (
+                                    <div key={p._id} className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-3 py-2 rounded-lg shadow-sm flex items-center justify-between animate-in slide-in-from-top-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="bg-white/20 p-1.5 rounded-full"><Package className="h-4 w-4" /></div>
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-bold uppercase tracking-wider">Promotion Unlocked!</span>
+                                                <span className="text-sm font-medium leading-none">{p.name}: {p.prize}</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold">
+                                            {p.triggerType === "TotalPV" ? `${totalPV} PV` : `${totalBV} BV`} / {p.threshold}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
                     <CardContent className="flex-1 overflow-y-auto p-0">
                         {cart.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8">
@@ -601,23 +641,28 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                 </TableRow>
 
                                                 {/* PROMOTION TRIGGER FEEDBACK */}
-                                                {(!isHp && activePromotions && activePromotions[item.stockId]) && (
-                                                    <TableRow className="border-none">
-                                                        <TableCell colSpan={4} className="p-0">
-                                                            <div className="w-full px-2 pb-2">
-                                                                {item.qty >= activePromotions[item.stockId].requiredQty ? (
-                                                                    <div className="text-[10px] text-green-600 font-bold bg-green-50 p-1 rounded-sm border border-green-200 flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
-                                                                        🎉 Promotion Triggered: {Math.floor(item.qty / activePromotions[item.stockId].requiredQty)}x {activePromotions[item.stockId].prize}
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="text-[10px] text-purple-600 bg-purple-50 p-1 rounded-sm border border-purple-100">
-                                                                        Add {activePromotions[item.stockId].requiredQty - (item.qty % activePromotions[item.stockId].requiredQty)} more for {activePromotions[item.stockId].prize}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )}
+                                                {(() => {
+                                                    const promoData = activePromotions?.productPromotions?.[item.stockId];
+                                                    if (isHp || !promoData) return null;
+
+                                                    return (
+                                                        <TableRow className="border-none">
+                                                            <TableCell colSpan={4} className="p-0">
+                                                                <div className="w-full px-2 pb-2">
+                                                                    {item.qty >= promoData.requiredQty ? (
+                                                                        <div className="text-[10px] text-green-600 font-bold bg-green-50 p-1 rounded-sm border border-green-200 flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                                                                            🎉 Promotion Triggered: {Math.floor(item.qty / promoData.requiredQty)}x {promoData.prize}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="text-[10px] text-purple-600 bg-purple-50 p-1 rounded-sm border border-purple-100">
+                                                                            Add {promoData.requiredQty - (item.qty % promoData.requiredQty)} more for {promoData.prize}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })()}
                                             </React.Fragment>
                                         ))}
                                     </TableBody>
@@ -751,14 +796,36 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             </div>
 
                             {(clientType === "HP Client" || (clientType === "Non-Member" && selectedCustomerId === "walk-in") || (isLoan && selectedCustomerId === "walk-in")) && (
-                                <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
-                                    <Label className="text-xs">Customer/Walk-in Name (Optional)</Label>
-                                    <Input
-                                        placeholder="Type customer name..."
-                                        className="h-8 shadow-sm border-primary/20"
-                                        value={manualName}
-                                        onChange={(e) => setManualName(e.target.value)}
-                                    />
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Customer/Walk-in Name (Optional)</Label>
+                                        <Input
+                                            placeholder="Type customer name..."
+                                            className="h-8 shadow-sm border-primary/20"
+                                            value={manualName}
+                                            onChange={(e) => setManualName(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Customer Phone</Label>
+                                            <Input
+                                                placeholder="Phone number..."
+                                                className="h-8 shadow-sm border-primary/20"
+                                                value={customerPhone}
+                                                onChange={(e) => setCustomerPhone(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Customer Location</Label>
+                                            <Input
+                                                placeholder="Current location..."
+                                                className="h-8 shadow-sm border-primary/20"
+                                                value={customerLocation}
+                                                onChange={(e) => setCustomerLocation(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
@@ -1053,5 +1120,236 @@ function DistributorSearch({ selectedId, onSelect, customers, error }: Distribut
                 </Command>
             </PopoverContent>
         </Popover>
+    );
+}
+
+function SwapView() {
+    const { user } = useAuth();
+    const [search, setSearch] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+    const [returnedItems, setReturnedItems] = useState<CartItem[]>([]);
+    const [takenItems, setTakenItems] = useState<CartItem[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [receiptData, setReceiptData] = useState<any | null>(null);
+
+    const [customerPhone, setCustomerPhone] = useState("");
+    const [customerLocation, setCustomerLocation] = useState("");
+
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [search]);
+
+    const shopData = useQuery(api.stocks.getShopStock, {
+        searchTerm: debouncedSearch || undefined,
+        email: user?.email || undefined,
+        limit: 10,
+    });
+
+    const swapMutation = useMutation(api.sales.swap);
+
+    const stocks = shopData?.stocks || [];
+
+    const totalReturn = returnedItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const totalTake = takenItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const diff = totalTake - totalReturn;
+
+    const handleSwap = async () => {
+        if (!user) return;
+        if (returnedItems.length === 0 && takenItems.length === 0) {
+            toast.error("Please add items to swap.");
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+            const saleId = await swapMutation({
+                userId: user._id,
+                shopId: shopData?.shop?._id,
+                returnedItems: returnedItems.map(i => ({ stockId: i.stockId, quantity: i.qty, name: i.name, productCode: i.productCode })),
+                takenItems: takenItems.map(i => ({ stockId: i.stockId, quantity: i.qty, price: i.price, name: i.name, productCode: i.productCode, pv: i.pv, bv: i.bv })),
+                customerPhone: customerPhone || undefined,
+                customerLocation: customerLocation || undefined,
+            });
+
+            // Prepare Receipt
+            const fullName = `${user.first_name} ${user.last_name}`;
+            const totalPVVal = takenItems.reduce((sum, item) => sum + (item.pv * item.qty), 0);
+            const totalBVVal = takenItems.reduce((sum, item) => sum + (item.bv * item.qty), 0);
+
+            const receipt = {
+                customer: { name: "Swap Customer", phone: customerPhone, email: "" },
+                shop: {
+                    name: shopData?.shop?.name || "Main Warehouse",
+                    location: shopData?.shop?.location || "Headquarters",
+                    contact: shopData?.shop?.contact || "N/A",
+                    serialNumber: shopData?.shop?.serialNumber || "MAIN-001"
+                },
+                operator: { name: fullName, email: user?.email },
+                clientType: "Retail (Swap)",
+                paymentMode: "Swap",
+                transactionType: "Swap",
+                date: new Date().toISOString(),
+                invoiceNumber: `SWAP-${Date.now()}`,
+                items: takenItems.map(i => ({ ...i })),
+                returnedItems: returnedItems.map(i => ({ ...i })),
+                total: diff,
+                totalPV: totalPVVal,
+                totalBV: totalBVVal,
+                customerPhone,
+                customerLocation,
+            };
+
+            setReceiptData(receipt);
+            toast.success("Swap completed successfully!");
+            setReturnedItems([]);
+            setTakenItems([]);
+            setCustomerPhone("");
+            setCustomerLocation("");
+        } catch (error) {
+            toast.error(formatError(error));
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full pb-10">
+            <div className="lg:col-span-7 flex flex-col gap-4">
+                <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search products to swap..."
+                        className="pl-9 h-12"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+
+                <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-4">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Product</TableHead>
+                                <TableHead className="text-right">Price</TableHead>
+                                <TableHead className="text-center">Action</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {stocks.map((stock: any) => (
+                                <TableRow key={stock._id || stock.stockId}>
+                                    <TableCell>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">{stock.name}</span>
+                                            <span className="text-[10px] text-muted-foreground">{stock.productCode}</span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono">{stock.price.toLocaleString()}</TableCell>
+                                    <TableCell className="text-center">
+                                        <div className="flex gap-2 justify-center">
+                                            <Button size="sm" variant="outline" className="h-7 text-[10px] bg-red-50 text-red-700 border-red-200" onClick={() => {
+                                                setReturnedItems(prev => {
+                                                    const exists = prev.find(i => i.stockId === (stock._id || stock.stockId));
+                                                    if (exists) return prev.map(i => i.stockId === (stock._id || stock.stockId) ? { ...i, qty: i.qty + 1 } : i);
+                                                    return [...prev, { stockId: (stock._id || stock.stockId), name: stock.name, productCode: stock.productCode, price: stock.price, qty: 1, maxQty: 999, pv: 0, bv: 0 }];
+                                                });
+                                            }}>Return (In)</Button>
+                                            <Button size="sm" variant="outline" className="h-7 text-[10px] bg-green-50 text-green-700 border-green-200" onClick={() => {
+                                                setTakenItems(prev => {
+                                                    const exists = prev.find(i => i.stockId === (stock._id || stock.stockId));
+                                                    if (exists) return prev.map(i => i.stockId === (stock._id || stock.stockId) ? { ...i, qty: i.qty + 1 } : i);
+                                                    return [...prev, { stockId: (stock._id || stock.stockId), name: stock.name, productCode: stock.productCode, price: stock.price, qty: 1, maxQty: 999, pv: 0, bv: 0 }];
+                                                });
+                                            }}>Take (Out)</Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
+
+            <div className="lg:col-span-5 flex flex-col gap-4">
+                <Card className="flex-1 flex flex-col border-2 shadow-md overflow-hidden">
+                    <CardHeader className="bg-blue-50 py-3">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                            Product Swap Details
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="space-y-2">
+                            <h4 className="text-[10px] font-bold uppercase text-red-600 bg-red-50 px-2 py-0.5 rounded w-fit">Items being Returned (Stock IN)</h4>
+                            {returnedItems.length === 0 && <p className="text-xs text-muted-foreground italic">None</p>}
+                            {returnedItems.map(item => (
+                                <div key={item.stockId} className="flex justify-between items-center text-xs border-b pb-1">
+                                    <span className="flex-1 truncate">{item.name}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold">x{item.qty}</span>
+                                        <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => setReturnedItems(prev => prev.filter(i => i.stockId !== item.stockId))}><Trash2 className="h-3 w-3" /></Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="space-y-2 pt-4 border-t border-dashed">
+                            <h4 className="text-[10px] font-bold uppercase text-green-600 bg-green-50 px-2 py-0.5 rounded w-fit">Items being Taken (Stock OUT)</h4>
+                            {takenItems.length === 0 && <p className="text-xs text-muted-foreground italic">None</p>}
+                            {takenItems.map(item => (
+                                <div key={item.stockId} className="flex justify-between items-center text-xs border-b pb-1">
+                                    <span className="flex-1 truncate">{item.name}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold">x{item.qty}</span>
+                                        <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => setTakenItems(prev => prev.filter(i => i.stockId !== item.stockId))}><Trash2 className="h-3 w-3" /></Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="space-y-3 pt-4 border-t">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Customer Phone</Label>
+                                    <Input placeholder="07..." className="h-8 text-xs" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Location</Label>
+                                    <Input placeholder="Kampala..." className="h-8 text-xs" value={customerLocation} onChange={(e) => setCustomerLocation(e.target.value)} />
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                    <CardFooter className="bg-muted/50 p-4 flex flex-col gap-3 mt-auto">
+                        <div className="w-full space-y-1">
+                            <div className="flex justify-between text-xs font-bold text-red-600">
+                                <span>Total Return Value</span>
+                                <span>UGX {totalReturn.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-xs font-bold text-green-600 border-b pb-1">
+                                <span>Total Taken Value</span>
+                                <span>UGX {totalTake.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-sm font-black pt-1">
+                                <span>Balance Difference</span>
+                                <span className={diff >= 0 ? "text-primary" : "text-destructive"}>UGX {diff.toLocaleString()}</span>
+                            </div>
+                        </div>
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700 font-bold" onClick={handleSwap} disabled={isLoading || (returnedItems.length === 0 && takenItems.length === 0)}>
+                            {isLoading ? <Loader2 className="animate-spin mr-2" /> : <Plus className="mr-2 h-4 w-4" />}
+                            Process Product Swap
+                        </Button>
+                    </CardFooter>
+                </Card>
+            </div>
+
+            <ReceiptModal
+                isOpen={!!receiptData}
+                onClose={() => setReceiptData(null)}
+                data={receiptData}
+            />
+        </div>
     );
 }

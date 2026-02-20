@@ -140,6 +140,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 bv: parseFloat(formData.get("bv") as string),
                 halfPrice: halfPrice, // Use the prop to force correct type
                 description: formData.get("description") as string,
+                supplier: (formData.get("supplier") as string) || undefined,
             });
             toast.success("Stock added successfully");
             setIsAddOpen(false);
@@ -147,6 +148,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
             toast.error(formatError(error));
         }
     };
+
 
     const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -165,6 +167,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 bv: parseFloat(formData.get("bv") as string),
                 halfPrice: halfPrice, // Keep unchanged or allow edit? User implies strict tabs.
                 description: formData.get("description") as string,
+                supplier: (formData.get("supplier") as string) || undefined,
             });
             toast.success("Stock updated successfully");
             setEditingStock(null);
@@ -197,6 +200,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 bv: restockingStock.bv,
                 halfPrice: halfPrice,
                 date: new Date().toISOString(), // Or allow user to pick date? Stick to now for simplicity unless requested
+                supplier: (formData.get("supplier") as string) || undefined,
             });
             toast.success("Stock restocked successfully");
             setRestockingStock(null);
@@ -236,6 +240,14 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                     min="1"
                                     defaultValue="1"
                                     autoFocus
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="supplier_restock">Supplier (Optional)</Label>
+                                <Input
+                                    id="supplier_restock"
+                                    name="supplier"
+                                    placeholder="e.g. Acme Corp"
                                 />
                             </div>
                             <DialogFooter>
@@ -456,6 +468,10 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                     <Label>BV</Label>
                                     <Input name="bv" type="number" required step="0.1" />
                                 </div>
+                                <div className="space-y-2">
+                                    <Label>Supplier (Optional)</Label>
+                                    <Input name="supplier" placeholder="e.g. Acme Corp" />
+                                </div>
                             </div>
                             <Input name="description" placeholder="Description (Optional)" className="mt-4" />
                             <DialogFooter className="mt-4">
@@ -509,6 +525,10 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                     <div className="space-y-2">
                                         <Label>BV</Label>
                                         <Input name="bv" type="number" defaultValue={editingStock.bv} required step="0.1" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Supplier (Optional)</Label>
+                                        <Input name="supplier" defaultValue={editingStock.supplier} placeholder="e.g. Acme Corp" />
                                     </div>
                                 </div>
                                 <Input name="description" defaultValue={editingStock.description} placeholder="Description" className="mt-4" />

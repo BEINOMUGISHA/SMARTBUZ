@@ -141,3 +141,23 @@
     @apply bg-background text-foreground;
   }
 }
+
+@media print {
+  @page {
+    size: A5;
+    margin: 5mm;
+  }
+  
+  body {
+    background: white;
+    color: black;
+  }
+
+  .print-no-break {
+    break-inside: avoid;
+  }
+
+  .print-shrink {
+    zoom: 0.9;
+  }
+}

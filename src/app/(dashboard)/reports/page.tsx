@@ -14,6 +14,8 @@ import { DetailedSalesReport } from "./components/DetailedSalesReport";
 import { ShopsReport } from "./components/ShopsReport";
 import { GlobalStockReport } from "./components/GlobalStockReport";
 import { LoansReport } from "./components/LoansReport";
+import { ActivityLogView } from "./components/ActivityLogView";
+import { Activity } from "lucide-react";
 
 export default function ReportsPage() {
     return (

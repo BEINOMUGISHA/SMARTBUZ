@@ -37,12 +37,14 @@ export default defineSchema({
         bv: v.number(),
         categoryId: v.id("categories"),
         halfPrice: v.optional(v.boolean()),
+        supplier: v.optional(v.string()),
     })
         .index("by_productCode", ["productCode"])
         .index("by_qty", ["qty"])
         .index("by_category", ["categoryId"])
         .index("by_halfPrice", ["halfPrice"])
-        .searchIndex("search_name", { searchField: "name" }),
+        .searchIndex("search_name", { searchField: "name" })
+        .searchIndex("search_supplier", { searchField: "supplier" }),
 
     customers: defineTable({
         name: v.string(),
@@ -56,6 +58,8 @@ export default defineSchema({
         name: v.string(),
         prize: v.string(), // "what you win"
         isActive: v.boolean(),
+        triggerType: v.optional(v.string()), // "Product", "TotalPV", "TotalBV"
+        threshold: v.optional(v.number()),
     }).searchIndex("search_name", { searchField: "name" }),
 
     promotionProducts: defineTable({
@@ -104,6 +108,17 @@ export default defineSchema({
         ),
         packageType: v.optional(v.string()), // Bronze, Silver, Gold
         deliveryStatus: v.optional(v.string()), // Taken, Pending
+        customerPhone: v.optional(v.string()),
+        customerLocation: v.optional(v.string()),
+        transactionType: v.optional(v.string()), // Sale, Swap
+        returnedItems: v.optional(v.array(
+            v.object({
+                stockId: v.id("stocks"),
+                name: v.string(),
+                productCode: v.optional(v.string()),
+                quantity: v.number(),
+            })
+        )),
     }).index("by_date", ["date"])
         .index("by_shop_date", ["shopId", "date"])
         .index("by_customer_date", ["customerId", "date"]),
@@ -185,8 +200,18 @@ export default defineSchema({
         bv: v.number(),
         halfPrice: v.boolean(),
         type: v.string(), // "add" or "restock"
+        supplier: v.optional(v.string()),
     })
         .index("by_date", ["date"])
+        .index("by_stockId", ["stockId"]),
+
+    shopIssueRecords: defineTable({
+        shopId: v.id("shops"),
+        stockId: v.id("stocks"),
+        quantity: v.number(),
+        date: v.string(), // ISO String
+        userId: v.id("users"),
+    }).index("by_shop_date", ["shopId", "date"])
         .index("by_stockId", ["stockId"]),
 
     passwordResets: defineTable({

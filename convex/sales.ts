@@ -53,6 +53,9 @@ export const create = mutation({
         initialDeposit: v.optional(v.number()),
         packageType: v.optional(v.string()), // Bronze, Silver, Gold
         deliveryStatus: v.optional(v.string()), // Taken, Pending
+        customerPhone: v.optional(v.string()),
+        customerLocation: v.optional(v.string()),
+        transactionType: v.optional(v.string()), // Sale, Swap
     },
     handler: async (ctx, args) => {
         console.log(`Creating sale for user ${args.userId} (Client: ${args.clientType})`);
@@ -132,6 +135,9 @@ export const create = mutation({
             initialDeposit: args.initialDeposit,
             packageType: args.packageType,
             deliveryStatus: args.deliveryStatus,
+            customerPhone: args.customerPhone,
+            customerLocation: args.customerLocation,
+            transactionType: args.transactionType || "Sale",
         });
 
         // ---------------------------------------------------------
@@ -148,29 +154,22 @@ export const create = mutation({
         if (activePromotions.length > 0) {
             const activePromoIds = new Set(activePromotions.map(p => p._id));
 
-            // 2. Fetch products linked to these promotions
-            // Optimization: We only care about products that are IN the cart.
+            // 2. Fetch products linked to these promotions (for Product-type triggers)
             const cartStockIds = new Set(args.items.map(i => i.stockId));
-
             const allPromotionProducts = await ctx.db
                 .query("promotionProducts")
-                .collect(); // Table scan is acceptable if not huge. Indexed query would be better if we could `in` query.
-
-            // Filter in memory for now
+                .collect();
             const relevantPromoProducts = allPromotionProducts.filter(pp =>
                 activePromoIds.has(pp.promotionId) && cartStockIds.has(pp.stockId)
             );
 
-            // 3. Check for triggers
+            // 3. Check for Product Triggers
             for (const item of args.items) {
                 const triggers = relevantPromoProducts.filter(pp => pp.stockId === item.stockId);
-
                 for (const trigger of triggers) {
                     const promotion = activePromotions.find(p => p._id === trigger.promotionId);
                     if (!promotion) continue;
-
                     const redemptionCount = Math.floor(item.quantity / trigger.requiredQuantity);
-
                     if (redemptionCount > 0) {
                         const redemptionData = {
                             promotionId: promotion._id,
@@ -184,7 +183,50 @@ export const create = mutation({
                             productCode: item.productCode,
                             prize: promotion.prize,
                         };
+                        await ctx.db.insert("promotionRedemptions", redemptionData);
+                        triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
+                    }
+                }
+            }
 
+            // 4. Check for Global Threshold Triggers (Total PV/BV)
+            const totalPV = args.items.reduce((sum, item) => sum + (item.pv * item.quantity), 0);
+            const totalBV = args.items.reduce((sum, item) => sum + (item.bv * item.quantity), 0);
+
+            for (const promotion of activePromotions) {
+                if (promotion.triggerType === "TotalPV" && promotion.threshold && totalPV >= promotion.threshold) {
+                    const redemptionCount = Math.floor(totalPV / promotion.threshold);
+                    if (redemptionCount > 0) {
+                        const redemptionData = {
+                            promotionId: promotion._id,
+                            salesId: saleId,
+                            customerId: args.customerId,
+                            userId: args.userId,
+                            shopId: shop ? shop._id : args.shopId,
+                            date,
+                            redeemedQuantity: redemptionCount,
+                            productName: "WHOLE SALE (PV)",
+                            productCode: "THRESHOLD",
+                            prize: promotion.prize,
+                        };
+                        await ctx.db.insert("promotionRedemptions", redemptionData);
+                        triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
+                    }
+                } else if (promotion.triggerType === "TotalBV" && promotion.threshold && totalBV >= promotion.threshold) {
+                    const redemptionCount = Math.floor(totalBV / promotion.threshold);
+                    if (redemptionCount > 0) {
+                        const redemptionData = {
+                            promotionId: promotion._id,
+                            salesId: saleId,
+                            customerId: args.customerId,
+                            userId: args.userId,
+                            shopId: shop ? shop._id : args.shopId,
+                            date,
+                            redeemedQuantity: redemptionCount,
+                            productName: "WHOLE SALE (BV)",
+                            productCode: "THRESHOLD",
+                            prize: promotion.prize,
+                        };
                         await ctx.db.insert("promotionRedemptions", redemptionData);
                         triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
                     }
@@ -243,6 +285,7 @@ export const mySalesStats = query({
         searchTerm: v.optional(v.string()),
         packageType: v.optional(v.string()),
         deliveryStatus: v.optional(v.string()),
+        transactionType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         if (!args.email) throw new Error("Unauthorized");
@@ -319,6 +362,9 @@ export const mySalesStats = query({
         if (args.deliveryStatus) {
             salesQuery = salesQuery.filter((q: any) => q.eq(q.field("deliveryStatus"), args.deliveryStatus));
         }
+        if (args.transactionType && args.transactionType !== "All") {
+            salesQuery = salesQuery.filter((q: any) => q.eq(q.field("transactionType"), args.transactionType));
+        }
 
         // 3. Fetch Data for Audit
         const sales = await salesQuery.collect();
@@ -371,7 +417,7 @@ export const mySalesStats = query({
 
         // COLLECTION: Total physical cash received in this period (Retail + Deposits + Installments)
         // Includes non-loan sales + all payments in the period
-        const cashSalesOnly = filteredSales.filter((s: any) => !s.isLoan && s.paymentMode !== "Loan");
+        const cashSalesOnly = filteredSales.filter((s: any) => !s.isLoan && s.paymentMode !== "Loan" && s.paymentMode !== "Swap");
         const cashTotals = cashSalesOnly.reduce((sum: number, s: any) => sum + (s.total || 0), 0);
         const paymentTotals = filteredPayments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
 
@@ -402,6 +448,7 @@ export const mySales = query({
         searchTerm: v.optional(v.string()),
         packageType: v.optional(v.string()),
         deliveryStatus: v.optional(v.string()),
+        transactionType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         if (!args.email) throw new Error("Unauthorized");
@@ -465,6 +512,10 @@ export const mySales = query({
 
         if (args.deliveryStatus) {
             filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("deliveryStatus"), args.deliveryStatus));
+        }
+
+        if (args.transactionType && args.transactionType !== "All") {
+            filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("transactionType"), args.transactionType));
         }
 
         // 3. Search Logic (Pre-pagination filter is tricky without dedicated search index)
@@ -551,6 +602,7 @@ export const mySalesCount = query({
         searchTerm: v.optional(v.string()), // Added for consistency
         packageType: v.optional(v.string()),
         deliveryStatus: v.optional(v.string()),
+        transactionType: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         if (!args.email) return 0;
@@ -610,6 +662,10 @@ export const mySalesCount = query({
             filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("deliveryStatus"), args.deliveryStatus));
         }
 
+        if (args.transactionType && args.transactionType !== "All") {
+            filteredQuery = filteredQuery.filter((q: any) => q.eq(q.field("transactionType"), args.transactionType));
+        }
+
         // Apply Search Filter if needed
         if (args.searchTerm) {
             const lowerSearch = args.searchTerm.toLowerCase();
@@ -633,3 +689,130 @@ export const mySalesCount = query({
     },
 });
 
+
+export const swap = mutation({
+    args: {
+        userId: v.id("users"),
+        shopId: v.optional(v.id("shops")),
+        customerPhone: v.optional(v.string()),
+        customerLocation: v.optional(v.string()),
+        returnedItems: v.array(v.object({
+            stockId: v.id("stocks"),
+            name: v.string(),
+            quantity: v.number(),
+            productCode: v.optional(v.string()),
+        })),
+        takenItems: v.array(v.object({
+            stockId: v.id("stocks"),
+            name: v.string(),
+            quantity: v.number(),
+            productCode: v.optional(v.string()),
+            price: v.number(),
+            pv: v.number(),
+            bv: v.number(),
+        })),
+    },
+    handler: async (ctx, args) => {
+        const date = new Date().toISOString();
+
+        // 1. Identify Shop/Warehouse
+        const shop = await ctx.db
+            .query("shops")
+            .withIndex("by_user", (q) => q.eq("userId", args.userId))
+            .first();
+
+        // 2. Handle Returned Items (Increase Stock)
+        if (shop) {
+            const updatedShopStocks = [...shop.issuedStocks];
+            for (const item of args.returnedItems) {
+                const idx = updatedShopStocks.findIndex(s => s.stockId === item.stockId);
+                if (idx !== -1) {
+                    updatedShopStocks[idx] = { ...updatedShopStocks[idx], qty: updatedShopStocks[idx].qty + item.quantity };
+                }
+            }
+            await ctx.db.patch(shop._id, { issuedStocks: updatedShopStocks });
+        } else {
+            for (const item of args.returnedItems) {
+                const stock = await ctx.db.get(item.stockId);
+                if (stock) {
+                    await ctx.db.patch(item.stockId, { qty: stock.qty + item.quantity });
+                }
+            }
+        }
+
+        // 3. Handle Taken Items (Decrease Stock)
+        if (shop) {
+            const updatedShopStocks = [...shop.issuedStocks];
+            for (const item of args.takenItems) {
+                const idx = updatedShopStocks.findIndex(s => s.stockId === item.stockId);
+                if (idx !== -1) {
+                    updatedShopStocks[idx] = { ...updatedShopStocks[idx], qty: updatedShopStocks[idx].qty - item.quantity };
+                }
+            }
+            await ctx.db.patch(shop._id, { issuedStocks: updatedShopStocks });
+        } else {
+            for (const item of args.takenItems) {
+                const stock = await ctx.db.get(item.stockId);
+                if (stock) {
+                    await ctx.db.patch(item.stockId, { qty: stock.qty - item.quantity });
+                }
+            }
+        }
+
+        // 4. Record as a Swap Entry in Sales
+        // We use the 'taken' items as the 'sale' items for indexing, but mark type as "Swap"
+        const totalValue = args.takenItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+        const saleId = await ctx.db.insert("sales", {
+            userId: args.userId,
+            shopId: shop?._id || args.shopId,
+            total: totalValue,
+            date,
+            clientType: "Retail", // Default for swap
+            paymentMode: "Swap",
+            transactionType: "Swap",
+            customerPhone: args.customerPhone,
+            customerLocation: args.customerLocation,
+            items: args.takenItems.map(i => ({
+                ...i,
+                productCode: i.productCode || "N/A",
+            })),
+            returnedItems: args.returnedItems.map(i => ({
+                ...i,
+                productCode: i.productCode || "N/A",
+            })),
+            deliveryStatus: "Taken",
+        });
+
+        // 5. Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Product Swap",
+            details: `Swapped items for customer at ${shop ? shop.name : "HQ"}.`,
+            timestamp: date,
+        });
+
+        return saleId;
+    },
+});
+
+export const getSale = query({
+    args: { id: v.id("sales") },
+    handler: async (ctx, args) => {
+        const sale = await ctx.db.get(args.id);
+        if (!sale) return null;
+
+        const [customer, shop, user] = await Promise.all([
+            sale.customerId ? ctx.db.get(sale.customerId) : null,
+            sale.shopId ? ctx.db.get(sale.shopId) : null,
+            ctx.db.get(sale.userId),
+        ]);
+
+        return {
+            ...sale,
+            customer,
+            shop,
+            user,
+        };
+    },
+});

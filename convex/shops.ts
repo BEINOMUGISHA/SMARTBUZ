@@ -319,7 +319,16 @@ export const transferStock = mutation({
 
         await ctx.db.patch(args.shopId, { issuedStocks: newIssuedStocks });
 
-        // 4. Log Activity
+        // 4. Record Issue History
+        await ctx.db.insert("shopIssueRecords", {
+            shopId: args.shopId,
+            stockId: args.stockId,
+            quantity: args.quantity,
+            date: new Date().toISOString(),
+            userId: args.userId,
+        });
+
+        // 5. Log Activity
         await ctx.db.insert("activityLogs", {
             userId: args.userId,
             action: "Transfer Stock",
@@ -382,6 +391,18 @@ export const batchTransferStock = mutation({
 
         await ctx.db.patch(args.shopId, { issuedStocks: newIssuedStocks });
 
+        // 4. Record Issue History
+        for (const itemRequest of args.items) {
+            await ctx.db.insert("shopIssueRecords", {
+                shopId: args.shopId,
+                stockId: itemRequest.stockId,
+                quantity: itemRequest.quantity,
+                date: new Date().toISOString(),
+                userId: args.userId,
+            });
+        }
+
+        // 5. Log Activity
         await ctx.db.insert("activityLogs", {
             userId: args.userId,
             action: "Batch Transfer Stock",
@@ -389,4 +410,43 @@ export const batchTransferStock = mutation({
             timestamp: new Date().toISOString(),
         });
     }
+});
+
+export const getShopIssueRecords = query({
+    args: {
+        shopId: v.id("shops"),
+        startDate: v.string(), // ISO
+        endDate: v.string(),   // ISO
+    },
+    handler: async (ctx, args) => {
+        // Query records within date range
+        // Note: Convex doesn't support complex filtering on multiple fields easily without index
+        // We use the index on shopId and date range
+        const records = await ctx.db
+            .query("shopIssueRecords")
+            // using the index defined in schema: .index("by_shop_date", ["shopId", "date"])
+            .withIndex("by_shop_date", (q) =>
+                q.eq("shopId", args.shopId)
+                    .gte("date", args.startDate)
+                    .lte("date", args.endDate)
+            )
+            .order("desc")
+            .collect();
+
+        // Enrich with Stock and User details
+        // We do this in-memory join. For large datasets, pagination would be better,
+        // but for a daily/weekly report, this is acceptable.
+        const enriched = await Promise.all(records.map(async (record) => {
+            const stock = await ctx.db.get(record.stockId);
+            const user = await ctx.db.get(record.userId);
+            return {
+                ...record,
+                stockName: stock?.name || "Unknown Product",
+                productCode: stock?.productCode || "N/A",
+                userName: user ? `${user.first_name} ${user.last_name}` : "Unknown User"
+            };
+        }));
+
+        return enriched;
+    },
 });

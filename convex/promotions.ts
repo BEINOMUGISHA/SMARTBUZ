@@ -43,6 +43,8 @@ export const add = mutation({
         name: v.string(),
         prize: v.string(),
         isActive: v.boolean(),
+        triggerType: v.optional(v.string()),
+        threshold: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
         return await ctx.db.insert("promotions", args);
@@ -55,10 +57,19 @@ export const update = mutation({
         name: v.optional(v.string()),
         prize: v.optional(v.string()),
         isActive: v.optional(v.boolean()),
+        triggerType: v.optional(v.string()),
+        threshold: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
         const { id, ...rest } = args;
-        await ctx.db.patch(id, rest);
+        const patchData: any = { ...rest };
+
+        // If switching to Product type, remove threshold
+        if (args.triggerType === "Product") {
+            patchData.threshold = undefined;
+        }
+
+        await ctx.db.patch(id, patchData);
     },
 });
 
@@ -154,34 +165,33 @@ export const listRedemptions = query({
         from: v.optional(v.string()),
         to: v.optional(v.string()),
         email: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
     },
     handler: async (ctx, args) => {
-        if (!args.email) throw new Error("Unauthorized");
+        let targetShopId = args.shopId;
 
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email!))
-            .first();
-        if (!user) throw new Error("User not found");
-
-        const shop = await ctx.db
-            .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", user._id))
-            .first();
-
-        // Must be shop-scoped (or HQ if no shop, but schema allows optional shopId)
-        // If shop is null, maybe show all for admin? For now, let's assume strict shop scope if shop exists.
-        // If user has no shop, they might be HQ admin.
+        if (!targetShopId && args.email) {
+            const user = await ctx.db
+                .query("users")
+                .withIndex("by_email", (q) => q.eq("email", args.email!))
+                .first();
+            if (user) {
+                const shop = await ctx.db
+                    .query("shops")
+                    .withIndex("by_user", (q) => q.eq("userId", user._id))
+                    .first();
+                if (shop) targetShopId = shop._id;
+            }
+        }
 
         let q: any;
-
-        if (shop) {
+        if (targetShopId) {
             if (args.from && args.to) {
                 q = ctx.db.query("promotionRedemptions").withIndex("by_shop_date", (q) =>
-                    q.eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!)
+                    q.eq("shopId", targetShopId!).gte("date", args.from!).lte("date", args.to!)
                 );
             } else {
-                q = ctx.db.query("promotionRedemptions").withIndex("by_shop_date", (q) => q.eq("shopId", shop._id));
+                q = ctx.db.query("promotionRedemptions").withIndex("by_shop_date", (q) => q.eq("shopId", targetShopId!));
             }
         } else {
             // HQ/Admin view
@@ -192,7 +202,6 @@ export const listRedemptions = query({
                 q = baseQuery;
             }
         }
-
         const stats = await q.order("desc").paginate(args.paginationOpts);
 
         // Enrich results
@@ -210,7 +219,7 @@ export const listRedemptions = query({
         }));
 
         return { ...stats, page };
-    },
+    }
 });
 
 export const redemptionsStats = query({
@@ -218,26 +227,33 @@ export const redemptionsStats = query({
         email: v.optional(v.string()),
         from: v.optional(v.string()),
         to: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
     },
     handler: async (ctx, args) => {
-        const user = args.email ? await ctx.db
-            .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email!))
-            .first() : null;
+        let targetShopId = args.shopId;
 
-        const shop = user ? await ctx.db
-            .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", user._id))
-            .first() : null;
+        if (!targetShopId && args.email) {
+            const user = await ctx.db
+                .query("users")
+                .withIndex("by_email", (q) => q.eq("email", args.email!))
+                .first();
+            if (user) {
+                const shop = await ctx.db
+                    .query("shops")
+                    .withIndex("by_user", (q) => q.eq("userId", user._id))
+                    .first();
+                if (shop) targetShopId = shop._id;
+            }
+        }
 
         let q: any;
-        if (shop) {
+        if (targetShopId) {
             if (args.from && args.to) {
                 q = ctx.db.query("promotionRedemptions").withIndex("by_shop_date", (q) =>
-                    q.eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!)
+                    q.eq("shopId", targetShopId!).gte("date", args.from!).lte("date", args.to!)
                 );
             } else {
-                q = ctx.db.query("promotionRedemptions").withIndex("by_shop_date", (q) => q.eq("shopId", shop._id));
+                q = ctx.db.query("promotionRedemptions").withIndex("by_shop_date", (q) => q.eq("shopId", targetShopId!));
             }
         } else {
             const baseQuery = ctx.db.query("promotionRedemptions");
@@ -271,8 +287,9 @@ export const getActivePromotionsWithProducts = query({
             .collect();
 
         const promoMap: Record<string, { promotionName: string; requiredQty: number; prize: string }> = {};
+        const globalPromotions = activePromotions.filter(p => p.triggerType === "TotalPV" || p.triggerType === "TotalBV");
 
-        if (activePromotions.length === 0) return promoMap;
+        if (activePromotions.length === 0) return { productPromotions: promoMap, globalPromotions: [] };
 
         const allPromotionProducts = await ctx.db.query("promotionProducts").collect();
 
@@ -288,6 +305,6 @@ export const getActivePromotionsWithProducts = query({
             }
         }
 
-        return promoMap;
+        return { productPromotions: promoMap, globalPromotions };
     },
 });

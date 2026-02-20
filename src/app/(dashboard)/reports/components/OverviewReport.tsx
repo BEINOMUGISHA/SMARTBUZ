@@ -36,6 +36,13 @@ export function OverviewReport() {
                     reportMode={reportMode}
                     onDateRangeChange={setDateRange}
                     onReportModeChange={setReportMode}
+                    onClearFilters={() => {
+                        setDateRange({
+                            from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
+                            to: format(new Date(), "yyyy-MM-dd")
+                        });
+                        setReportMode("range");
+                    }}
                 />
                 <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-3 bg-muted/20 h-8 flex items-center rounded-lg">
                     Business Snapshot

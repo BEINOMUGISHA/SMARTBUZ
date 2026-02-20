@@ -9,10 +9,12 @@ import { ReportTable } from "./reports-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StockEnteredReport } from "./StockEnteredReport";
 import { ReportSummary } from "./ReportSummary";
+import { SearchableSelect } from "./SearchableSelect";
 
 export function GlobalStockReport() {
     const [subTab, setSubTab] = useState("regular");
     const [search, setSearch] = useState("");
+    const [searchType, setSearchType] = useState("name");
     const summaryData = useQuery(api.reports.getReportsSummary, {
         halfPrice: subTab === "hp" ? true : subTab === "regular" ? false : undefined,
         search: search || undefined
@@ -34,17 +36,31 @@ export function GlobalStockReport() {
                         </TabsTrigger>
                     </TabsList>
 
-                    {subTab !== "log" && (
-                        <div className="relative w-full md:w-80">
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <div className="w-28">
+                            <SearchableSelect
+                                options={[
+                                    { value: "name", label: "Name" },
+                                    { value: "code", label: "Code" },
+                                    { value: "supplier", label: "Supplier" },
+                                    { value: "category", label: "Category" },
+                                ]}
+                                value={searchType}
+                                onValueChange={setSearchType}
+                                placeholder="Search by"
+                                width="100%"
+                            />
+                        </div>
+                        <div className="relative flex-1 md:w-64">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-40" />
                             <Input
-                                placeholder="Search by name or code..."
+                                placeholder={`Search by ${searchType}...`}
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 className="pl-10 h-10 text-xs border-input bg-background focus:bg-white rounded-xl transition-all shadow-sm"
                             />
                         </div>
-                    )}
+                    </div>
                 </div>
 
                 {subTab !== "log" && (
@@ -56,30 +72,30 @@ export function GlobalStockReport() {
                 )}
 
                 <TabsContent value="regular" className="mt-0 focus-visible:outline-none">
-                    <StockTable halfPrice={false} search={search} summaryData={summaryData} />
+                    <StockTable halfPrice={false} search={search} searchType={searchType} summaryData={summaryData} />
                 </TabsContent>
                 <TabsContent value="hp" className="mt-0 focus-visible:outline-none">
-                    <StockTable halfPrice={true} search={search} summaryData={summaryData} />
+                    <StockTable halfPrice={true} search={search} searchType={searchType} summaryData={summaryData} />
                 </TabsContent>
                 <TabsContent value="log" className="mt-0 focus-visible:outline-none">
-                    <StockEnteredReport />
+                    <StockEnteredReport search={search} searchType={searchType} />
                 </TabsContent>
             </Tabs>
         </div>
     );
 }
 
-function StockTable({ halfPrice, search, summaryData }: { halfPrice: boolean; search: string; summaryData: any }) {
+function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice: boolean; search: string; searchType: string; summaryData: any }) {
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
     const { results: stockRecords, status: stockStatus, loadMore: loadMoreStock, isLoading: stockLoading } = usePaginatedQuery(
         api.reports.getStockSummary,
-        { halfPrice, search: search || undefined },
+        { halfPrice, search: search || undefined, searchType: searchType },
         { initialNumItems: rowsPerPage }
     );
 
-    const totalStockCount = useQuery(api.reports.getStockSummaryCount, { halfPrice, search: search || undefined }) || 0;
+    const totalStockCount = useQuery(api.reports.getStockSummaryCount, { halfPrice, search: search || undefined, searchType: searchType }) || 0;
 
     useEffect(() => {
         if (stockStatus === "CanLoadMore" && stockRecords.length < (page * rowsPerPage)) {
@@ -125,6 +141,11 @@ function StockTable({ halfPrice, search, summaryData }: { halfPrice: boolean; se
                 {
                     header: "Category",
                     accessor: (item: any) => item.categoryName || "General",
+                    className: "text-[10px] font-bold uppercase text-muted-foreground"
+                },
+                {
+                    header: "Supplier",
+                    accessor: (item: any) => item.supplier || "-",
                     className: "text-[10px] font-bold uppercase text-muted-foreground"
                 },
                 {

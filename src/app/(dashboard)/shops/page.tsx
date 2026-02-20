@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, ShoppingCart, Trash2, Plus, Minus, Store, MoveRight, Loader2, PackageCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { formatError } from "@/lib/utils";
+import { formatError, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
     Dialog,
@@ -65,12 +65,25 @@ export default function ShopsPage() {
     );
 }
 
+
 function ShopStockViewer() {
     const shops = useQuery(api.shops.listAll);
     const [selectedShopId, setSelectedShopId] = useState<Id<"shops"> | "">("");
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
+
+    // View Mode & Filters
+    const [activeTab, setActiveTab] = useState("inventory");
     const [viewType, setViewType] = useState<"regular" | "hp">("regular");
+    const [inventoryFilter, setInventoryFilter] = useState<"all" | "out" | "negative">("all");
+
+    // History Filters
+    const [dateFilter, setDateFilter] = useState("daily"); // daily | range
+    const [date, setDate] = useState<Date | undefined>(new Date());
+    const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+        from: new Date(),
+        to: new Date(),
+    });
 
     // Edit State
     const [editingItem, setEditingItem] = useState<{ stockId: Id<"stocks">; name: string; qty: number } | null>(null);
@@ -94,8 +107,9 @@ function ShopStockViewer() {
         return () => clearTimeout(timer);
     }, [search]);
 
-    useEffect(() => { setPage(1); }, [selectedShopId, viewType]);
+    useEffect(() => { setPage(1); }, [selectedShopId, viewType, inventoryFilter]);
 
+    // Data Fetching: Current Stock
     const paginatedResult = useQuery(api.shops.getPaginatedShopStock, selectedShopId ? {
         shopId: selectedShopId as Id<"shops">,
         limit: rowsPerPage,
@@ -104,14 +118,38 @@ function ShopStockViewer() {
         halfPrice: viewType === "hp"
     } : "skip");
 
-    const adjustStock = useMutation(api.shops.adjustShopStock);
-    const returnStock = useMutation(api.shops.returnShopStock);
-
-    // Derived State from Backend
     const stocks = paginatedResult?.page || [];
+    // Client-side filtering for Out/Negative stock since backend args didn't change yet
+    // For large datasets, this should be moved to backend, but for typical shop size it's fine.
+    const filteredStocks = stocks.filter(s => {
+        if (inventoryFilter === "out") return s.qty === 0;
+        if (inventoryFilter === "negative") return s.qty < 0;
+        return true;
+    });
+
     const totalCount = paginatedResult?.totalCount || 0;
     const stats = paginatedResult?.stats || { totalValue: 0, totalPV: 0, totalBV: 0, totalItems: 0 };
     const totalPages = Math.ceil(totalCount / rowsPerPage);
+
+    const adjustStock = useMutation(api.shops.adjustShopStock);
+    const returnStock = useMutation(api.shops.returnShopStock);
+
+    // Data Fetching: Stock History
+    const historyStartDate = dateFilter === "daily"
+        ? (date ? new Date(new Date(date).setHours(0, 0, 0, 0)).toISOString() : "")
+        : (dateRange.from ? new Date(new Date(dateRange.from).setHours(0, 0, 0, 0)).toISOString() : "");
+
+    const historyEndDate = dateFilter === "daily"
+        ? (date ? new Date(new Date(date).setHours(23, 59, 59, 999)).toISOString() : "")
+        : (dateRange.to ? new Date(new Date(dateRange.to).setHours(23, 59, 59, 999)).toISOString() : "");
+
+    const stockHistory = useQuery(api.shops.getShopIssueRecords,
+        (selectedShopId && activeTab === "history" && historyStartDate && historyEndDate) ? {
+            shopId: selectedShopId as Id<"shops">,
+            startDate: historyStartDate,
+            endDate: historyEndDate,
+        } : "skip"
+    );
 
     // Handlers
     const handleEditClick = (item: any) => {
@@ -160,7 +198,7 @@ function ShopStockViewer() {
 
     return (
         <div className="flex flex-col gap-6 h-full">
-            {/* Controls & Summary */}
+            {/* Header Controls */}
             <div className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-card p-4 rounded-xl border shadow-sm">
                     <div className="w-full sm:w-[300px]">
@@ -179,24 +217,14 @@ function ShopStockViewer() {
                         </Select>
                     </div>
 
-                    <div className="flex items-center bg-muted/50 p-1 rounded-lg border">
-                        <Button
-                            variant={viewType === "regular" ? "default" : "ghost"}
-                            size="sm"
-                            onClick={() => setViewType("regular")}
-                            className="text-xs font-semibold"
-                        >
-                            Regular Stock
-                        </Button>
-                        <Button
-                            variant={viewType === "hp" ? "default" : "ghost"}
-                            size="sm"
-                            onClick={() => setViewType("hp")}
-                            className="text-xs font-semibold"
-                        >
-                            HP Stock
-                        </Button>
-                    </div>
+                    {selectedShopId && (
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="inventory">Current Inventory</TabsTrigger>
+                                <TabsTrigger value="history">Stock History</TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+                    )}
                 </div>
 
                 {selectedShopId && (
@@ -219,16 +247,6 @@ function ShopStockViewer() {
                         </Card>
                     </div>
                 )}
-
-                <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder={`Search ${viewType === 'hp' ? 'HP' : 'Regular'} inventory...`}
-                        className="pl-9 h-10 w-full"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
-                </div>
             </div>
 
             <div className="flex-1 overflow-hidden border rounded-xl bg-card shadow-sm flex flex-col">
@@ -236,45 +254,70 @@ function ShopStockViewer() {
                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground min-h-[300px]">
                         <Store className="h-16 w-16 mb-4 opacity-10" />
                         <p className="text-lg font-medium">No Shop Selected</p>
-                        <p className="text-sm">Please select a shop to view its inventory.</p>
+                        <p className="text-sm">Please select a shop to view details.</p>
                     </div>
-                ) : paginatedResult === undefined ? (
-                    <div className="flex-1 flex items-center justify-center min-h-[300px]">
-                        <Loader2 className="animate-spin h-8 w-8 text-primary" />
-                    </div>
-                ) : stocks.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground min-h-[300px]">
-                        <p>No {viewType === 'hp' ? 'HP' : 'Regular'} products found in this shop.</p>
-                    </div>
-                ) : (
-                    <>
-                        <div className="flex-1 overflow-x-auto">
-                            <div className="min-w-[800px] lg:min-w-0">
+                ) : activeTab === "inventory" ? (
+                    /* INVENTORY VIEW */
+                    <div className="flex flex-col h-full">
+                        {/* Filters Bar */}
+                        <div className="p-4 border-b bg-muted/20 flex flex-col sm:flex-row gap-4 items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="relative w-full sm:w-[300px]">
+                                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder={`Search ${viewType} stock...`}
+                                        className="pl-9 h-9"
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                    />
+                                </div>
+                                <div className="flex items-center border rounded-md bg-background p-1 h-9">
+                                    <Button variant={viewType === "regular" ? "secondary" : "ghost"} size="sm" onClick={() => setViewType("regular")} className="h-7 text-xs px-2">Regular</Button>
+                                    <Button variant={viewType === "hp" ? "secondary" : "ghost"} size="sm" onClick={() => setViewType("hp")} className="h-7 text-xs px-2">HP</Button>
+                                </div>
+                            </div>
+                            <Select value={inventoryFilter} onValueChange={(v: any) => setInventoryFilter(v)}>
+                                <SelectTrigger className="w-[180px] h-9">
+                                    <SelectValue placeholder="Filter Stock" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Items</SelectItem>
+                                    <SelectItem value="out">Out of Stock (0)</SelectItem>
+                                    <SelectItem value="negative">Negative Stock (&lt; 0)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Table */}
+                        <div className="flex-1 overflow-auto">
+                            {stocks.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8">
+                                    <p>No products found matching criteria.</p>
+                                </div>
+                            ) : (
                                 <Table>
                                     <TableHeader className="sticky top-0 bg-background z-10">
                                         <TableRow>
                                             <TableHead>Product Name</TableHead>
                                             <TableHead className="text-right">Unit Price</TableHead>
-                                            <TableHead className="text-center">PV</TableHead>
-                                            <TableHead className="text-center">BV</TableHead>
+                                            <TableHead className="text-center">PV / BV</TableHead>
                                             <TableHead className="text-center">Qty</TableHead>
                                             <TableHead className="text-right">Total Value</TableHead>
                                             <TableHead className="text-right">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {stocks.map((stock) => (
-                                            <TableRow key={stock.stockId}>
+                                        {filteredStocks.map((stock) => (
+                                            <TableRow key={stock.stockId} className={cn(stock.qty === 0 ? "bg-red-50 hover:bg-red-100/50" : stock.qty < 0 ? "bg-red-100 hover:bg-red-200/50" : "")}>
                                                 <TableCell>
-                                                    <div className="font-medium">{stock.name}</div>
+                                                    <div className={cn("font-medium", stock.qty < 0 ? "text-red-900" : "")}>{stock.name}</div>
                                                     <div className="text-xs text-muted-foreground font-mono">{stock.productCode}</div>
                                                     {stock.halfPrice && <Badge variant="secondary" className="mt-1 text-[10px]">HP</Badge>}
                                                 </TableCell>
                                                 <TableCell className="text-right">{stock.price.toLocaleString()}</TableCell>
-                                                <TableCell className="text-center text-muted-foreground">{stock.pv}</TableCell>
-                                                <TableCell className="text-center text-muted-foreground">{stock.bv}</TableCell>
+                                                <TableCell className="text-center text-xs text-muted-foreground">{stock.pv} / {stock.bv}</TableCell>
                                                 <TableCell className="text-center">
-                                                    <Badge variant={stock.qty < 5 ? "destructive" : "outline"} className={stock.qty < 5 ? "" : "bg-green-50 text-green-700 border-green-200"}>
+                                                    <Badge variant={stock.qty <= 0 ? "destructive" : "outline"} className={cn(stock.qty > 0 ? "bg-green-50 text-green-700 border-green-200" : "font-bold shadow-xs")}>
                                                         {stock.qty}
                                                     </Badge>
                                                 </TableCell>
@@ -283,9 +326,7 @@ function ShopStockViewer() {
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-2">
-                                                        <Button variant="ghost" size="sm" onClick={() => handleEditClick(stock)}>
-                                                            Edit
-                                                        </Button>
+                                                        <Button variant="ghost" size="sm" onClick={() => handleEditClick(stock)}>Edit</Button>
                                                         <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(stock.stockId)}>
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>
@@ -295,60 +336,124 @@ function ShopStockViewer() {
                                         ))}
                                     </TableBody>
                                 </Table>
-                            </div>
+                            )}
                         </div>
 
+                        {/* Pagination Footer */}
                         <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 mt-auto">
                             <div className="flex items-center space-x-2">
                                 <p className="text-xs font-medium">Rows</p>
-                                <Select
-                                    value={`${rowsPerPage}`}
-                                    onValueChange={(value) => {
-                                        const newSize = Number(value);
-                                        setRowsPerPage(newSize);
-                                        localStorage.setItem("pos_shop_viewer_rows_per_page", String(newSize));
-                                        setPage(1);
-                                    }}
-                                >
-                                    <SelectTrigger className="h-8 w-[65px]">
-                                        <SelectValue placeholder={rowsPerPage} />
-                                    </SelectTrigger>
-                                    <SelectContent side="top">
-                                        {[5, 10, 20, 30, 50, 100].map((pageSize) => (
-                                            <SelectItem key={pageSize} value={`${pageSize}`}>
-                                                {pageSize}
-                                            </SelectItem>
-                                        ))}
+                                <Select value={`${rowsPerPage}`} onValueChange={(v) => { setRowsPerPage(Number(v)); setPage(1); }}>
+                                    <SelectTrigger className="h-8 w-[65px]"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {[5, 10, 20, 30, 50, 100].map(p => <SelectItem key={p} value={`${p}`}>{p}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
-
                             <div className="flex items-center gap-4">
                                 <div className="text-xs font-medium">
                                     {Math.min((page - 1) * rowsPerPage + 1, totalCount)}-{Math.min(page * rowsPerPage, totalCount)} of {totalCount}
                                 </div>
-
                                 <div className="flex items-center space-x-2">
-                                    <Button
-                                        variant="outline"
-                                        className="h-8 w-8 p-0"
-                                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                        disabled={page === 1}
-                                    >
-                                        <ChevronLeft className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        className="h-8 w-8 p-0"
-                                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                                        disabled={page === totalPages || totalPages === 0}
-                                    >
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
+                                    <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                                    <Button variant="outline" className="h-8 w-8 p-0" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || totalPages === 0}><ChevronRight className="h-4 w-4" /></Button>
                                 </div>
                             </div>
                         </div>
-                    </>
+                    </div>
+                ) : (
+                    /* HISTORY VIEW */
+                    <div className="flex flex-col h-full bg-muted/5">
+                        {/* History Filters */}
+                        <div className="p-4 border-b bg-background flex flex-col gap-4">
+                            <Tabs value={dateFilter} onValueChange={setDateFilter} className="w-[400px]">
+                                <TabsList className="grid w-full grid-cols-2">
+                                    <TabsTrigger value="daily">Daily Audit</TabsTrigger>
+                                    <TabsTrigger value="range">Date Range</TabsTrigger>
+                                </TabsList>
+                            </Tabs>
+
+                            <div className="flex items-center gap-4">
+                                {dateFilter === "daily" ? (
+                                    <div className="flex items-center gap-2">
+                                        <Label>Select Date:</Label>
+                                        <Input
+                                            type="date"
+                                            value={date ? date.toISOString().split("T")[0] : ""}
+                                            onChange={(e) => setDate(e.target.value ? new Date(e.target.value) : undefined)}
+                                            className="w-[180px]"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <div className="grid gap-1.5">
+                                            <Label className="text-xs">From</Label>
+                                            <Input
+                                                type="date"
+                                                value={dateRange.from ? dateRange.from.toISOString().split("T")[0] : ""}
+                                                onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value ? new Date(e.target.value) : undefined }))}
+                                                className="w-[150px]"
+                                            />
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            <Label className="text-xs">To</Label>
+                                            <Input
+                                                type="date"
+                                                value={dateRange.to ? dateRange.to.toISOString().split("T")[0] : ""}
+                                                onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value ? new Date(e.target.value) : undefined }))}
+                                                className="w-[150px]"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* History Table */}
+                        <div className="flex-1 overflow-auto p-4">
+                            {!stockHistory ? (
+                                <div className="flex items-center justify-center h-40"><Loader2 className="animate-spin" /></div>
+                            ) : stockHistory.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50">
+                                    <p>No restock records found for this period.</p>
+                                </div>
+                            ) : (
+                                <Card>
+                                    <Table>
+                                        <TableHeader className="bg-muted/50">
+                                            <TableRow>
+                                                <TableHead>Date & Time</TableHead>
+                                                <TableHead>Product</TableHead>
+                                                <TableHead className="text-center">Qty Added</TableHead>
+                                                <TableHead className="text-right">Issued By</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {stockHistory.map((record: any) => (
+                                                <TableRow key={record._id}>
+                                                    <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                                                        {new Date(record.date).toLocaleString()}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="font-medium">{record.stockName}</div>
+                                                        <div className="text-xs text-muted-foreground font-mono">{record.productCode}</div>
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                                            +{record.quantity}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-xs">
+                                                        {record.userName}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </Card>
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
 

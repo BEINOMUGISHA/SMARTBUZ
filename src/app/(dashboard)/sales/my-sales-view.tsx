@@ -63,6 +63,7 @@ export function MySalesView() {
     const [searchTerm, setSearchTerm] = useState("");
     const [filterPackageType, setFilterPackageType] = useState("All");
     const [filterDeliveryStatus, setFilterDeliveryStatus] = useState("All");
+    const [filterTransactionType, setFilterTransactionType] = useState("All");
 
     // Receipt Modal State
     const [printReceiptData, setPrintReceiptData] = useState<ReceiptData | null>(null);
@@ -88,6 +89,7 @@ export function MySalesView() {
         email: user?.email || undefined,
         packageType: filterPackageType === "All" ? undefined : filterPackageType,
         deliveryStatus: filterDeliveryStatus === "All" ? undefined : filterDeliveryStatus,
+        transactionType: filterTransactionType === "All" ? undefined : filterTransactionType,
     };
 
     // 1. Stats
@@ -162,7 +164,17 @@ export function MySalesView() {
         },
         {
             header: "Customer",
-            accessor: (s: any) => s.customer?.name || s.manualCustomerName || "Walk-in"
+            accessor: (s: any) => (
+                <div className="flex flex-col gap-0.5">
+                    <span className="font-semibold">{s.customer?.name || s.manualCustomerName || "Walk-in"}</span>
+                    {(s.customer?.phone || s.customerPhone) && (
+                        <span className="text-[10px] text-muted-foreground">{s.customer?.phone || s.customerPhone}</span>
+                    )}
+                    {(s.customer?.location || s.customerLocation) && (
+                        <span className="text-[10px] text-muted-foreground italic">@ {s.customer?.location || s.customerLocation}</span>
+                    )}
+                </div>
+            )
         },
         {
             header: "Items Sold",
@@ -181,6 +193,15 @@ export function MySalesView() {
             header: "Total (UGX)",
             accessor: (s: any) => s.total,
             exportValue: (s: any) => s.total.toLocaleString()
+        },
+        {
+            header: "Type",
+            accessor: (s: any) => (
+                <Badge variant={s.transactionType === "Swap" ? "secondary" : "outline"} className={s.transactionType === "Swap" ? "bg-purple-50 text-purple-700 border-purple-200" : ""}>
+                    {s.transactionType || "Sale"}
+                </Badge>
+            ),
+            exportValue: (s: any) => s.transactionType || "Sale"
         },
         {
             header: "Payment",
@@ -289,6 +310,20 @@ export function MySalesView() {
                                 <SelectItem value="All">All</SelectItem>
                                 <SelectItem value="Taken">Taken</SelectItem>
                                 <SelectItem value="Pending">Pending</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Type:</Label>
+                        <Select value={filterTransactionType} onValueChange={setFilterTransactionType}>
+                            <SelectTrigger className="w-[110px] bg-white h-9 text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent side="top">
+                                <SelectItem value="All">All</SelectItem>
+                                <SelectItem value="Sale">Sale</SelectItem>
+                                <SelectItem value="Swap">Swap</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -458,6 +493,17 @@ export function MySalesView() {
                                                                 </span>
                                                             </div>
                                                         ))}
+                                                        {sale.transactionType === "Swap" && sale.returnedItems && (
+                                                            <div className="mt-2 pt-2 border-t border-purple-200">
+                                                                <div className="text-[10px] font-bold text-purple-700 uppercase mb-1">Returned in Exchange:</div>
+                                                                {sale.returnedItems.map((i: any, idx: number) => (
+                                                                    <div key={idx} className="text-[10px] text-purple-600 flex justify-between italic">
+                                                                        <span>{i.quantity}x {i.name}</span>
+                                                                        <span>({i.productCode})</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-right font-mono text-xs">

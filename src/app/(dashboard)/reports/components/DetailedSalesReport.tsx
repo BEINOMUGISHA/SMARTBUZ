@@ -13,6 +13,7 @@ import { ReportFilters } from "./ReportFilters";
 import { ReportSummary } from "./ReportSummary";
 import { SearchableSelect } from "./SearchableSelect";
 import { Id } from "../../../../../convex/_generated/dataModel";
+import { cn } from "@/lib/utils";
 
 export function DetailedSalesReport() {
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
@@ -24,6 +25,7 @@ export function DetailedSalesReport() {
     const [selectedShop, setSelectedShop] = useState<string>("all");
     const [customerId, setCustomerId] = useState<string>("all");
     const [clientType, setClientType] = useState<string>("All");
+    const [transactionType, setTransactionType] = useState<string>("All");
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
@@ -37,6 +39,7 @@ export function DetailedSalesReport() {
         shopId: selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
         customerId: customerId === "all" ? undefined : (customerId as Id<"customers">),
         clientType: clientType === "All" ? undefined : clientType,
+        transactionType: transactionType === "All" ? undefined : transactionType,
     };
 
     const { results: salesRecords, status: salesStatus, loadMore: loadMoreSales, isLoading: salesLoading } = usePaginatedQuery(
@@ -63,12 +66,25 @@ export function DetailedSalesReport() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white p-4 rounded-xl border shadow-xs flex flex-wrap items-end gap-3">
+            <div className="bg-white p-4 rounded-xl border shadow-xs flex flex-wrap items-center gap-3">
                 <ReportFilters
                     dateRange={dateRange}
                     reportMode={reportMode}
                     onDateRangeChange={setDateRange}
                     onReportModeChange={setReportMode}
+                    onClearFilters={() => {
+                        setDateRange({
+                            from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
+                            to: format(new Date(), "yyyy-MM-dd")
+                        });
+                        setReportMode("range");
+                        setSelectedShop("all");
+                        setCustomerId("all");
+                        setClientType("All");
+                        setTransactionType("All");
+                        setSearch("");
+                        setPage(1);
+                    }}
                 />
 
                 <SearchableSelect
@@ -94,7 +110,7 @@ export function DetailedSalesReport() {
                 />
 
                 <Select value={clientType} onValueChange={setClientType}>
-                    <SelectTrigger className="w-[120px] h-10 text-[10px] font-bold border-input">
+                    <SelectTrigger className="w-[120px] h-10 text-[10px] font-bold border-input font-black uppercase tracking-tighter">
                         <SelectValue placeholder="Client Type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -102,6 +118,17 @@ export function DetailedSalesReport() {
                         <SelectItem value="Member">Regular Member</SelectItem>
                         <SelectItem value="HP Client">HP Client</SelectItem>
                         <SelectItem value="Walk-in">Walk-in</SelectItem>
+                    </SelectContent>
+                </Select>
+
+                <Select value={transactionType} onValueChange={setTransactionType}>
+                    <SelectTrigger className="w-[120px] h-10 text-[10px] font-bold border-input font-black uppercase tracking-tighter text-blue-700">
+                        <SelectValue placeholder="Transaction" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="All">All Trans</SelectItem>
+                        <SelectItem value="Sale">Sale Only</SelectItem>
+                        <SelectItem value="Swap">Product Swap</SelectItem>
                     </SelectContent>
                 </Select>
 
@@ -155,25 +182,57 @@ export function DetailedSalesReport() {
                         )
                     },
                     {
-                        header: "Client Name",
-                        accessor: "customerName",
-                        className: "font-black text-primary"
+                        header: "Client Name & Info",
+                        accessor: (s: any) => (
+                            <div className="flex flex-col gap-0.5 min-w-[140px]">
+                                <span className="font-black text-primary leading-none">{s.customerName}</span>
+                                {s.customerPhone && <span className="text-[9px] font-bold text-muted-foreground">{s.customerPhone}</span>}
+                                {s.customerLocation && <span className="text-[9px] italic opacity-70">📍 {s.customerLocation}</span>}
+                            </div>
+                        ),
+                        exportValue: (s: any) => s.customerName
                     },
                     {
                         header: "Type",
-                        accessor: "clientType",
-                        className: "text-[9px] uppercase font-black text-muted-foreground"
+                        accessor: (s: any) => (
+                            <div className="flex flex-col gap-1">
+                                <Badge variant="outline" className="text-[8px] uppercase font-black tracking-tighter px-1 h-3.5 w-fit">
+                                    {s.clientType}
+                                </Badge>
+                                <Badge variant="secondary" className={cn(
+                                    "text-[8px] uppercase font-black px-1 h-3.5 w-fit",
+                                    s.transactionType === "Swap" ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                )}>
+                                    {s.transactionType || "Sale"}
+                                </Badge>
+                            </div>
+                        ),
+                        className: "w-[80px]"
                     },
                     {
-                        header: "Items Sold",
+                        header: "Items Details",
                         accessor: (s: any) => (
-                            <div className="flex flex-col gap-0.5 py-1">
-                                {s.items.map((item: any, idx: number) => (
-                                    <div key={idx} className="text-[9px] leading-tight flex items-center gap-2">
-                                        <span className="font-black text-primary min-w-[15px]">{item.quantity}x</span>
-                                        <span className="truncate max-w-[120px]">{item.name}</span>
+                            <div className="flex flex-col gap-1.5 py-1 min-w-[160px]">
+                                <div className="flex flex-col gap-0.5">
+                                    <span className="text-[8px] font-black uppercase text-emerald-700 tracking-tighter">Products Taken:</span>
+                                    {s.items.map((item: any, idx: number) => (
+                                        <div key={idx} className="text-[9px] leading-tight flex items-center gap-2">
+                                            <span className="font-black text-primary min-w-[15px]">{item.quantity}x</span>
+                                            <span className="truncate max-w-[120px]">{item.name}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                {s.transactionType === "Swap" && s.returnedItems && s.returnedItems.length > 0 && (
+                                    <div className="flex flex-col gap-0.5 border-t border-blue-100 pt-1 mt-1 bg-blue-50/50 p-1 rounded-sm">
+                                        <span className="text-[8px] font-black uppercase text-blue-700 tracking-tighter">Items Returned:</span>
+                                        {s.returnedItems.map((item: any, idx: number) => (
+                                            <div key={idx} className="text-[9px] leading-tight flex items-center gap-2 opacity-70">
+                                                <span className="font-bold text-blue-600 min-w-[15px]">{item.quantity}x</span>
+                                                <span className="truncate max-w-[120px] line-through decoration-blue-300">{item.name}</span>
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
+                                )}
                             </div>
                         ),
                         exportValue: (s: any) => `${s.items.reduce((acc: number, item: any) => acc + item.quantity, 0)} Items`

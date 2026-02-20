@@ -1,11 +1,12 @@
-"use client";
-
 import { format, parseISO } from "date-fns";
-import { Calendar as CalendarIcon, ArrowRight } from "lucide-react";
+import { Calendar as CalendarIcon, ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DatePickerWithRange } from "@/components/date-range-picker";
 import { cn } from "@/lib/utils";
+import { DateRange as DayPickerDateRange } from "react-day-picker";
 
 interface DateRange {
     from: string;
@@ -18,6 +19,7 @@ interface ReportFiltersProps {
     onDateRangeChange: (range: DateRange) => void;
     onReportModeChange: (mode: "daily" | "range") => void;
     showDailyAudit?: boolean;
+    onClearFilters?: () => void;
 }
 
 export function ReportFilters({
@@ -26,109 +28,101 @@ export function ReportFilters({
     onDateRangeChange,
     onReportModeChange,
     showDailyAudit = true,
+    onClearFilters,
 }: ReportFiltersProps) {
-    const handleSingleDayChange = (date: Date | undefined) => {
+    const handleDailySelect = (date: Date | undefined) => {
         if (date) {
             const formatted = format(date, "yyyy-MM-dd");
             onDateRangeChange({ from: formatted, to: formatted });
-            onReportModeChange("daily");
         }
     };
 
-    const handleRangeChange = (type: "from" | "to", date: Date | undefined) => {
-        if (date) {
-            const formatted = format(date, "yyyy-MM-dd");
-            onDateRangeChange({ ...dateRange, [type]: formatted });
-            onReportModeChange("range");
+    const handleRangeSelect = (range: DayPickerDateRange | undefined) => {
+        if (range?.from) {
+            onDateRangeChange({
+                from: format(range.from, "yyyy-MM-dd"),
+                to: range.to ? format(range.to, "yyyy-MM-dd") : format(range.from, "yyyy-MM-dd")
+            });
         }
+    };
+
+    // Convert string dateRange to Date objects for pickers
+    const dateObject = {
+        from: parseISO(dateRange.from),
+        to: parseISO(dateRange.to)
     };
 
     return (
-        <div className="flex flex-wrap items-center gap-3 bg-white/50 p-2 rounded-xl border border-muted shadow-xs print:hidden">
+        <div className="flex flex-wrap items-center gap-3 bg-muted/20 p-2 rounded-xl border shadow-sm print:hidden">
             {showDailyAudit && (
-                <div className="flex items-center gap-2">
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button
-                                variant="outline"
-                                className={cn(
-                                    "h-8 px-3 text-[10px] font-black uppercase tracking-wider border-2 transition-all",
-                                    reportMode === "daily" ? "border-primary bg-primary/5 text-primary" : "border-muted/20"
-                                )}
-                            >
-                                <CalendarIcon className="mr-1.5 h-3 w-3 opacity-50" />
-                                {reportMode === "daily" ? format(parseISO(dateRange.from), "dd MMM yyyy") : "Daily Audit"}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                                mode="single"
-                                selected={parseISO(dateRange.from)}
-                                onSelect={handleSingleDayChange}
-                                initialFocus
-                            />
-                        </PopoverContent>
-                    </Popover>
-                    <div className="h-4 w-px bg-muted mx-1" />
+                <Tabs
+                    value={reportMode}
+                    onValueChange={(v) => onReportModeChange(v as "daily" | "range")}
+                    className="w-auto"
+                >
+                    <TabsList className="h-9 p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-xs rounded-lg">
+                        <TabsTrigger
+                            value="daily"
+                            className="text-[10px] font-bold uppercase tracking-wider h-7 px-3 rounded-md transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+                        >
+                            Daily Audit
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="range"
+                            className="text-[10px] font-bold uppercase tracking-wider h-7 px-3 rounded-md transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+                        >
+                            Date Range
+                        </TabsTrigger>
+                    </TabsList>
+                </Tabs>
+            )}
+
+            {reportMode === "daily" ? (
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant="outline"
+                            className={cn(
+                                "w-[160px] justify-start text-left font-normal h-9 bg-white text-xs",
+                                !dateRange.from && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {dateObject.from ? format(dateObject.from, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                            mode="single"
+                            selected={dateObject.from}
+                            onSelect={handleDailySelect}
+                            initialFocus
+                        />
+                    </PopoverContent>
+                </Popover>
+            ) : (
+                <div className="scale-90 origin-left -ml-2">
+                    {/* Scale down slightly to fit better if needed, or remove scale */}
+                    <DatePickerWithRange
+                        date={dateObject}
+                        setDate={handleRangeSelect}
+                        className="w-full"
+                    />
                 </div>
             )}
 
-            <div className="flex items-center gap-1.5">
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button
-                            variant="outline"
-                            className={cn(
-                                "h-8 w-[110px] justify-start text-[10px] font-bold border transition-all",
-                                reportMode === "range" ? "border-muted-foreground/30 bg-muted/5" : "border-muted/10 opacity-60"
-                            )}
-                        >
-                            {format(parseISO(dateRange.from), "dd MMM yy")}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                            mode="single"
-                            selected={parseISO(dateRange.from)}
-                            onSelect={(d) => handleRangeChange("from", d)}
-                            initialFocus
-                        />
-                    </PopoverContent>
-                </Popover>
-
-                <ArrowRight className="h-3 w-3 text-muted-foreground opacity-50" />
-
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button
-                            variant="outline"
-                            className={cn(
-                                "h-8 w-[110px] justify-start text-[10px] font-bold border transition-all",
-                                reportMode === "range" ? "border-muted-foreground/30 bg-muted/5" : "border-muted/10 opacity-60"
-                            )}
-                        >
-                            {format(parseISO(dateRange.to), "dd MMM yy")}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                            mode="single"
-                            selected={parseISO(dateRange.to)}
-                            onSelect={(d) => handleRangeChange("to", d)}
-                            initialFocus
-                        />
-                    </PopoverContent>
-                </Popover>
-            </div>
-
-            <div className="ml-auto px-3 h-8 flex items-center bg-muted/30 rounded-lg">
-                <span className="text-[10px] font-black text-muted-foreground uppercase italic tracking-tighter">
-                    {reportMode === "daily"
-                        ? format(parseISO(dateRange.from), "MMMM dd, yyyy")
-                        : `${format(parseISO(dateRange.from), "MMM dd")} - ${format(parseISO(dateRange.to), "MMM dd, yyyy")}`
-                    }
-                </span>
-            </div>
+            {onClearFilters && (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onClearFilters}
+                    className="h-9 px-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors ml-auto"
+                    title="Clear All Filters"
+                >
+                    <X className="h-4 w-4 mr-1" />
+                    <span className="text-[10px] font-black uppercase tracking-wider">Clear</span>
+                </Button>
+            )}
         </div>
     );
 }

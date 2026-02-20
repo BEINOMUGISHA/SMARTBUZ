@@ -300,8 +300,10 @@ export const add = mutation({
         bv: v.number(),
         categoryId: v.id("categories"),
         halfPrice: v.optional(v.boolean()),
+        supplier: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
+        const { supplier, ...insertArgs } = args;
         const identity = await ctx.auth.getUserIdentity();
         let userId: Id<"users"> | undefined;
 
@@ -313,14 +315,14 @@ export const add = mutation({
             if (user) userId = user._id;
         }
 
-        // Fallback for system/seed if no identity
         if (!userId) {
             const admin = await ctx.db.query("users").first();
             if (admin) userId = admin._id;
         }
 
         const stockId = await ctx.db.insert("stocks", {
-            ...args,
+            ...insertArgs,
+            supplier,
         });
 
         if (userId) {
@@ -335,6 +337,7 @@ export const add = mutation({
                 bv: args.bv,
                 halfPrice: args.halfPrice || false,
                 type: "add",
+                supplier,
             });
         }
 
@@ -356,6 +359,7 @@ export const update = mutation({
         bv: v.optional(v.number()),
         categoryId: v.optional(v.id("categories")),
         halfPrice: v.optional(v.boolean()),
+        supplier: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const { id, ...rest } = args;
@@ -364,7 +368,6 @@ export const update = mutation({
 
         await ctx.db.patch(id, rest);
 
-        // If price, pv, bv, or halfPrice changed, update all shops
         const priceChanged = rest.price !== undefined && rest.price !== oldStock.price;
         const halfPriceChanged = rest.halfPrice !== undefined && rest.halfPrice !== oldStock.halfPrice;
 
@@ -393,7 +396,6 @@ export const update = mutation({
 export const remove = mutation({
     args: { id: v.id("stocks") },
     handler: async (ctx, args) => {
-        // Remove from all shops first
         const shops = await ctx.db.query("shops").collect();
         for (const shop of shops) {
             const issuedStocks = shop.issuedStocks.filter(item => item.stockId !== args.id);
@@ -405,7 +407,7 @@ export const remove = mutation({
     },
 });
 
-// Restock logic (increment quantity)
+// Restock logic
 export const restock = mutation({
     args: {
         id: v.id("stocks"),
@@ -415,8 +417,10 @@ export const restock = mutation({
         bv: v.number(),
         halfPrice: v.boolean(),
         date: v.string(),
+        supplier: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
+        const { supplier, ...restockArgs } = args;
         const identity = await ctx.auth.getUserIdentity();
         let userId: Id<"users"> | undefined;
 
@@ -428,7 +432,6 @@ export const restock = mutation({
             if (user) userId = user._id;
         }
 
-        // Fallback
         if (!userId) {
             const admin = await ctx.db.query("users").first();
             if (admin) userId = admin._id;
@@ -443,6 +446,7 @@ export const restock = mutation({
             pv: args.pv,
             bv: args.bv,
             halfPrice: args.halfPrice,
+            supplier: supplier ?? stock.supplier,
         });
 
         if (userId) {
@@ -452,15 +456,15 @@ export const restock = mutation({
                 userId,
                 date: args.date || new Date().toISOString(),
                 price: args.price,
-                purchasePrice: stock.purchasePrice, // Assuming purchase price doesn't change on restock in current schema, or we take from stock
+                purchasePrice: stock.purchasePrice,
                 pv: args.pv,
                 bv: args.bv,
                 halfPrice: args.halfPrice,
                 type: "restock",
+                supplier,
             });
         }
 
-        // Update shops as well for the price/pv/bv/halfPrice change
         const shops = await ctx.db.query("shops").collect();
         for (const shop of shops) {
             const issuedStocks = shop.issuedStocks.map(item => {
@@ -477,5 +481,93 @@ export const restock = mutation({
             });
             await ctx.db.patch(shop._id, { issuedStocks });
         }
+    },
+});
+
+export const getShopIssueRecords = query({
+    args: {
+        shopId: v.optional(v.id("shops")),
+        from: v.optional(v.string()),
+        to: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let q;
+        if (args.shopId) {
+            q = ctx.db.query("shopIssueRecords").withIndex("by_shop_date", q => q.eq("shopId", args.shopId!));
+            if (args.from && args.to) {
+                q = q.filter(q => q.and(
+                    q.gte(q.field("date"), args.from!),
+                    q.lte(q.field("date"), args.to!.includes("T") ? args.to! : `${args.to!}T23:59:59.999Z`)
+                ));
+            }
+        } else {
+            q = ctx.db.query("shopIssueRecords");
+            if (args.from && args.to) {
+                q = q.filter(q => q.and(
+                    q.gte(q.field("date"), args.from!),
+                    q.lte(q.field("date"), args.to!.includes("T") ? args.to! : `${args.to!}T23:59:59.999Z`)
+                ));
+            }
+        }
+
+        const records = await q.order("desc").collect();
+
+        const [stocks, shops, users] = await Promise.all([
+            Promise.all(records.map(r => ctx.db.get(r.stockId))),
+            Promise.all(records.map(r => ctx.db.get(r.shopId))),
+            Promise.all(records.map(r => ctx.db.get(r.userId))),
+        ]);
+
+        const stockMap = new Map(stocks.filter(s => s !== null).map(s => [s!._id, s]));
+        const shopMap = new Map(shops.filter(s => s !== null).map(s => [s!._id, s]));
+        const userMap = new Map(users.filter(u => u !== null).map(u => [u!._id, u]));
+
+        return records.map(r => ({
+            ...r,
+            stockName: stockMap.get(r.stockId)?.name || "Unknown",
+            productCode: stockMap.get(r.stockId)?.productCode || "N/A",
+            halfPrice: stockMap.get(r.stockId)?.halfPrice || false,
+            shopName: shopMap.get(r.shopId)?.name || "Unknown",
+            userName: userMap.get(r.userId) ? `${userMap.get(r.userId)!.first_name} ${userMap.get(r.userId)!.last_name}` : "Unknown",
+        }));
+    },
+});
+
+export const getStockEntries = query({
+    args: {
+        from: v.optional(v.string()),
+        to: v.optional(v.string()),
+        type: v.optional(v.string()), // "add" or "restock"
+    },
+    handler: async (ctx, args) => {
+        let q = ctx.db.query("stockEntries");
+
+        if (args.from && args.to) {
+            q = q.filter(q => q.and(
+                q.gte(q.field("date"), args.from!),
+                q.lte(q.field("date"), args.to!)
+            ));
+        }
+
+        if (args.type) {
+            q = q.filter(q => q.eq(q.field("type"), args.type));
+        }
+
+        const entries = await q.order("desc").collect();
+
+        const [stocks, users] = await Promise.all([
+            Promise.all(entries.map(e => ctx.db.get(e.stockId))),
+            Promise.all(entries.map(e => ctx.db.get(e.userId))),
+        ]);
+
+        const stockMap = new Map(stocks.filter(s => s !== null).map(s => [s!._id, s]));
+        const userMap = new Map(users.filter(u => u !== null).map(u => [u!._id, u]));
+
+        return entries.map(e => ({
+            ...e,
+            stockName: stockMap.get(e.stockId)?.name || "Unknown",
+            productCode: stockMap.get(e.stockId)?.productCode || "N/A",
+            userName: userMap.get(e.userId) ? `${userMap.get(e.userId)!.first_name} ${userMap.get(e.userId)!.last_name}` : "Unknown",
+        }));
     },
 });
