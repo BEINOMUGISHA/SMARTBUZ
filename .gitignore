@@ -38,5 +38,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+h
 next-env.d.ts
 # deploy3
