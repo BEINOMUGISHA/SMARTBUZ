@@ -111,6 +111,7 @@ export default defineSchema({
         customerPhone: v.optional(v.string()),
         customerLocation: v.optional(v.string()),
         transactionType: v.optional(v.string()), // Sale, Swap
+        invoiceNumber: v.optional(v.string()), // Sequential serial number (e.g. MBR-101)
         returnedItems: v.optional(v.array(
             v.object({
                 stockId: v.id("stocks"),
@@ -121,7 +122,8 @@ export default defineSchema({
         )),
     }).index("by_date", ["date"])
         .index("by_shop_date", ["shopId", "date"])
-        .index("by_customer_date", ["customerId", "date"]),
+        .index("by_customer_date", ["customerId", "date"])
+        .index("by_invoiceNumber", ["invoiceNumber"]),
 
     loans: defineTable({
         customerId: v.optional(v.id("customers")), // Made optional for Walk-ins
@@ -219,4 +221,9 @@ export default defineSchema({
         code: v.string(),
         expiresAt: v.number(),
     }).index("by_email", ["email"]),
+
+    counters: defineTable({
+        name: v.string(), // e.g. "invoice"
+        lastValue: v.number(),
+    }).index("by_name", ["name"]),
 });

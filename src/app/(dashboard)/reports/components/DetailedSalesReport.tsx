@@ -182,6 +182,15 @@ export function DetailedSalesReport() {
                         )
                     },
                     {
+                        header: "Invoice No",
+                        accessor: (s: any) => (
+                            <span className="font-mono font-black text-[10px] text-emerald-800">
+                                {s.invoiceNumber || "---"}
+                            </span>
+                        ),
+                        className: "w-[100px]"
+                    },
+                    {
                         header: "Client Name & Info",
                         accessor: (s: any) => (
                             <div className="flex flex-col gap-0.5 min-w-[140px]">

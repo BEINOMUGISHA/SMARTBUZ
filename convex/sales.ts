@@ -1,7 +1,35 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, MutationCtx } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { Id, Doc } from "./_generated/dataModel";
+
+async function generateInvoiceNumber(ctx: MutationCtx, shopId?: Id<"shops">) {
+    let prefix = "HQ";
+
+    if (shopId) {
+        const shop = await ctx.db.get(shopId);
+        if (shop && shop.serialNumber) {
+            // Extract the first part of the serial number (e.g., "MBR" from "MBR-101")
+            prefix = shop.serialNumber.split("-")[0];
+        }
+    }
+
+    const counterName = `invoice_${prefix}`;
+    const counter = await ctx.db
+        .query("counters")
+        .withIndex("by_name", (q) => q.eq("name", counterName))
+        .first();
+
+    let nextValue = 1; // Start from 001
+    if (counter) {
+        nextValue = counter.lastValue + 1;
+        await ctx.db.patch(counter._id, { lastValue: nextValue });
+    } else {
+        await ctx.db.insert("counters", { name: counterName, lastValue: nextValue });
+    }
+
+    return `${prefix}-${String(nextValue).padStart(3, "0")}`;
+}
 
 // List sales with pagination
 export const list = query({
@@ -138,7 +166,10 @@ export const create = mutation({
             customerPhone: args.customerPhone,
             customerLocation: args.customerLocation,
             transactionType: args.transactionType || "Sale",
+            invoiceNumber: await generateInvoiceNumber(ctx, shop ? shop._id : args.shopId),
         });
+
+        const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
 
         // ---------------------------------------------------------
         // PROMOTION TRIGGER LOGIC
@@ -270,7 +301,7 @@ export const create = mutation({
             timestamp: new Date().toISOString(),
         });
 
-        return { saleId, redemptions: triggeredRedemptions };
+        return { saleId, redemptions: triggeredRedemptions, invoiceNumber: invoiceNumberValue };
     },
 });
 
@@ -782,7 +813,10 @@ export const swap = mutation({
                 productCode: i.productCode || "N/A",
             })),
             deliveryStatus: "Taken",
+            invoiceNumber: await generateInvoiceNumber(ctx, shop ? shop._id : args.shopId),
         });
+
+        const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
 
         // 5. Log activity
         await ctx.db.insert("activityLogs", {
@@ -792,7 +826,7 @@ export const swap = mutation({
             timestamp: date,
         });
 
-        return saleId;
+        return { saleId, invoiceNumber: invoiceNumberValue };
     },
 });
 

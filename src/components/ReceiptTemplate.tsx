@@ -96,14 +96,14 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                     {/* Row 3 */}
                     <div className="flex items-center gap-2 mt-1">
                         <span className="shrink-0 w-24">CLIENT TYPE:</span>
-                        <div className="border border-black h-6 flex-1 px-2 flex items-center bg-white">
+                        <div className="border border-black h-6 flex-1 px-2 flex items-center bg-white font-black">
                             {data.clientType}
                         </div>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
-                        <span className="shrink-0 w-24">DELIVERY STATUS:</span>
-                        <div className="border border-black h-6 flex-1 px-2 flex items-center font-black bg-white">
-                            {data.deliveryStatus === "Pending" ? "NOT TAKEN" : "FULLY DELIVERED"}
+                        <span className="shrink-0 w-24">RECEIPT SERIAL NO:</span>
+                        <div className="border border-black h-6 flex-1 px-2 flex items-center font-mono text-[9px] bg-white">
+                            {data.invoiceNumber || "N/A"}
                         </div>
                     </div>
                 </div>
@@ -129,8 +129,8 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                 {data.items.map((item, i) => {
                     const totalLinePV = (item.pv || 0) * item.qty;
                     const totalLineBV = (item.bv || 0) * item.qty;
-                    const percentPv = item.price > 0 ? `${Math.round((item.pv / item.price) * 100)}%` : "0%";
-                    const percentBv = item.price > 0 ? `${Math.round((item.bv / item.price) * 100)}%` : "0%";
+                    const percentPv = item.price > 0 ? `${((item.pv / item.price) * 100).toFixed(1)}%` : "0%";
+                    const percentBv = item.price > 0 ? `${((item.bv / item.price) * 100).toFixed(1)}%` : "0%";
 
                     return (
                         <div key={i} className="grid grid-cols-[0.7fr_2.5fr_0.6fr_0.6fr_0.6fr_0.7fr_0.6fr_0.6fr_0.7fr_1.2fr] border-b border-r border-black text-center min-h-[24px]">
@@ -201,16 +201,16 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                         </div>
                     </div>
                     <div>
-                        <p className="font-bold uppercase text-[8px] mb-1">Transaction Ref:</p>
-                        <div className="h-8 flex items-end pb-1 font-mono text-[9px]">
-                            {data.invoiceNumber || "N/A"}
+                        <p className="font-bold uppercase text-[8px] mb-1">Delivery Status:</p>
+                        <div className="h-8 flex items-end pb-1 font-black text-[10px]">
+                            {data.deliveryStatus === "Pending" ? "NOT TAKEN" : "FULLY DELIVERED"}
                         </div>
                     </div>
                 </div>
 
                 <div className="pt-2 text-[8px] italic flex justify-between uppercase font-bold opacity-60">
                     <span>Generated on: {new Date(data.date).toLocaleString()}</span>
-                    <span>System Version: POS-V5-PRO</span>
+                    <span>Official Document</span>
                 </div>
             </div>
 

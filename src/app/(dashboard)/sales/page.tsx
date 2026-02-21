@@ -375,7 +375,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 paymentMode: paymentMethod,
                 date: new Date().toISOString(),
                 paymentDueDate: isLoan ? paymentDate : undefined,
-                invoiceNumber: `INV-${Date.now()}`,
+                invoiceNumber: (result as any).invoiceNumber || `INV-${Date.now()}`,
                 items: cart.map(item => ({
                     ...item,
                     price: item.price
@@ -1180,14 +1180,14 @@ function SwapView() {
 
         try {
             setIsLoading(true);
-            const saleId = await swapMutation({
+            const result = await swapMutation({
                 userId: user._id,
                 shopId: shopData?.shop?._id,
                 returnedItems: returnedItems.map(i => ({ stockId: i.stockId, quantity: i.qty, name: i.name, productCode: i.productCode })),
                 takenItems: takenItems.map(i => ({ stockId: i.stockId, quantity: i.qty, price: i.price, name: i.name, productCode: i.productCode, pv: i.pv, bv: i.bv })),
                 customerPhone: customerPhone || undefined,
                 customerLocation: customerLocation || undefined,
-            });
+            }) as any;
 
             // Prepare Receipt
             const fullName = `${user.first_name} ${user.last_name}`;
@@ -1207,7 +1207,7 @@ function SwapView() {
                 paymentMode: "Swap",
                 transactionType: "Swap",
                 date: new Date().toISOString(),
-                invoiceNumber: `SWAP-${Date.now()}`,
+                invoiceNumber: result.invoiceNumber || `SWAP-${Date.now()}`,
                 items: takenItems.map(i => ({ ...i })),
                 returnedItems: returnedItems.map(i => ({ ...i })),
                 total: diff,
