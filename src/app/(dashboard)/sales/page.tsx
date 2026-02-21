@@ -130,14 +130,15 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [isLoan, setIsLoan] = useState(false);
     const [manualName, setManualName] = useState("");
     const [paymentDate, setPaymentDate] = useState<string>("");
-    const [initialDeposit, setInitialDeposit] = useState<string>(""); // New State
+    const [initialDeposit, setInitialDeposit] = useState<string>("");
+    const [deliveryStatus, setDeliveryStatus] = useState<"Taken" | "Pending">("Taken");
+    const [customerPhone, setCustomerPhone] = useState("");
+    const [customerLocation, setCustomerLocation] = useState("");
+    const [isPackageSale, setIsPackageSale] = useState(false);
+    const [packageType, setPackageType] = useState<"Bronze" | "Silver" | "Gold">("Bronze");
     const [isLoading, setIsLoading] = useState(false);
     const [receiptData, setReceiptData] = useState<any | null>(null);
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
-    const [packageType, setPackageType] = useState<string>("Bronze"); // Bronze, Silver, Gold
-    const [deliveryStatus, setDeliveryStatus] = useState<string>("Taken"); // Taken, Pending
-    const [customerPhone, setCustomerPhone] = useState("");
-    const [customerLocation, setCustomerLocation] = useState("");
 
     // Auto-select "Loan" payment method when isLoan is true
     useEffect(() => {
@@ -337,7 +338,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 isLoan,
                 paymentDueDate: isLoan ? paymentDate : undefined,
                 initialDeposit: isLoan ? depositValue : undefined, // Pass deposit
-                packageType: paymentMethod === "Package" ? packageType : undefined,
+                packageType: isPackageSale ? packageType : undefined,
                 deliveryStatus,
                 customerPhone: customerPhone || undefined,
                 customerLocation: customerLocation || undefined,
@@ -385,7 +386,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 initialDeposit: isLoan ? depositValue : undefined,
                 balance: isLoan ? (cartTotal - depositValue) : undefined,
                 promotions,
-                packageType: paymentMethod === "Package" ? packageType : undefined,
+                packageType: isPackageSale ? packageType : undefined,
                 deliveryStatus,
                 customerPhone: customerPhone || selectedCustomer?.phone,
                 customerLocation: customerLocation,
@@ -413,385 +414,397 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full pb-10 lg:pb-0">
-            {/* Left Col: Product Selection (Table View) */}
-            <div className="lg:col-span-7 flex flex-col gap-4 h-[500px] lg:h-full overflow-hidden">
-                <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search by code or name..."
-                        className="pl-9 h-12 text-lg"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        autoFocus
-                    />
-                </div>
+        <>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full pb-10 lg:pb-0">
+                {/* Left Col: Product Selection (Table View) */}
+                <div className="lg:col-span-7 flex flex-col gap-4 h-[500px] lg:h-full overflow-hidden">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search by code or name..."
+                            className="pl-9 h-12 text-lg"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            autoFocus
+                        />
+                    </div>
 
-                <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-4 flex flex-col">
-                    {isStocksLoading ? (
-                        <div className="flex items-center justify-center h-40"><Loader2 className="animate-spin" /></div>
-                    ) : stocks.length === 0 ? (
-                        <div className="text-center py-10 text-muted-foreground">No products found</div>
-                    ) : (
-                        <div className="flex-1 overflow-x-auto flex flex-col h-full">
-                            <div className="min-w-[800px] lg:min-w-0 flex-1">
-                                <Table>
-                                    <TableHeader className="sticky top-0 bg-background z-10">
-                                        <TableRow>
-                                            <TableHead className="w-[100px]">Code</TableHead>
-                                            <TableHead>Product Name</TableHead>
-                                            <TableHead className="text-right">Price</TableHead>
-                                            <TableHead className="text-right">PV / BV</TableHead>
-                                            <TableHead className="text-center">Stock</TableHead>
-                                            <TableHead></TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {paginatedStocks.map((stock: any) => {
-                                            const cartItem = cart.find(i => i.stockId === (stock._id || stock.stockId));
-                                            const virtualQty = stock.qty - (cartItem?.qty || 0);
-                                            const promoData = activePromotions?.productPromotions?.[(stock._id || stock.stockId)];
-
-                                            return (
-                                                <TableRow key={stock._id || stock.stockId} className={virtualQty === 0 ? "opacity-50" : ""}>
-                                                    <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
-                                                    <TableCell className="font-medium">
-                                                        <div className="flex flex-col">
-                                                            <span>{stock.name}</span>
-                                                            {/* PROMO BADGE */}
-                                                            {(!isHp && promoData) && (
-                                                                <Badge variant="secondary" className="w-fit mt-1 bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200 text-[10px] px-1 py-0 h-5">
-                                                                    PROMO: {promoData.promotionName}
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-right font-mono">{stock.price.toLocaleString()}</TableCell>
-                                                    <TableCell className="text-right text-xs text-muted-foreground">
-                                                        {stock.pv} / {stock.bv}
-                                                    </TableCell>
-                                                    <TableCell className="text-center">
-                                                        <div className="flex flex-col items-center">
-                                                            <span className={cn("font-bold px-2 py-0.5 rounded-full", virtualQty === 0 ? "bg-destructive/10 text-destructive" : "bg-green-50 text-green-700")}>
-                                                                {virtualQty}
-                                                            </span>
-                                                            {cartItem && (
-                                                                <span className="text-[10px] font-medium text-primary mt-1">
-                                                                    {cartItem.qty} in cart
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <Button
-                                                            size="sm"
-                                                            className="h-8 rounded-lg font-bold transition-transform active:scale-95"
-                                                            variant={virtualQty > 0 ? "secondary" : "destructive"}
-                                                            onClick={() => addToCart(stock)}
-                                                        >
-                                                            {virtualQty > 0 ? "Add" : "Sell Negative"}
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </div>
-
-                            {/* Pagination Footer */}
-                            <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 mt-auto">
-                                <div className="flex items-center space-x-2">
-                                    <p className="text-xs font-medium">Rows</p>
-                                    <Select
-                                        value={`${rowsPerPage}`}
-                                        onValueChange={(value) => {
-                                            const newSize = Number(value);
-                                            setRowsPerPage(newSize);
-                                            localStorage.setItem("pos_sales_rows_per_page", String(newSize));
-                                            setCurrentPage(1);
-                                        }}
-                                    >
-                                        <SelectTrigger className="h-8 w-[65px]">
-                                            <SelectValue placeholder={rowsPerPage} />
-                                        </SelectTrigger>
-                                        <SelectContent side="top">
-                                            {[5, 10, 20, 30, 50, 100].map((pageSize) => (
-                                                <SelectItem key={pageSize} value={`${pageSize}`}>
-                                                    {pageSize}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <div className="text-xs font-medium">
-                                        {Math.min((currentPage - 1) * rowsPerPage + 1, totalStocksCount)}-{Math.min(currentPage * rowsPerPage, totalStocksCount)} of {totalStocksCount}
-                                    </div>
-
-                                    <div className="flex items-center space-x-2">
-                                        <Button
-                                            variant="outline"
-                                            className="h-8 w-8 p-0"
-                                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                            disabled={currentPage === 1}
-                                        >
-                                            <ChevronLeft className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            className="h-8 w-8 p-0"
-                                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                                            disabled={currentPage >= totalPages || totalPages === 0}
-                                        >
-                                            <ChevronRight className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Right Col: Cart & Checkout */}
-            <div className="lg:col-span-5 h-[650px] lg:h-full flex flex-col gap-4 overflow-hidden">
-                <Card className="flex-1 flex flex-col overflow-hidden border-2 shadow-md">
-                    <CardHeader className="bg-muted/30 pb-4">
-                        <CardTitle className="flex items-center gap-2">
-                            <ShoppingCart className="h-5 w-5" /> Current Order
-                        </CardTitle>
-                    </CardHeader>
-
-                    {/* GLOBAL PROMOTION BANNER */}
-                    {(!isHp && activePromotions?.globalPromotions) && (
-                        <div className="px-4 pt-2 space-y-2">
-                            {activePromotions.globalPromotions.map((p: any) => {
-                                const isQualified = (p.triggerType === "TotalPV" && totalPV >= p.threshold) ||
-                                    (p.triggerType === "TotalBV" && totalBV >= p.threshold);
-                                if (!isQualified) return null;
-                                return (
-                                    <div key={p._id} className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-3 py-2 rounded-lg shadow-sm flex items-center justify-between animate-in slide-in-from-top-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="bg-white/20 p-1.5 rounded-full"><Package className="h-4 w-4" /></div>
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-bold uppercase tracking-wider">Promotion Unlocked!</span>
-                                                <span className="text-sm font-medium leading-none">{p.name}: {p.prize}</span>
-                                            </div>
-                                        </div>
-                                        <div className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold">
-                                            {p.triggerType === "TotalPV" ? `${totalPV} PV` : `${totalBV} BV`} / {p.threshold}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    <CardContent className="flex-1 overflow-y-auto p-0">
-                        {cart.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8">
-                                <ShoppingCart className="h-12 w-12 mb-4 opacity-20" />
-                                <p>Cart is empty</p>
-                                <p className="text-xs">Select items from the left to start a sale</p>
-                            </div>
+                    <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-4 flex flex-col">
+                        {isStocksLoading ? (
+                            <div className="flex items-center justify-center h-40"><Loader2 className="animate-spin" /></div>
+                        ) : stocks.length === 0 ? (
+                            <div className="text-center py-10 text-muted-foreground">No products found</div>
                         ) : (
-                            <div className="overflow-x-auto">
-                                <Table>
-                                    <TableHeader className="sticky top-0 bg-background z-10">
-                                        <TableRow>
-                                            <TableHead className="w-[45%]">Item & Price Override</TableHead>
-                                            <TableHead className="w-[20%] text-center">Qty</TableHead>
-                                            <TableHead className="text-right">Total</TableHead>
-                                            <TableHead className="w-[10%]"></TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {cart.map(item => (
-                                            <React.Fragment key={item.stockId}>
-                                                <TableRow className="border-b last:border-0 relative">
-                                                    <TableCell className="py-2 w-[45%]">
-                                                        <div className="font-medium text-[11px] lg:text-sm line-clamp-1 mb-1">{item.name}</div>
-                                                        <Input
-                                                            className="h-7 w-20 lg:w-24 text-[10px] lg:text-xs"
-                                                            value={item.price}
-                                                            type="number"
-                                                            onChange={(e) => updatePrice(item.stockId, e.target.value)}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell className="p-0 w-[20%]">
-                                                        <div className="flex items-center justify-center gap-1">
-                                                            <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, -1)}>
-                                                                <Minus className="h-3 w-3" />
+                            <div className="flex-1 overflow-x-auto flex flex-col h-full">
+                                <div className="min-w-[800px] lg:min-w-0 flex-1">
+                                    <Table>
+                                        <TableHeader className="sticky top-0 bg-background z-10">
+                                            <TableRow>
+                                                <TableHead className="w-[100px]">Code</TableHead>
+                                                <TableHead>Product Name</TableHead>
+                                                <TableHead className="text-right">Price</TableHead>
+                                                <TableHead className="text-right">PV / BV</TableHead>
+                                                <TableHead className="text-center">Stock</TableHead>
+                                                <TableHead></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {paginatedStocks.map((stock: any) => {
+                                                const cartItem = cart.find(i => i.stockId === (stock._id || stock.stockId));
+                                                const virtualQty = stock.qty - (cartItem?.qty || 0);
+                                                const promoData = activePromotions?.productPromotions?.[(stock._id || stock.stockId)];
+
+                                                return (
+                                                    <TableRow key={stock._id || stock.stockId} className={virtualQty === 0 ? "opacity-50" : ""}>
+                                                        <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
+                                                        <TableCell className="font-medium">
+                                                            <div className="flex flex-col">
+                                                                <span>{stock.name}</span>
+                                                                {/* PROMO BADGE */}
+                                                                {(!isHp && promoData) && (
+                                                                    <Badge variant="secondary" className="w-fit mt-1 bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200 text-[10px] px-1 py-0 h-5">
+                                                                        PROMO: {promoData.promotionName}
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-mono">{stock.price.toLocaleString()}</TableCell>
+                                                        <TableCell className="text-right text-xs text-muted-foreground">
+                                                            {stock.pv} / {stock.bv}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <div className="flex flex-col items-center">
+                                                                <span className={cn("font-bold px-2 py-0.5 rounded-full", virtualQty === 0 ? "bg-destructive/10 text-destructive" : "bg-green-50 text-green-700")}>
+                                                                    {virtualQty}
+                                                                </span>
+                                                                {cartItem && (
+                                                                    <span className="text-[10px] font-medium text-primary mt-1">
+                                                                        {cartItem.qty} in cart
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button
+                                                                size="sm"
+                                                                className="h-8 rounded-lg font-bold transition-transform active:scale-95"
+                                                                variant={virtualQty > 0 ? "secondary" : "destructive"}
+                                                                onClick={() => addToCart(stock)}
+                                                            >
+                                                                {virtualQty > 0 ? "Add" : "Sell Negative"}
                                                             </Button>
-                                                            <span className="w-5 text-center text-xs font-medium">{item.qty}</span>
-                                                            <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, 1)}>
-                                                                <Plus className="h-3 w-3" />
-                                                            </Button>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-right font-medium text-[11px] flex-1">
-                                                        {(item.price * item.qty).toLocaleString()}
-                                                    </TableCell>
-                                                    <TableCell className="p-2 text-right w-[10%]">
-                                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => removeFromCart(item.stockId)}>
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-
-                                                {/* PROMOTION TRIGGER FEEDBACK */}
-                                                {(() => {
-                                                    const promoData = activePromotions?.productPromotions?.[item.stockId];
-                                                    if (isHp || !promoData) return null;
-
-                                                    return (
-                                                        <TableRow className="border-none">
-                                                            <TableCell colSpan={4} className="p-0">
-                                                                <div className="w-full px-2 pb-2">
-                                                                    {item.qty >= promoData.requiredQty ? (
-                                                                        <div className="text-[10px] text-green-600 font-bold bg-green-50 p-1 rounded-sm border border-green-200 flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
-                                                                            🎉 Promotion Triggered: {Math.floor(item.qty / promoData.requiredQty)}x {promoData.prize}
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="text-[10px] text-purple-600 bg-purple-50 p-1 rounded-sm border border-purple-100">
-                                                                            Add {promoData.requiredQty - (item.qty % promoData.requiredQty)} more for {promoData.prize}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                })()}
-                                            </React.Fragment>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        )}
-                    </CardContent>
-
-                    <div className="bg-muted/50 p-6 space-y-4 border-t">
-                        <div className="space-y-1">
-                            <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">Total PV / BV</span>
-                                <span className="font-mono">{totalPV} / {totalBV}</span>
-                            </div>
-                            <div className="flex justify-between items-baseline border-t pt-2 mt-2">
-                                <span className="text-lg font-semibold">Total Amount</span>
-                                <span className="text-2xl font-bold text-primary">UGX {cartTotal.toLocaleString()}</span>
-                            </div>
-                        </div>
-
-                        {/* Checkout Controls */}
-                        <div className="grid gap-3 pt-2">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Client Type</Label>
-                                    <Select value={clientType} onValueChange={setClientType}>
-                                        <SelectTrigger className="h-8">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="Non-Member">Non-Member</SelectItem>
-                                            <SelectItem value="Member">Member</SelectItem>
-                                            <SelectItem value="HP Client">HP Client</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
                                 </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Customer</Label>
-                                    <DistributorSearch
-                                        customers={customers || []}
-                                        selectedId={selectedCustomerId}
-                                        onSelect={(id) => {
-                                            setSelectedCustomerId(id as any);
-                                            setFormErrors(prev => ({ ...prev, customer: false }));
-                                        }}
-                                        error={formErrors.customer}
-                                    />
-                                </div>
-                            </div>
 
-                            {/* Payment Logic */}
-                            <div className="space-y-3 pt-2 border-t mt-2">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <Label className="text-xs">Payment Method</Label>
+                                {/* Pagination Footer */}
+                                <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 mt-auto">
+                                    <div className="flex items-center space-x-2">
+                                        <p className="text-xs font-medium">Rows</p>
                                         <Select
-                                            value={paymentMethod}
-                                            onValueChange={(v) => {
-                                                setPaymentMethod(v);
-                                                if (v === "Loan") setIsLoan(true);
-                                                else if (isLoan) setIsLoan(false);
+                                            value={`${rowsPerPage}`}
+                                            onValueChange={(value) => {
+                                                const newSize = Number(value);
+                                                setRowsPerPage(newSize);
+                                                localStorage.setItem("pos_sales_rows_per_page", String(newSize));
+                                                setCurrentPage(1);
                                             }}
                                         >
-                                            <SelectTrigger className="h-9">
-                                                <SelectValue />
+                                            <SelectTrigger className="h-8 w-[65px]">
+                                                <SelectValue placeholder={rowsPerPage} />
                                             </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="None">None</SelectItem>
-                                                <SelectItem value="Cash">Cash</SelectItem>
-                                                <SelectItem value="Mobile Money">Mobile Money</SelectItem>
-                                                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                                                <SelectItem value="Bonus Transfer">Bonus Transfer</SelectItem>
-                                                <SelectItem value="Loan">Loan</SelectItem>
-                                                <SelectItem value="Package">Package</SelectItem>
+                                            <SelectContent side="top">
+                                                {[5, 10, 20, 30, 50, 100].map((pageSize) => (
+                                                    <SelectItem key={pageSize} value={`${pageSize}`}>
+                                                        {pageSize}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-xs font-medium">
+                                            {Math.min((currentPage - 1) * rowsPerPage + 1, totalStocksCount)}-{Math.min(currentPage * rowsPerPage, totalStocksCount)} of {totalStocksCount}
+                                        </div>
 
+                                        <div className="flex items-center space-x-2">
+                                            <Button
+                                                variant="outline"
+                                                className="h-8 w-8 p-0"
+                                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                                disabled={currentPage === 1}
+                                            >
+                                                <ChevronLeft className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                className="h-8 w-8 p-0"
+                                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                                disabled={currentPage >= totalPages || totalPages === 0}
+                                            >
+                                                <ChevronRight className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Right Col: Cart & Checkout */}
+                <div className="lg:col-span-5 h-[650px] lg:h-full flex flex-col gap-4 overflow-hidden">
+                    <Card className="flex-1 flex flex-col overflow-hidden border-2 shadow-md">
+                        <CardHeader className="bg-muted/30 pb-4">
+                            <CardTitle className="flex items-center gap-2">
+                                <ShoppingCart className="h-5 w-5" /> Current Order
+                            </CardTitle>
+                        </CardHeader>
+
+                        {/* GLOBAL PROMOTION BANNER */}
+                        {(!isHp && activePromotions?.globalPromotions) && (
+                            <div className="px-4 pt-2 space-y-2">
+                                {activePromotions.globalPromotions.map((p: any) => {
+                                    const isQualified = (p.triggerType === "TotalPV" && totalPV >= p.threshold) ||
+                                        (p.triggerType === "TotalBV" && totalBV >= p.threshold);
+                                    if (!isQualified) return null;
+                                    return (
+                                        <div key={p._id} className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-3 py-2 rounded-lg shadow-sm flex items-center justify-between animate-in slide-in-from-top-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="bg-white/20 p-1.5 rounded-full"><Package className="h-4 w-4" /></div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold uppercase tracking-wider">Promotion Unlocked!</span>
+                                                    <span className="text-sm font-medium leading-none">{p.name}: {p.prize}</span>
+                                                </div>
+                                            </div>
+                                            <div className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold">
+                                                {p.triggerType === "TotalPV" ? `${totalPV} PV` : `${totalBV} BV`} / {p.threshold}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        <CardContent className="flex-1 overflow-y-auto p-0">
+                            {cart.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8">
+                                    <ShoppingCart className="h-12 w-12 mb-4 opacity-20" />
+                                    <p>Cart is empty</p>
+                                    <p className="text-xs">Select items from the left to start a sale</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader className="sticky top-0 bg-background z-10">
+                                            <TableRow>
+                                                <TableHead className="w-[45%]">Item & Price Override</TableHead>
+                                                <TableHead className="w-[20%] text-center">Qty</TableHead>
+                                                <TableHead className="text-right">Total</TableHead>
+                                                <TableHead className="w-[10%]"></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {cart.map(item => (
+                                                <React.Fragment key={item.stockId}>
+                                                    <TableRow className="border-b last:border-0 relative">
+                                                        <TableCell className="py-2 w-[45%]">
+                                                            <div className="font-medium text-[11px] lg:text-sm line-clamp-1 mb-1">{item.name}</div>
+                                                            <Input
+                                                                className="h-7 w-20 lg:w-24 text-[10px] lg:text-xs"
+                                                                value={item.price}
+                                                                type="number"
+                                                                onChange={(e) => updatePrice(item.stockId, e.target.value)}
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell className="p-0 w-[20%]">
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, -1)}>
+                                                                    <Minus className="h-3 w-3" />
+                                                                </Button>
+                                                                <span className="w-5 text-center text-xs font-medium">{item.qty}</span>
+                                                                <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, 1)}>
+                                                                    <Plus className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-medium text-[11px] flex-1">
+                                                            {(item.price * item.qty).toLocaleString()}
+                                                        </TableCell>
+                                                        <TableCell className="p-2 text-right w-[10%]">
+                                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => removeFromCart(item.stockId)}>
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+
+                                                    {/* PROMOTION TRIGGER FEEDBACK */}
+                                                    {(() => {
+                                                        const promoData = activePromotions?.productPromotions?.[item.stockId];
+                                                        if (isHp || !promoData) return null;
+
+                                                        return (
+                                                            <TableRow className="border-none">
+                                                                <TableCell colSpan={4} className="p-0">
+                                                                    <div className="w-full px-2 pb-2">
+                                                                        {item.qty >= promoData.requiredQty ? (
+                                                                            <div className="text-[10px] text-green-600 font-bold bg-green-50 p-1 rounded-sm border border-green-200 flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                                                                                🎉 Promotion Triggered: {Math.floor(item.qty / promoData.requiredQty)}x {promoData.prize}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="text-[10px] text-purple-600 bg-purple-50 p-1 rounded-sm border border-purple-100">
+                                                                                Add {promoData.requiredQty - (item.qty % promoData.requiredQty)} more for {promoData.prize}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })()}
+                                                </React.Fragment>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </CardContent>
+
+                        <div className="bg-muted/50 p-6 space-y-4 border-t">
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-muted-foreground">Total PV / BV</span>
+                                    <span className="font-mono">{totalPV} / {totalBV}</span>
+                                </div>
+                                <div className="flex justify-between items-baseline border-t pt-2 mt-2">
+                                    <span className="text-lg font-semibold">Total Amount</span>
+                                    <span className="text-2xl font-bold text-primary">UGX {cartTotal.toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            {/* Checkout Controls */}
+                            <div className="grid gap-3 pt-2">
+                                <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                        <Label className="text-xs">Delivery Status</Label>
-                                        <Select
-                                            value={deliveryStatus}
-                                            onValueChange={setDeliveryStatus}
-                                        >
-                                            <SelectTrigger className="h-9">
+                                        <Label className="text-xs">Client Type</Label>
+                                        <Select value={clientType} onValueChange={setClientType}>
+                                            <SelectTrigger className="h-8">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="Taken">Fully Delivered</SelectItem>
-                                                <SelectItem value="Pending">Paid But Not Taken</SelectItem>
+                                                <SelectItem value="Non-Member">Non-Member</SelectItem>
+                                                <SelectItem value="Member">Member</SelectItem>
+                                                <SelectItem value="HP Client">HP Client</SelectItem>
                                             </SelectContent>
                                         </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Customer</Label>
+                                        <DistributorSearch
+                                            customers={customers || []}
+                                            selectedId={selectedCustomerId}
+                                            onSelect={(id) => {
+                                                setSelectedCustomerId(id as any);
+                                                setFormErrors(prev => ({ ...prev, customer: false }));
+                                            }}
+                                            error={formErrors.customer}
+                                        />
                                     </div>
                                 </div>
 
-                                {paymentMethod === "Package" && (
-                                    <div className="space-y-1 p-3 bg-indigo-50 border border-indigo-100 rounded-lg animate-in fade-in slide-in-from-top-1">
-                                        <Label className="text-xs font-bold text-indigo-700 flex items-center gap-2">
-                                            <Package className="h-4 w-4" />
-                                            Select Package Type
-                                        </Label>
-                                        <Select
-                                            value={packageType}
-                                            onValueChange={setPackageType}
-                                        >
-                                            <SelectTrigger className="h-9 bg-white border-indigo-200">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Bronze">Bronze Package</SelectItem>
-                                                <SelectItem value="Silver">Silver Package</SelectItem>
-                                                <SelectItem value="Gold">Gold Package</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                )}
+                                {/* Payment Logic */}
+                                <div className="space-y-3 pt-2 border-t mt-2">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Payment Method</Label>
+                                            <Select
+                                                value={paymentMethod}
+                                                onValueChange={(v) => {
+                                                    setPaymentMethod(v);
+                                                    if (v === "Loan") setIsLoan(true);
+                                                    else if (isLoan) setIsLoan(false);
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-9">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="None">None</SelectItem>
+                                                    <SelectItem value="Cash">Cash</SelectItem>
+                                                    <SelectItem value="Mobile Money">Mobile Money</SelectItem>
+                                                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                                                    <SelectItem value="Bonus Transfer">Bonus Transfer</SelectItem>
+                                                    <SelectItem value="Loan">Loan</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
 
-                                <div className="flex items-center justify-between bg-background p-2 px-3 rounded-lg border h-9 mt-6">
-                                    <Label htmlFor="loan-toggle" className="text-xs font-medium cursor-pointer">Loan Sale?</Label>
-                                    <Switch
-                                        id="loan-toggle"
-                                        checked={isLoan}
-                                        onCheckedChange={(val) => {
-                                            setIsLoan(val);
-                                            if (!val && paymentMethod === "Loan") setPaymentMethod("Cash");
-                                            if (val) setPaymentMethod("Loan");
-                                            setFormErrors(prev => ({ ...prev, paymentDate: false }));
-                                        }}
-                                    />
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Delivery Status</Label>
+                                            <Select
+                                                value={deliveryStatus}
+                                                onValueChange={(v) => setDeliveryStatus(v as "Taken" | "Pending")}
+                                            >
+                                                <SelectTrigger className="h-9">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Taken">Fully Delivered</SelectItem>
+                                                    <SelectItem value="Pending">Paid But Not Taken</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between bg-background p-2 px-3 rounded-lg border h-9 mt-6">
+                                        <Label htmlFor="loan-toggle" className="text-xs font-medium cursor-pointer">Loan Sale?</Label>
+                                        <Switch
+                                            id="loan-toggle"
+                                            checked={isLoan}
+                                            onCheckedChange={(val) => {
+                                                setIsLoan(val);
+                                                if (!val && paymentMethod === "Loan") setPaymentMethod("Cash");
+                                                if (val) setPaymentMethod("Loan");
+                                                setFormErrors(prev => ({ ...prev, paymentDate: false }));
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between bg-indigo-50/50 p-2 px-3 rounded-lg border border-indigo-100 h-9">
+                                        <Label htmlFor="package-toggle" className="text-[10px] font-black uppercase text-indigo-700 cursor-pointer flex items-center gap-2">
+                                            <Package className="h-3.5 w-3.5" />
+                                            Package Sale?
+                                        </Label>
+                                        <Switch
+                                            id="package-toggle"
+                                            checked={isPackageSale}
+                                            onCheckedChange={setIsPackageSale}
+                                        />
+                                    </div>
+
+                                    {isPackageSale && (
+                                        <div className="space-y-1 p-3 bg-indigo-50 border border-indigo-100 rounded-lg animate-in fade-in slide-in-from-top-1">
+                                            <Label className="text-xs font-bold text-indigo-700">
+                                                Select Package Type
+                                            </Label>
+                                            <Select
+                                                value={packageType}
+                                                onValueChange={(v) => setPackageType(v as "Bronze" | "Silver" | "Gold")}
+                                            >
+                                                <SelectTrigger className="h-9 bg-white border-indigo-200">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Bronze">Bronze Package</SelectItem>
+                                                    <SelectItem value="Silver">Silver Package</SelectItem>
+                                                    <SelectItem value="Gold">Gold Package</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -873,8 +886,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             {isLoading || !user ? <Loader2 className="animate-spin mr-2" /> : isLoan ? <CreditCard className="mr-2 h-5 w-5" /> : <Banknote className="mr-2 h-5 w-5" />}
                             {isLoan ? "Record Loan Sale" : "Complete Sale"}
                         </Button>
-                    </div>
-                </Card>
+                    </Card>
+                </div>
             </div>
 
             {/* Receipt Modal */}
@@ -883,9 +896,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 onClose={() => setReceiptData(null)}
                 data={receiptData}
             />
-        </div>
+        </>
     );
 }
+
 function RestockView() {
     const { user } = useAuth();
     const [hpFilter, setHpFilter] = useState<"regular" | "hp">("regular");

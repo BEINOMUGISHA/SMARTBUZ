@@ -41,6 +41,14 @@ export function ShopsReport() {
     const [issuedType, setIssuedType] = useState<"all" | "regular" | "hp">("all");
     const [issuedSearch, setIssuedSearch] = useState("");
 
+    // --- PROMOTIONS TAB STATE ---
+    const [promotionsReportMode, setPromotionsReportMode] = useState<"daily" | "range">("range");
+    const [promotionsDateRange, setPromotionsDateRange] = useState({
+        from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
+        to: format(new Date(), "yyyy-MM-dd")
+    });
+    const [promotionsShop, setPromotionsShop] = useState<string>("all");
+
     const shops = useQuery(api.shops.listAll);
     const customers = useQuery(api.customers.listAll);
 
@@ -80,7 +88,25 @@ export function ShopsReport() {
         shopId: issuedShop === "all" ? undefined : (issuedShop as Id<"shops">),
         from: issuedDateRange.from,
         to: issuedDateRange.to,
+        searchTerm: issuedSearch || undefined,
     });
+
+    // 3. PROMOTIONS QUERIES
+    const promotionsStatsArgs = {
+        shopId: promotionsShop === "all" ? undefined : (promotionsShop as Id<"shops">),
+        from: promotionsDateRange.from,
+        to: promotionsDateRange.to
+    };
+    const stats = useQuery(api.promotions.redemptionsStats, promotionsStatsArgs);
+    const listArgs = {
+        ...promotionsStatsArgs,
+        email: "admin@tiens.com" // Backend allows override with targetShopId
+    };
+    const { results: redemptions, status: redemptionStatus } = usePaginatedQuery(
+        api.promotions.listRedemptions,
+        listArgs,
+        { initialNumItems: 50 }
+    );
 
     const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
 
@@ -399,6 +425,16 @@ export function ShopsReport() {
                             placeholder="Stock Type"
                             width="180px"
                         />
+
+                        <div className="relative flex-1 min-w-[200px]">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-50" />
+                            <Input
+                                placeholder="Search by product name or code..."
+                                value={issuedSearch}
+                                onChange={(e) => setIssuedSearch(e.target.value)}
+                                className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
+                            />
+                        </div>
                     </div>
 
                     {/* Issued Stock Summary */}
@@ -494,17 +530,17 @@ export function ShopsReport() {
                     {/* PROMOTIONS FILTERS */}
                     <div className="bg-white p-4 rounded-xl border shadow-xs flex flex-wrap items-center gap-3">
                         <ReportFilters
-                            dateRange={overviewDateRange}
-                            reportMode={overviewReportMode}
-                            onDateRangeChange={setOverviewDateRange}
-                            onReportModeChange={setOverviewReportMode}
+                            dateRange={promotionsDateRange}
+                            reportMode={promotionsReportMode}
+                            onDateRangeChange={setPromotionsDateRange}
+                            onReportModeChange={setPromotionsReportMode}
                             onClearFilters={() => {
-                                setOverviewDateRange({
+                                setPromotionsDateRange({
                                     from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
                                     to: format(new Date(), "yyyy-MM-dd")
                                 });
-                                setOverviewReportMode("range");
-                                setOverviewShop("all");
+                                setPromotionsReportMode("range");
+                                setPromotionsShop("all");
                             }}
                         />
 
@@ -513,110 +549,94 @@ export function ShopsReport() {
                                 { value: "all", label: "All Branches" },
                                 ...(shops || []).map(s => ({ value: s._id, label: s.name }))
                             ]}
-                            value={overviewShop}
-                            onValueChange={setOverviewShop}
+                            value={promotionsShop}
+                            onValueChange={setPromotionsShop}
                             placeholder="Select Branch"
                             width="200px"
                         />
                     </div>
 
                     {/* Summary Cards */}
-                    {(() => {
-                        const statsArgs = {
-                            shopId: overviewShop === "all" ? undefined : (overviewShop as Id<"shops">),
-                            from: overviewDateRange.from,
-                            to: overviewDateRange.to
-                        };
-                        const stats = useQuery(api.promotions.redemptionsStats, statsArgs);
-                        const listArgs = {
-                            ...statsArgs,
-                            email: "admin@tiens.com" // Backend allows override with targetShopId
-                        };
-                        const { results: redemptions, status: redemptionStatus } = usePaginatedQuery(
-                            api.promotions.listRedemptions,
-                            listArgs,
-                            { initialNumItems: 50 }
-                        );
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Card className="bg-primary/5 border-primary/20 shadow-sm p-4 rounded-xl border-l-4 border-l-primary">
+                            <div className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-1 font-mono">Total Gifts Given</div>
+                            <div className="text-2xl font-black text-primary">
+                                {stats?.totalRedemptions?.toLocaleString() || "0"}
+                            </div>
+                            <div className="text-[9px] font-bold text-primary/70 uppercase mt-0.5">Overall redemptions</div>
+                        </Card>
+                        <Card className="bg-emerald-50 border-emerald-100 shadow-sm p-4 rounded-xl border-l-4 border-l-emerald-500">
+                            <div className="text-[10px] font-black uppercase text-emerald-700 tracking-widest mb-1 font-mono">People Given Gifts</div>
+                            <div className="text-2xl font-black text-emerald-600">
+                                {stats?.uniqueCustomers?.toLocaleString() || "0"}
+                            </div>
+                            <div className="text-[9px] font-bold text-emerald-600/70 uppercase mt-0.5">Unique customers</div>
+                        </Card>
+                        <Card className="bg-amber-50 border-amber-100 shadow-sm p-4 rounded-xl border-l-4 border-l-amber-500">
+                            <div className="text-[10px] font-black uppercase text-amber-700 tracking-widest mb-1 font-mono">Main Products Sold</div>
+                            <div className="text-2xl font-black text-amber-600">
+                                {stats?.uniqueProducts?.toLocaleString() || "0"}
+                            </div>
+                            <div className="text-[9px] font-bold text-amber-600/70 uppercase mt-0.5">Unique item types</div>
+                        </Card>
+                    </div>
 
-                        return (
-                            <>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <Card className="bg-primary/5 border-primary/20 shadow-sm p-4 rounded-xl border-l-4 border-l-primary">
-                                        <div className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-1">Total Gifts Given</div>
-                                        <div className="text-2xl font-black text-primary">
-                                            {stats?.totalRedemptions?.toLocaleString() || "0"}
+                    <ReportTable
+                        title={promotionsShop === "all" ? "Branch Promotions Hub" : `${shops?.find(s => String(s._id) === promotionsShop)?.name} - Promotion Audit`}
+                        subtitle={`Detailed log of rewards redeemed from ${promotionsDateRange.from} to ${promotionsDateRange.to}`}
+                        data={redemptions || []}
+                        isLoading={redemptionStatus === "LoadingFirstPage"}
+                        summaryData={stats}
+                        variant="promotions"
+                        columns={[
+                            {
+                                header: "Date/Time",
+                                accessor: (r: any) => (
+                                    <div className="font-mono leading-tight">
+                                        <div className="font-black text-[11px]">{format(new Date(r.date), "dd MMM yyyy")}</div>
+                                        <div className="text-[9px] text-muted-foreground">{format(new Date(r.date), "HH:mm")}</div>
+                                    </div>
+                                )
+                            },
+                            {
+                                header: "Promotion & Reward",
+                                accessor: (r: any) => (
+                                    <div className="flex flex-col">
+                                        <span className="text-[11px] font-black text-primary uppercase tracking-tighter">{r.promotionName}</span>
+                                        <Badge variant="outline" className="text-[9px] h-4 mt-1 border-amber-200 bg-amber-50 text-amber-700 font-black uppercase tracking-widest w-fit">
+                                            🎁 {r.prize}
+                                        </Badge>
+                                    </div>
+                                )
+                            },
+                            {
+                                header: "Trigger Product",
+                                accessor: (r: any) => (
+                                    <div className="flex flex-col">
+                                        <span className="text-[11px] font-bold text-slate-700">{r.productName}</span>
+                                        <span className="text-[9px] font-mono text-muted-foreground">Qty: {r.redeemedQuantity}</span>
+                                    </div>
+                                )
+                            },
+                            {
+                                header: "Beneficiary",
+                                accessor: (r: any) => (
+                                    <div className="flex flex-col">
+                                        <span className="text-[11px] font-black text-slate-800">{r.customerName}</span>
+                                        <div className="flex items-center gap-1 mt-0.5">
+                                            <Store className="h-3 w-3 text-muted-foreground opacity-50" />
+                                            <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">{shops?.find(s => s._id === r.shopId)?.name || 'Branch'}</span>
                                         </div>
-                                    </Card>
-                                    <Card className="bg-emerald-50 border-emerald-100 shadow-sm p-4 rounded-xl border-l-4 border-l-emerald-500">
-                                        <div className="text-[10px] font-black uppercase text-emerald-700 tracking-widest mb-1">People Given Gifts</div>
-                                        <div className="text-2xl font-black text-emerald-600">
-                                            {stats?.uniqueCustomers?.toLocaleString() || "0"}
-                                        </div>
-                                    </Card>
-                                    <Card className="bg-amber-50 border-amber-100 shadow-sm p-4 rounded-xl border-l-4 border-l-amber-500">
-                                        <div className="text-[10px] font-black uppercase text-amber-700 tracking-widest mb-1">Main Products Sold</div>
-                                        <div className="text-2xl font-black text-amber-600">
-                                            {stats?.uniqueProducts?.toLocaleString() || "0"}
-                                        </div>
-                                    </Card>
-                                </div>
-
-                                <ReportTable
-                                    title={overviewShop === "all" ? "Branch Promotions Hub" : `${shops?.find(s => String(s._id) === overviewShop)?.name} - Promotion Audit`}
-                                    subtitle="Detailed log of rewards redeemed at branch level"
-                                    data={redemptions || []}
-                                    isLoading={redemptionStatus === "LoadingFirstPage"}
-                                    summaryData={stats}
-                                    variant="promotions"
-                                    columns={[
-                                        {
-                                            header: "Date/Time",
-                                            accessor: (r: any) => (
-                                                <div className="font-mono leading-tight">
-                                                    <div className="font-black">{format(new Date(r.date), "dd MMM yyyy")}</div>
-                                                    <div className="text-[9px] text-muted-foreground">{format(new Date(r.date), "HH:mm")}</div>
-                                                </div>
-                                            )
-                                        },
-                                        {
-                                            header: "Promotion",
-                                            accessor: (r: any) => (
-                                                <div className="flex flex-col">
-                                                    <span className="text-[11px] font-black text-primary">{r.promotionName}</span>
-                                                    <Badge variant="outline" className="text-[9px] h-4 mt-0.5 border-amber-200 bg-amber-50 text-amber-700 font-bold w-fit">
-                                                        {r.prize}
-                                                    </Badge>
-                                                </div>
-                                            )
-                                        },
-                                        {
-                                            header: "Product/Qty",
-                                            accessor: (r: any) => (
-                                                <div className="flex flex-col">
-                                                    <span className="text-[11px] font-bold">{r.productName}</span>
-                                                    <span className="text-[9px] text-muted-foreground">Qty: {r.redeemedQuantity}</span>
-                                                </div>
-                                            )
-                                        },
-                                        {
-                                            header: "Beneficiary",
-                                            accessor: (r: any) => (
-                                                <div className="flex flex-col">
-                                                    <span className="text-[10px] font-black">{r.customerName}</span>
-                                                    <span className="text-[9px] text-muted-foreground italic">Redeemed At: {shops?.find(s => s._id === r.shopId)?.name || 'Branch'}</span>
-                                                </div>
-                                            )
-                                        },
-                                        {
-                                            header: "Operator",
-                                            accessor: "operatorName",
-                                            className: "text-right text-[10px] font-bold text-muted-foreground"
-                                        }
-                                    ]}
-                                />
-                            </>
-                        );
-                    })()}
+                                    </div>
+                                )
+                            },
+                            {
+                                header: "Operator",
+                                accessor: "operatorName",
+                                className: "text-right text-[10px] font-bold text-muted-foreground uppercase tracking-widest"
+                            }
+                        ]}
+                    />
                 </TabsContent>
             </Tabs>
         </div >

@@ -489,6 +489,7 @@ export const getShopIssueRecords = query({
         shopId: v.optional(v.id("shops")),
         from: v.optional(v.string()),
         to: v.optional(v.string()),
+        searchTerm: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         let q;
@@ -510,7 +511,7 @@ export const getShopIssueRecords = query({
             }
         }
 
-        const records = await q.order("desc").collect();
+        let records = await q.order("desc").collect();
 
         const [stocks, shops, users] = await Promise.all([
             Promise.all(records.map(r => ctx.db.get(r.stockId))),
@@ -521,6 +522,18 @@ export const getShopIssueRecords = query({
         const stockMap = new Map(stocks.filter(s => s !== null).map(s => [s!._id, s]));
         const shopMap = new Map(shops.filter(s => s !== null).map(s => [s!._id, s]));
         const userMap = new Map(users.filter(u => u !== null).map(u => [u!._id, u]));
+
+        // Apply search filter after enrichment if searchTerm is present
+        if (args.searchTerm) {
+            const search = args.searchTerm.toLowerCase();
+            records = records.filter(r => {
+                const stock = stockMap.get(r.stockId);
+                return (
+                    stock?.name.toLowerCase().includes(search) ||
+                    stock?.productCode.toLowerCase().includes(search)
+                );
+            });
+        }
 
         return records.map(r => ({
             ...r,

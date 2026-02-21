@@ -27,7 +27,8 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
             {/* HIDDEN PRINT VIEW: Rendered via Portal at document.body level */}
             {mounted && isOpen && createPortal(
                 <div id="print-portal">
-                    <style jsx global>{`
+                    <style dangerouslySetInnerHTML={{
+                        __html: `
                         @media print {
                             /* Hide everything in the body by default */
                             body > * { display: none !important; }
@@ -53,7 +54,7 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                         @media screen {
                             #print-portal { display: none; }
                         }
-                    `}</style>
+                    ` }} />
                     <div className="p-8">
                         <ReceiptTemplate data={data} />
                     </div>
