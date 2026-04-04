@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { AuthProvider } from "@/context/auth-context";
 import { Toaster } from "@/components/ui/sonner";
+import PaymentWall from "@/components/PaymentWall";
 
 export default function RootLayout({
   children,
@@ -31,12 +32,14 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ConvexClientProvider>
-          <AuthProvider>
-            {children}
-            <Toaster />
-          </AuthProvider>
-        </ConvexClientProvider>
+        <PaymentWall>
+          <ConvexClientProvider>
+            <AuthProvider>
+              {children}
+              <Toaster />
+            </AuthProvider>
+          </ConvexClientProvider>
+        </PaymentWall>
       </body>
     </html>
   );
