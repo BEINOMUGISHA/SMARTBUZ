@@ -59,6 +59,7 @@ export const remove = mutation({
     },
 });
 
+
 export const update = mutation({
     args: {
         id: v.id("expenses"),
