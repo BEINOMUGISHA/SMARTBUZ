@@ -138,6 +138,7 @@ export const getInventoryStats = query({
     handler: async (ctx) => {
         const stocks = await ctx.db.query("stocks").collect();
         const categories = await ctx.db.query("categories").collect();
+        const shops = await ctx.db.query("shops").collect();
         const catMap = new Map(categories.map(c => [c._id, c.type]));
 
         const stats = stocks.reduce((acc, s) => {
@@ -148,9 +149,22 @@ export const getInventoryStats = query({
             acc.totalCostValue += costValue;
             acc.totalItems += s.qty;
             acc.skuCount += 1;
+            acc.totalBV += s.qty * s.bv;
+            acc.totalPV += s.qty * s.pv;
+
+            if (s.qty === 0) {
+                acc.outOfStockCount += 1;
+            }
 
             const catName = catMap.get(s.categoryId) || "Unknown";
             acc.categoryDistribution[catName] = (acc.categoryDistribution[catName] || 0) + s.qty;
+
+            if (s.supplier) {
+                acc.supplierDistribution[s.supplier] = (acc.supplierDistribution[s.supplier] || 0) + s.qty;
+                if (!acc.suppliers.includes(s.supplier)) {
+                    acc.suppliers.push(s.supplier);
+                }
+            }
 
             return acc;
         }, {
@@ -158,16 +172,49 @@ export const getInventoryStats = query({
             totalCostValue: 0,
             totalItems: 0,
             skuCount: 0,
-            categoryDistribution: {} as Record<string, number>
+            totalBV: 0,
+            totalPV: 0,
+            outOfStockCount: 0,
+            categoryDistribution: {} as Record<string, number>,
+            supplierDistribution: {} as Record<string, number>,
+            suppliers: [] as string[]
         });
 
+        // Calculate shop distribution
+        let totalShopStock = 0;
+        const shopDistribution = shops.reduce((acc, shop) => {
+            const shopTotal = shop.issuedStocks.reduce((sum, item) => sum + item.qty, 0);
+            acc[shop.name] = shopTotal;
+            totalShopStock += shopTotal;
+            return acc;
+        }, {} as Record<string, number>);
+
         // Convert distribution to array for charts
-        const distributionArray = Object.entries(stats.categoryDistribution).map(([name, value]) => ({
+        const categoryDistributionArray = Object.entries(stats.categoryDistribution).map(([name, value]) => ({
             name,
             value
         })).sort((a, b) => b.value - a.value);
 
-        return { ...stats, categoryDistribution: distributionArray };
+        const supplierDistributionArray = Object.entries(stats.supplierDistribution).map(([name, value]) => ({
+            name,
+            value
+        })).sort((a, b) => b.value - a.value);
+
+        const shopDistributionArray = Object.entries(shopDistribution).map(([name, value]) => ({
+            name,
+            value
+        })).sort((a, b) => b.value - a.value);
+
+        return {
+            ...stats,
+            categoryDistribution: categoryDistributionArray,
+            supplierDistribution: supplierDistributionArray,
+            shopDistribution: shopDistributionArray,
+            supplierCount: stats.suppliers.length,
+            shopCount: shops.length,
+            totalShopStock,
+            warehouseStock: stats.totalItems - totalShopStock
+        };
     }
 });
 

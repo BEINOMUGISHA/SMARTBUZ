@@ -87,20 +87,70 @@ export default function InventoryPage() {
                 />
             </div>
 
+            {/* Secondary KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard
+                    title="Total BV"
+                    value={stats.totalBV.toLocaleString()}
+                    subValue="Business Volume"
+                    icon={BarChart3}
+                    color="bg-indigo-500"
+                />
+                <StatCard
+                    title="Total PV"
+                    value={stats.totalPV.toLocaleString()}
+                    subValue="Point Value"
+                    icon={Activity}
+                    color="bg-pink-500"
+                />
+                <StatCard
+                    title="Out of Stock"
+                    value={stats.outOfStockCount.toString()}
+                    subValue="Products with zero quantity"
+                    icon={AlertTriangle}
+                    color={stats.outOfStockCount > 0 ? "bg-red-500" : "bg-emerald-500"}
+                />
+                <StatCard
+                    title="Active Suppliers"
+                    value={stats.supplierCount.toString()}
+                    subValue={`${stats.shopCount} Active Shops`}
+                    icon={Database}
+                    color="bg-orange-500"
+                />
+            </div>
+
+            {/* Stock Distribution */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <StatCard
+                    title="Warehouse Stock"
+                    value={stats.warehouseStock.toLocaleString()}
+                    subValue="Items in main warehouse"
+                    icon={Package}
+                    color="bg-cyan-500"
+                />
+                <StatCard
+                    title="Shop Stock"
+                    value={stats.totalShopStock.toLocaleString()}
+                    subValue="Items distributed to shops"
+                    icon={Layers}
+                    color="bg-teal-500"
+                />
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Distribution Chart */}
-                <Card className="lg:col-span-2 shadow-sm border-none bg-card/50 backdrop-blur-sm">
+                {/* Category Distribution Chart */}
+                <Card className="lg:col-span-1 shadow-sm border-none bg-card/50 backdrop-blur-sm">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <BarChart3 className="h-5 w-5 text-primary" />
                             Category Distribution
                         </CardTitle>
-                        <CardDescription>Breakdown of stock volume across all product categories</CardDescription>
+                        <CardDescription>Stock volume by category</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-[350px] w-full pt-4">
+                        <div className="h-[300px] w-full pt-4">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={stats.categoryDistribution} layout="vertical" margin={{ left: 40, right: 40 }}>
+                                <BarChart data={stats.categoryDistribution} layout="vertical" margin={{ left: 60, right: 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(0,0,0,0.05)" />
                                     <XAxis type="number" hide />
                                     <YAxis
@@ -108,7 +158,8 @@ export default function InventoryPage() {
                                         type="category"
                                         axisLine={false}
                                         tickLine={false}
-                                        tick={{ fontSize: 12, fontWeight: 600 }}
+                                        tick={{ fontSize: 11, fontWeight: 600 }}
+                                        width={55}
                                     />
                                     <Tooltip
                                         cursor={{ fill: 'transparent' }}
@@ -124,7 +175,7 @@ export default function InventoryPage() {
                                             return null;
                                         }}
                                     />
-                                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={30}>
+                                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
                                         {stats.categoryDistribution.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
@@ -135,42 +186,137 @@ export default function InventoryPage() {
                     </CardContent>
                 </Card>
 
-                {/* Recent Activity Feed */}
-                <Card className="shadow-sm border-none bg-card/50 backdrop-blur-sm">
+                {/* Supplier Distribution Chart */}
+                <Card className="lg:col-span-1 shadow-sm border-none bg-card/50 backdrop-blur-sm">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Activity className="h-5 w-5 text-primary" />
-                            Stock Movements
+                            <Database className="h-5 w-5 text-primary" />
+                            Supplier Distribution
                         </CardTitle>
-                        <CardDescription>Latest logs from warehouse operations</CardDescription>
+                        <CardDescription>Stock volume by supplier</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-6">
-                            {activities?.page.length === 0 ? (
-                                <p className="text-sm text-muted-foreground text-center py-12">No recent warehouse activity</p>
-                            ) : (
-                                activities?.page.map((log: any) => (
-                                    <div key={log._id} className="relative pl-6 pb-6 border-l last:pb-0 border-muted">
-                                        <div className="absolute left-[-5px] top-0 h-2.5 w-2.5 rounded-full bg-primary" />
-                                        <div className="space-y-1">
-                                            <p className="text-xs font-black text-primary uppercase tracking-wider">{log.action}</p>
-                                            <p className="text-sm font-medium line-clamp-2">{log.details}</p>
-                                            <p className="text-[10px] text-muted-foreground font-mono">
-                                                {new Date(log.timestamp).toLocaleString()}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                        <div className="h-[300px] w-full pt-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={stats.supplierDistribution}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={40}
+                                        outerRadius={80}
+                                        paddingAngle={2}
+                                        dataKey="value"
+                                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                        labelLine={false}
+                                    >
+                                        {stats.supplierDistribution.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        content={({ active, payload }) => {
+                                            if (active && payload && payload.length && payload[0]?.payload) {
+                                                return (
+                                                    <div className="bg-white border rounded-lg shadow-xl p-3 border-primary/20">
+                                                        <p className="text-xs font-black text-muted-foreground uppercase">{payload[0].payload.name}</p>
+                                                        <p className="text-xl font-black text-primary">{payload[0].value?.toLocaleString()} items</p>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        }}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
                         </div>
-                        <Link href="/activity-logs" className="mt-6 block">
-                            <Button variant="ghost" size="sm" className="w-full text-xs font-bold text-muted-foreground hover:text-primary">
-                                View Full Audit Trail <ArrowRight className="ml-2 h-3 w-3" />
-                            </Button>
-                        </Link>
+                    </CardContent>
+                </Card>
+
+                {/* Shop Distribution Chart */}
+                <Card className="lg:col-span-1 shadow-sm border-none bg-card/50 backdrop-blur-sm">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Layers className="h-5 w-5 text-primary" />
+                            Shop Distribution
+                        </CardTitle>
+                        <CardDescription>Stock allocated to shops</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="h-[300px] w-full pt-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={stats.shopDistribution} layout="vertical" margin={{ left: 60, right: 20 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(0,0,0,0.05)" />
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                        dataKey="name"
+                                        type="category"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fontSize: 11, fontWeight: 600 }}
+                                        width={55}
+                                    />
+                                    <Tooltip
+                                        cursor={{ fill: 'transparent' }}
+                                        content={({ active, payload }) => {
+                                            if (active && payload && payload.length && payload[0]?.payload) {
+                                                return (
+                                                    <div className="bg-white border rounded-lg shadow-xl p-3 border-primary/20">
+                                                        <p className="text-xs font-black text-muted-foreground uppercase">{payload[0].payload.name}</p>
+                                                        <p className="text-xl font-black text-primary">{payload[0].value?.toLocaleString()} items</p>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        }}
+                                    />
+                                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
+                                        {stats.shopDistribution.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Recent Activity Feed */}
+            <Card className="shadow-sm border-none bg-card/50 backdrop-blur-sm">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-primary" />
+                        Stock Movements
+                    </CardTitle>
+                    <CardDescription>Latest logs from warehouse operations</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-6">
+                        {activities?.page.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-12">No recent warehouse activity</p>
+                        ) : (
+                            activities?.page.map((log: any) => (
+                                <div key={log._id} className="relative pl-6 pb-6 border-l last:pb-0 border-muted">
+                                    <div className="absolute left-[-5px] top-0 h-2.5 w-2.5 rounded-full bg-primary" />
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-black text-primary uppercase tracking-wider">{log.action}</p>
+                                        <p className="text-sm font-medium line-clamp-2">{log.details}</p>
+                                        <p className="text-[10px] text-muted-foreground font-mono">
+                                            {new Date(log.timestamp).toLocaleString()}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <Link href="/activity-logs" className="mt-6 block">
+                        <Button variant="ghost" size="sm" className="w-full text-xs font-bold text-muted-foreground hover:text-primary">
+                            View Full Audit Trail <ArrowRight className="ml-2 h-3 w-3" />
+                        </Button>
+                    </Link>
+                </CardContent>
+            </Card>
 
             {/* Audit Section */}
             <Card className="shadow-sm border-none bg-card/50 backdrop-blur-sm overflow-hidden">
