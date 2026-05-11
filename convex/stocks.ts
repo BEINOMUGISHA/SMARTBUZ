@@ -386,6 +386,14 @@ export const add = mutation({
                 type: "add",
                 supplier,
             });
+
+            // Log activity
+            await ctx.db.insert("activityLogs", {
+                userId,
+                action: "Add Stock",
+                details: `Added new stock: ${args.name} (${args.productCode}) - Qty: ${args.qty}, Price: UGX ${args.price.toLocaleString()}`,
+                timestamp: new Date().toISOString(),
+            });
         }
 
         return stockId;
@@ -436,6 +444,33 @@ export const update = mutation({
                 await ctx.db.patch(shop._id, { issuedStocks });
             }
         }
+
+        // Log activity
+        const identity = await ctx.auth.getUserIdentity();
+        let userId: Id<"users"> | undefined;
+
+        if (identity) {
+            const user = await ctx.db
+                .query("users")
+                .withIndex("by_email", (q) => q.eq("email", identity.email!))
+                .first();
+            if (user) userId = user._id;
+        }
+
+        if (!userId) {
+            const admin = await ctx.db.query("users").first();
+            if (admin) userId = admin._id;
+        }
+
+        if (userId) {
+            const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
+            await ctx.db.insert("activityLogs", {
+                userId,
+                action: "Update Stock",
+                details: `Updated stock: ${oldStock.name} (${oldStock.productCode}) - Changes: ${changes}`,
+                timestamp: new Date().toISOString(),
+            });
+        }
     },
 });
 
@@ -443,6 +478,9 @@ export const update = mutation({
 export const remove = mutation({
     args: { id: v.id("stocks") },
     handler: async (ctx, args) => {
+        const stock = await ctx.db.get(args.id);
+        if (!stock) throw new Error("Stock not found");
+
         const shops = await ctx.db.query("shops").collect();
         for (const shop of shops) {
             const issuedStocks = shop.issuedStocks.filter(item => item.stockId !== args.id);
@@ -451,6 +489,32 @@ export const remove = mutation({
             }
         }
         await ctx.db.delete(args.id);
+
+        // Log activity
+        const identity = await ctx.auth.getUserIdentity();
+        let userId: Id<"users"> | undefined;
+
+        if (identity) {
+            const user = await ctx.db
+                .query("users")
+                .withIndex("by_email", (q) => q.eq("email", identity.email!))
+                .first();
+            if (user) userId = user._id;
+        }
+
+        if (!userId) {
+            const admin = await ctx.db.query("users").first();
+            if (admin) userId = admin._id;
+        }
+
+        if (userId) {
+            await ctx.db.insert("activityLogs", {
+                userId,
+                action: "Delete Stock",
+                details: `Deleted stock: ${stock.name} (${stock.productCode}) - Previous Qty: ${stock.qty}`,
+                timestamp: new Date().toISOString(),
+            });
+        }
     },
 });
 
@@ -509,6 +573,14 @@ export const restock = mutation({
                 halfPrice: args.halfPrice,
                 type: "restock",
                 supplier,
+            });
+
+            // Log activity
+            await ctx.db.insert("activityLogs", {
+                userId,
+                action: "Restock",
+                details: `Restocked ${stock.name} (${stock.productCode}) - Added: ${args.quantityToAdd}, New Qty: ${stock.qty + args.quantityToAdd}, Supplier: ${supplier || stock.supplier || 'N/A'}`,
+                timestamp: new Date().toISOString(),
             });
         }
 

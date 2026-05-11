@@ -56,9 +56,21 @@ export const add = mutation({
         email: v.optional(v.string()),
         distributorId: v.optional(v.string()),
         address: v.optional(v.string()),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
-        return await ctx.db.insert("customers", args);
+        const { userId, ...customerArgs } = args;
+        const customerId = await ctx.db.insert("customers", customerArgs);
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId,
+            action: "Add Customer",
+            details: `Added new customer: ${args.name} (${args.phone})${args.distributorId ? ` - Distributor ID: ${args.distributorId}` : ''}`,
+            timestamp: new Date().toISOString(),
+        });
+
+        return customerId;
     },
 });
 
@@ -71,17 +83,41 @@ export const update = mutation({
         email: v.optional(v.string()),
         distributorId: v.optional(v.string()),
         address: v.optional(v.string()),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
-        const { id, ...rest } = args;
+        const { id, userId, ...rest } = args;
+        const customer = await ctx.db.get(id);
+        if (!customer) throw new Error("Customer not found");
+
         await ctx.db.patch(id, rest);
+
+        // Log activity
+        const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
+        await ctx.db.insert("activityLogs", {
+            userId,
+            action: "Update Customer",
+            details: `Updated customer ${customer.name} - Changes: ${changes}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
 // Delete customer
 export const remove = mutation({
-    args: { id: v.id("customers") },
+    args: { id: v.id("customers"), userId: v.id("users") },
     handler: async (ctx, args) => {
+        const customer = await ctx.db.get(args.id);
+        if (!customer) throw new Error("Customer not found");
+
         await ctx.db.delete(args.id);
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Delete Customer",
+            details: `Deleted customer: ${customer.name} (${customer.phone})${customer.distributorId ? ` - Distributor ID: ${customer.distributorId}` : ''}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });

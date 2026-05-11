@@ -78,10 +78,22 @@ export const setRoles = mutation({
     args: {
         userId: v.id("users"),
         roles: v.array(v.string()),
+        adminUserId: v.id("users"),
     },
     handler: async (ctx, args) => {
+        const user = await ctx.db.get(args.userId);
+        if (!user) throw new Error("User not found");
+
         await ctx.db.patch(args.userId, {
             roles: args.roles,
+        });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.adminUserId,
+            action: "Set User Roles",
+            details: `Updated roles for ${user.first_name} ${user.last_name} to: ${args.roles.join(", ")}`,
+            timestamp: new Date().toISOString(),
         });
     },
 });
@@ -102,10 +114,23 @@ export const update = mutation({
         marital_status: v.optional(v.string()),
         nationality: v.optional(v.string()),
         roles: v.optional(v.array(v.string())),
+        adminUserId: v.id("users"),
     },
     handler: async (ctx, args) => {
-        const { id, ...rest } = args;
+        const { id, adminUserId, ...rest } = args;
+        const user = await ctx.db.get(id);
+        if (!user) throw new Error("User not found");
+
         await ctx.db.patch(id, rest);
+
+        // Log activity
+        const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
+        await ctx.db.insert("activityLogs", {
+            userId: adminUserId,
+            action: "Update User",
+            details: `Updated user ${user.first_name} ${user.last_name} - Changes: ${changes}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
@@ -124,6 +149,14 @@ export const login = mutation({
 
         const isValid = bcrypt.compareSync(args.password, user.password);
         if (!isValid) throw new Error("Invalid email or password");
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: user._id,
+            action: "User Login",
+            details: `User ${user.first_name} ${user.last_name} logged in`,
+            timestamp: new Date().toISOString(),
+        });
 
         return user;
     },
@@ -156,6 +189,14 @@ export const requestPasswordReset = mutation({
             email: args.email,
             code,
             expiresAt,
+        });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: user._id,
+            action: "Password Reset Request",
+            details: `Password reset requested for ${user.first_name} ${user.last_name} (${args.email})`,
+            timestamp: new Date().toISOString(),
         });
 
         // In a real app, send an email here.
@@ -193,6 +234,14 @@ export const resetPassword = mutation({
         await ctx.db.patch(user._id, { password: hashedPassword });
         await ctx.db.delete(reset._id);
 
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: user._id,
+            action: "Password Reset Completed",
+            details: `Password reset completed for ${user.first_name} ${user.last_name} (${args.email})`,
+            timestamp: new Date().toISOString(),
+        });
+
         return { success: true };
     },
 });
@@ -206,6 +255,7 @@ export const create = mutation({
         email: v.string(),
         roles: v.array(v.string()),
         password: v.optional(v.string()),
+        adminUserId: v.id("users"),
     },
     handler: async (ctx, args) => {
         const existing = await ctx.db
@@ -218,12 +268,22 @@ export const create = mutation({
         const passwordToHash = args.password || "password123";
         const hashedPassword = bcrypt.hashSync(passwordToHash, 10);
 
-        const { password, ...userArgs } = args;
+        const { password, adminUserId, ...userArgs } = args;
 
-        return await ctx.db.insert("users", {
+        const userId = await ctx.db.insert("users", {
             ...userArgs,
             password: hashedPassword,
         });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: adminUserId,
+            action: "Create User",
+            details: `Created new user: ${args.first_name} ${args.last_name} (${args.email}) with roles: ${args.roles.join(", ")}`,
+            timestamp: new Date().toISOString(),
+        });
+
+        return userId;
     },
 });
 
@@ -233,6 +293,7 @@ export const toggleRole = mutation({
         userId: v.id("users"),
         role: v.string(),
         action: v.union(v.literal("add"), v.literal("remove")),
+        adminUserId: v.id("users"),
     },
     handler: async (ctx, args) => {
         const user = await ctx.db.get(args.userId);
@@ -246,14 +307,33 @@ export const toggleRole = mutation({
         }
 
         await ctx.db.patch(args.userId, { roles });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.adminUserId,
+            action: "Toggle User Role",
+            details: `${args.action === "add" ? "Added" : "Removed"} role '${args.role}' ${args.action === "add" ? "to" : "from"} ${user.first_name} ${user.last_name}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
 // Delete user
 export const remove = mutation({
-    args: { id: v.id("users") },
+    args: { id: v.id("users"), adminUserId: v.id("users") },
     handler: async (ctx, args) => {
+        const user = await ctx.db.get(args.id);
+        if (!user) throw new Error("User not found");
+
         await ctx.db.delete(args.id);
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.adminUserId,
+            action: "Delete User",
+            details: `Deleted user: ${user.first_name} ${user.last_name} (${user.email})`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
@@ -273,5 +353,13 @@ export const changePassword = mutation({
 
         const hashedPassword = bcrypt.hashSync(args.newPassword, 10);
         await ctx.db.patch(args.userId, { password: hashedPassword });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Password Changed",
+            details: `Password changed for ${user.first_name} ${user.last_name} (${user.email})`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });

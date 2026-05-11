@@ -819,10 +819,12 @@ export const swap = mutation({
         const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
 
         // 5. Log activity
+        const returnedSummary = args.returnedItems.map(i => `${i.name} (${i.quantity})`).join(", ");
+        const takenSummary = args.takenItems.map(i => `${i.name} (${i.quantity})`).join(", ");
         await ctx.db.insert("activityLogs", {
             userId: args.userId,
             action: "Product Swap",
-            details: `Swapped items for customer at ${shop ? shop.name : "HQ"}.`,
+            details: `Swapped items at ${shop ? shop.name : "HQ"} - Returned: ${returnedSummary}, Taken: ${takenSummary}, Total Value: UGX ${totalValue.toLocaleString()}`,
             timestamp: date,
         });
 

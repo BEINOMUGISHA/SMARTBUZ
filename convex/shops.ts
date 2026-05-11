@@ -103,10 +103,20 @@ export const create = mutation({
         userId: v.id("users"),
     },
     handler: async (ctx, args) => {
-        return await ctx.db.insert("shops", {
+        const shopId = await ctx.db.insert("shops", {
             ...args,
             issuedStocks: [],
         });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Create Shop",
+            details: `Created new shop: ${args.name} (${args.serialNumber}) at ${args.location}`,
+            timestamp: new Date().toISOString(),
+        });
+
+        return shopId;
     },
 });
 
@@ -120,15 +130,40 @@ export const update = mutation({
         userId: v.optional(v.id("users")),
     },
     handler: async (ctx, args) => {
-        const { id, ...rest } = args;
+        const { id, userId, ...rest } = args;
+        const shop = await ctx.db.get(id);
+        if (!shop) throw new Error("Shop not found");
+
         await ctx.db.patch(id, rest);
+
+        // Log activity
+        if (userId) {
+            const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
+            await ctx.db.insert("activityLogs", {
+                userId,
+                action: "Update Shop",
+                details: `Updated shop: ${shop.name} - Changes: ${changes}`,
+                timestamp: new Date().toISOString(),
+            });
+        }
     },
 });
 
 export const remove = mutation({
-    args: { id: v.id("shops") },
+    args: { id: v.id("shops"), userId: v.id("users") },
     handler: async (ctx, args) => {
+        const shop = await ctx.db.get(args.id);
+        if (!shop) throw new Error("Shop not found");
+
         await ctx.db.delete(args.id);
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Delete Shop",
+            details: `Deleted shop: ${shop.name} (${shop.serialNumber}) at ${shop.location}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
@@ -145,6 +180,7 @@ export const issueStock = mutation({
             bv: v.number(),
             halfPrice: v.boolean(),
         })),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
         const shop = await ctx.db.get(args.shopId);
@@ -153,6 +189,15 @@ export const issueStock = mutation({
         // Merge or replace depending on business need - original logic seems to append
         const updatedStock = [...shop.issuedStocks, ...args.items];
         await ctx.db.patch(args.shopId, { issuedStocks: updatedStock });
+
+        // Log activity
+        const itemSummary = args.items.map(i => `${i.name} (${i.qty})`).join(", ");
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Issue Stock to Shop",
+            details: `Issued stock to ${shop.name}: ${itemSummary}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
@@ -160,21 +205,42 @@ export const removeStock = mutation({
     args: {
         shopId: v.id("shops"),
         stockId: v.id("stocks"),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
 
+        const stockItem = shop.issuedStocks.find(s => s.stockId === args.stockId);
         const updatedStock = shop.issuedStocks.filter(s => s.stockId !== args.stockId);
         await ctx.db.patch(args.shopId, { issuedStocks: updatedStock });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Remove Stock from Shop",
+            details: `Removed ${stockItem?.name || 'stock'} from ${shop.name}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
 // Clear all stock from a shop (Dangerous)
 export const clearStocks = mutation({
-    args: { shopId: v.id("shops") },
+    args: { shopId: v.id("shops"), userId: v.id("users") },
     handler: async (ctx, args) => {
+        const shop = await ctx.db.get(args.shopId);
+        if (!shop) throw new Error("Shop not found");
+
         await ctx.db.patch(args.shopId, { issuedStocks: [] });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Clear Shop Stocks",
+            details: `Cleared all stock from ${shop.name} (${shop.issuedStocks.length} items removed)`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
@@ -184,6 +250,7 @@ export const adjustShopStock = mutation({
         shopId: v.id("shops"),
         stockId: v.id("stocks"),
         newQty: v.number(),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
         const shop = await ctx.db.get(args.shopId);
@@ -194,6 +261,7 @@ export const adjustShopStock = mutation({
 
         const currentQty = shop.issuedStocks[stockIndex].qty;
         const delta = args.newQty - currentQty;
+        const stockName = shop.issuedStocks[stockIndex].name;
 
         if (delta === 0) return; // No change
 
@@ -231,6 +299,14 @@ export const adjustShopStock = mutation({
         await ctx.db.patch(args.shopId, {
             issuedStocks: updatedStocks
         });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Adjust Shop Stock",
+            details: `Adjusted ${stockName} in ${shop.name}: ${currentQty} -> ${args.newQty} (${delta > 0 ? '+' : ''}${delta})`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
@@ -239,6 +315,7 @@ export const returnShopStock = mutation({
     args: {
         shopId: v.id("shops"),
         stockId: v.id("stocks"),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
         const shop = await ctx.db.get(args.shopId);
@@ -259,6 +336,14 @@ export const returnShopStock = mutation({
         const updatedStocks = shop.issuedStocks.filter(s => s.stockId !== args.stockId);
         await ctx.db.patch(args.shopId, {
             issuedStocks: updatedStocks
+        });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Return Stock to Warehouse",
+            details: `Returned ${stockItem.name} (${stockItem.qty} units) from ${shop.name} to warehouse`,
+            timestamp: new Date().toISOString(),
         });
     },
 });

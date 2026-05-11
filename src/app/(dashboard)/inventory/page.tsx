@@ -59,6 +59,7 @@ export default function InventoryPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
                     title="Warehouse Valuation"
+                    description="Total selling price of all inventory items"
                     value={`UGX ${stats.totalSellValue.toLocaleString()}`}
                     subValue={`Cost: UGX ${stats.totalCostValue.toLocaleString()}`}
                     icon={DollarSign}
@@ -66,6 +67,7 @@ export default function InventoryPage() {
                 />
                 <StatCard
                     title="Estimated Margin"
+                    description="Profit percentage across entire inventory"
                     value={`${(((stats.totalSellValue - stats.totalCostValue) / (stats.totalSellValue || 1)) * 100).toFixed(1)}%`}
                     subValue={`Profit: UGX ${(stats.totalSellValue - stats.totalCostValue).toLocaleString()}`}
                     icon={TrendingUp}
@@ -73,6 +75,7 @@ export default function InventoryPage() {
                 />
                 <StatCard
                     title="Total SKU Volume"
+                    description="Total quantity of all items in stock"
                     value={stats.totalItems.toLocaleString()}
                     subValue={`${stats.skuCount} Unique Products`}
                     icon={Package}
@@ -80,6 +83,7 @@ export default function InventoryPage() {
                 />
                 <StatCard
                     title="Stock Risks"
+                    description="Products with low inventory needing restock"
                     value={lowStockAudit?.length.toString() || "0"}
                     subValue="Items below reorder point"
                     icon={AlertTriangle}
@@ -91,6 +95,7 @@ export default function InventoryPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
                     title="Total BV"
+                    description="Business Volume - points for distributor commissions"
                     value={stats.totalBV.toLocaleString()}
                     subValue="Business Volume"
                     icon={BarChart3}
@@ -98,6 +103,7 @@ export default function InventoryPage() {
                 />
                 <StatCard
                     title="Total PV"
+                    description="Point Value - qualification points for rank advancement"
                     value={stats.totalPV.toLocaleString()}
                     subValue="Point Value"
                     icon={Activity}
@@ -105,6 +111,7 @@ export default function InventoryPage() {
                 />
                 <StatCard
                     title="Out of Stock"
+                    description="Products completely unavailable in warehouse"
                     value={stats.outOfStockCount.toString()}
                     subValue="Products with zero quantity"
                     icon={AlertTriangle}
@@ -112,6 +119,7 @@ export default function InventoryPage() {
                 />
                 <StatCard
                     title="Active Suppliers"
+                    description="Number of suppliers and shops in operation"
                     value={stats.supplierCount.toString()}
                     subValue={`${stats.shopCount} Active Shops`}
                     icon={Database}
@@ -123,6 +131,7 @@ export default function InventoryPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <StatCard
                     title="Warehouse Stock"
+                    description="Inventory remaining in main warehouse (not yet issued)"
                     value={stats.warehouseStock.toLocaleString()}
                     subValue="Items in main warehouse"
                     icon={Package}
@@ -130,6 +139,7 @@ export default function InventoryPage() {
                 />
                 <StatCard
                     title="Shop Stock"
+                    description="Total inventory currently allocated to all shops"
                     value={stats.totalShopStock.toLocaleString()}
                     subValue="Items distributed to shops"
                     icon={Layers}
@@ -310,11 +320,6 @@ export default function InventoryPage() {
                             ))
                         )}
                     </div>
-                    <Link href="/activity-logs" className="mt-6 block">
-                        <Button variant="ghost" size="sm" className="w-full text-xs font-bold text-muted-foreground hover:text-primary">
-                            View Full Audit Trail <ArrowRight className="ml-2 h-3 w-3" />
-                        </Button>
-                    </Link>
                 </CardContent>
             </Card>
 
@@ -383,7 +388,7 @@ export default function InventoryPage() {
     );
 }
 
-function StatCard({ title, value, subValue, icon: Icon, color }: any) {
+function StatCard({ title, description, value, subValue, icon: Icon, color }: any) {
     return (
         <Card className="border-none shadow-sm overflow-hidden relative group">
             <CardContent className="pt-6">
@@ -396,7 +401,8 @@ function StatCard({ title, value, subValue, icon: Icon, color }: any) {
                 <div className="relative z-10">
                     <p className="text-xs font-black text-muted-foreground uppercase tracking-wider mb-1">{title}</p>
                     <p className="text-2xl font-black mb-1">{value}</p>
-                    <p className="text-xs text-muted-foreground font-medium">{subValue}</p>
+                    <p className="text-xs text-muted-foreground font-medium mb-1">{subValue}</p>
+                    {description && <p className="text-[10px] text-muted-foreground/70 leading-tight">{description}</p>}
                 </div>
                 {/* Background Decor */}
                 <div className={`absolute -right-6 -bottom-6 opacity-[0.03] transition-transform group-hover:scale-110 duration-500`}>

@@ -315,9 +315,23 @@ export const add = mutation({
         amount: v.number(),
         balance: v.number(),
         date: v.string(),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
-        return await ctx.db.insert("loans", args);
+        const { userId, ...loanArgs } = args;
+        const loanId = await ctx.db.insert("loans", loanArgs);
+
+        // Log activity
+        const sale = await ctx.db.get(args.salesId);
+        const customer = await ctx.db.get(args.customerId);
+        await ctx.db.insert("activityLogs", {
+            userId,
+            action: "Create Loan",
+            details: `Created loan for ${customer?.name || 'customer'} - Amount: UGX ${args.amount.toLocaleString()}, Balance: UGX ${args.balance.toLocaleString()}`,
+            timestamp: new Date().toISOString(),
+        });
+
+        return loanId;
     },
 });
 
@@ -326,6 +340,7 @@ export const makePayment = mutation({
         loanId: v.id("loans"),
         amount: v.number(),
         date: v.string(),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
         const loan = await ctx.db.get(args.loanId);
@@ -339,7 +354,7 @@ export const makePayment = mutation({
 
         await ctx.db.patch(args.loanId, { balance: newBalance });
 
-        return await ctx.db.insert("payments", {
+        const paymentId = await ctx.db.insert("payments", {
             loanId: args.loanId,
             shopId: sale.shopId,
             customerId: loan.customerId,
@@ -347,5 +362,17 @@ export const makePayment = mutation({
             date: args.date,
             balance: newBalance,
         });
+
+        // Log activity
+        const customer = loan.customerId ? await ctx.db.get(loan.customerId) : null;
+        const customerName = customer?.name || loan.manualCustomerName || 'customer';
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Loan Payment",
+            details: `Payment of UGX ${args.amount.toLocaleString()} for ${customerName} loan. Previous balance: UGX ${loan.balance.toLocaleString()}, New balance: UGX ${newBalance.toLocaleString()}`,
+            timestamp: new Date().toISOString(),
+        });
+
+        return paymentId;
     },
 });

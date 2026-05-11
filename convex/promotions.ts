@@ -45,9 +45,21 @@ export const add = mutation({
         isActive: v.boolean(),
         triggerType: v.optional(v.string()),
         threshold: v.optional(v.number()),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
-        return await ctx.db.insert("promotions", args);
+        const { userId, ...promoArgs } = args;
+        const promoId = await ctx.db.insert("promotions", promoArgs);
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId,
+            action: "Add Promotion",
+            details: `Created new promotion: ${args.name} - Prize: ${args.prize}, Type: ${args.triggerType || 'N/A'}${args.threshold ? `, Threshold: ${args.threshold}` : ''}, Status: ${args.isActive ? 'Active' : 'Inactive'}`,
+            timestamp: new Date().toISOString(),
+        });
+
+        return promoId;
     },
 });
 
@@ -59,9 +71,13 @@ export const update = mutation({
         isActive: v.optional(v.boolean()),
         triggerType: v.optional(v.string()),
         threshold: v.optional(v.number()),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
-        const { id, ...rest } = args;
+        const { id, userId, ...rest } = args;
+        const promotion = await ctx.db.get(id);
+        if (!promotion) throw new Error("Promotion not found");
+
         const patchData: any = { ...rest };
 
         // If switching to Product type, remove threshold
@@ -70,12 +86,24 @@ export const update = mutation({
         }
 
         await ctx.db.patch(id, patchData);
+
+        // Log activity
+        const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
+        await ctx.db.insert("activityLogs", {
+            userId,
+            action: "Update Promotion",
+            details: `Updated promotion ${promotion.name} - Changes: ${changes}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
 export const remove = mutation({
-    args: { id: v.id("promotions") },
+    args: { id: v.id("promotions"), userId: v.id("users") },
     handler: async (ctx, args) => {
+        const promotion = await ctx.db.get(args.id);
+        if (!promotion) throw new Error("Promotion not found");
+
         // Also remove linked products
         const products = await ctx.db
             .query("promotionProducts")
@@ -85,6 +113,14 @@ export const remove = mutation({
             await ctx.db.delete(p._id);
         }
         await ctx.db.delete(args.id);
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Delete Promotion",
+            details: `Deleted promotion: ${promotion.name} - Prize: ${promotion.prize} (${products.length} linked products removed)`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
@@ -117,8 +153,12 @@ export const addProduct = mutation({
         promotionId: v.id("promotions"),
         stockId: v.id("stocks"),
         requiredQuantity: v.number(),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
+        const promotion = await ctx.db.get(args.promotionId);
+        const stock = await ctx.db.get(args.stockId);
+
         // Check for existing product in this promotion
         const existing = await ctx.db
             .query("promotionProducts")
@@ -126,22 +166,51 @@ export const addProduct = mutation({
             .filter((q) => q.eq(q.field("stockId"), args.stockId))
             .first();
 
+        let productId;
         if (existing) {
             // Update quantity instead of inserting new record
             await ctx.db.patch(existing._id, {
                 requiredQuantity: args.requiredQuantity
             });
-            return existing._id;
+            productId = existing._id;
+        } else {
+            productId = await ctx.db.insert("promotionProducts", {
+                promotionId: args.promotionId,
+                stockId: args.stockId,
+                requiredQuantity: args.requiredQuantity,
+            });
         }
 
-        return await ctx.db.insert("promotionProducts", args);
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: existing ? "Update Promotion Product" : "Add Product to Promotion",
+            details: `${existing ? 'Updated' : 'Added'} product ${stock?.name || 'Unknown'} (${args.requiredQuantity} units) to promotion ${promotion?.name || 'Unknown'}`,
+            timestamp: new Date().toISOString(),
+        });
+
+        return productId;
     },
 });
 
 export const removeProduct = mutation({
-    args: { id: v.id("promotionProducts") },
+    args: { id: v.id("promotionProducts"), userId: v.id("users") },
     handler: async (ctx, args) => {
+        const product = await ctx.db.get(args.id);
+        if (!product) throw new Error("Promotion product not found");
+
+        const stock = await ctx.db.get(product.stockId);
+        const promotion = await ctx.db.get(product.promotionId);
+
         await ctx.db.delete(args.id);
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Remove Product from Promotion",
+            details: `Removed product ${stock?.name || 'Unknown'} from promotion ${promotion?.name || 'Unknown'}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
@@ -149,13 +218,37 @@ export const updateProductQuantity = mutation({
     args: {
         id: v.id("promotionProducts"),
         quantity: v.number(),
+        userId: v.id("users"),
     },
     handler: async (ctx, args) => {
+        const product = await ctx.db.get(args.id);
+        if (!product) throw new Error("Promotion product not found");
+
+        const stock = await ctx.db.get(product.stockId);
+        const promotion = await ctx.db.get(product.promotionId);
+
         if (args.quantity <= 0) {
             await ctx.db.delete(args.id);
+            
+            // Log activity
+            await ctx.db.insert("activityLogs", {
+                userId: args.userId,
+                action: "Remove Product from Promotion",
+                details: `Removed product ${stock?.name || 'Unknown'} from promotion ${promotion?.name || 'Unknown'} (quantity set to 0)`,
+                timestamp: new Date().toISOString(),
+            });
             return;
         }
+        
         await ctx.db.patch(args.id, { requiredQuantity: args.quantity });
+
+        // Log activity
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Update Promotion Product Quantity",
+            details: `Updated quantity for ${stock?.name || 'Unknown'} in promotion ${promotion?.name || 'Unknown'}: ${product.requiredQuantity} -> ${args.quantity}`,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
