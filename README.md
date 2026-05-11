@@ -1,5 +1,6 @@
 npx tsc --noEmit --project tsconfig.json
 
+
 Stock Reports:
 -in here first of all we will add the supplier in stock creation and in re stocking we add the field of the supplie so that we know from where and in re stocking we have differeent supplier so we have to keep that record,  
 -then when issuing stock to the shop its important to keep those records we want to know what we issued to a shop on a specific date
