@@ -44,6 +44,7 @@ import { formatError, cn } from "@/lib/utils";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AuditLogsManager } from "./audit-logs";
+import { useAuth } from "@/context/auth-context";
 
 export default function SystemConfigPage() {
     const [activeTab, setActiveTab] = useState("users");
@@ -167,6 +168,7 @@ export function PaginationControls({
 
 // --- USER MANAGER ---
 function UserManager() {
+    const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Doc<"users"> | null>(null);
@@ -203,6 +205,7 @@ function UserManager() {
                 email: formData.get("email") as string,
                 roles: [formData.get("role") as string], // Selected role
                 password: "password123", // Default password
+                adminUserId: user!._id,
             });
             toast.success("User created successfully");
             setIsAddOpen(false);
@@ -221,6 +224,7 @@ function UserManager() {
                 email: formData.get("email") as string,
                 phone_number: formData.get("phone_number") as string,
                 roles: [formData.get("role") as string],
+                adminUserId: user!._id,
             });
             toast.success("User updated");
             setEditingItem(null);
@@ -230,7 +234,7 @@ function UserManager() {
     const handleDelete = async () => {
         if (!deletingId) return;
         try {
-            await deleteUser({ id: deletingId });
+            await deleteUser({ id: deletingId, adminUserId: user!._id });
             toast.success("User deleted");
             setDeletingId(null);
         } catch (error) { toast.error(formatError(error)); }
@@ -371,6 +375,7 @@ function UserManager() {
 
 // --- PROMOTION MANAGER ---
 function PromotionManager() {
+    const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Doc<"promotions"> | null>(null);
@@ -410,6 +415,7 @@ function PromotionManager() {
                 triggerType: formData.get("triggerType") as string,
                 threshold: formData.get("threshold") ? parseFloat(formData.get("threshold") as string) : undefined,
                 isActive: true,
+                userId: user!._id,
             });
             toast.success("Promotion created");
             setIsAddOpen(false);
@@ -429,6 +435,7 @@ function PromotionManager() {
                 triggerType: formData.get("triggerType") as string,
                 threshold: formData.get("threshold") ? parseFloat(formData.get("threshold") as string) : undefined,
                 isActive: formData.get("isActive") === "on",
+                userId: user!._id,
             });
             toast.success("Promotion updated");
             setEditingItem(null);
@@ -438,7 +445,7 @@ function PromotionManager() {
     const handleDelete = async () => {
         if (!deletingId) return;
         try {
-            await deletePromo({ id: deletingId });
+            await deletePromo({ id: deletingId, userId: user!._id });
             toast.success("Promotion deleted");
             setDeletingId(null);
         } catch (error) { toast.error(formatError(error)); }
@@ -592,6 +599,7 @@ function PromotionManager() {
 }
 
 function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"> }) {
+    const { user } = useAuth();
     const promotionProducts = useQuery(api.promotions.getPromotionProducts, { promotionId });
     const stocks = useQuery(api.stocks.listAll, {});
     const addProduct = useMutation(api.promotions.addProduct);
@@ -620,6 +628,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                 promotionId,
                 stockId,
                 requiredQuantity: quantity,
+                userId: user!._id,
             });
             toast.success("Product updated in trigger");
             e.currentTarget.reset();
@@ -703,7 +712,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                                             variant="outline"
                                             size="icon"
                                             className="h-6 w-6"
-                                            onClick={() => updateQuantity({ id: pp._id, quantity: pp.requiredQuantity - 1 })}
+                                            onClick={() => updateQuantity({ id: pp._id, quantity: pp.requiredQuantity - 1, userId: user!._id })}
                                             disabled={pp.requiredQuantity <= 1}
                                         >
                                             <Minus className="h-3 w-3" />
@@ -713,7 +722,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                                             variant="outline"
                                             size="icon"
                                             className="h-6 w-6"
-                                            onClick={() => updateQuantity({ id: pp._id, quantity: pp.requiredQuantity + 1 })}
+                                            onClick={() => updateQuantity({ id: pp._id, quantity: pp.requiredQuantity + 1, userId: user!._id })}
                                         >
                                             <Plus className="h-3 w-3" />
                                         </Button>
@@ -723,7 +732,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => removeProduct({ id: pp._id })}
+                                        onClick={() => removeProduct({ id: pp._id, userId: user!._id })}
                                         className="text-destructive hover:bg-destructive/10 hover:text-destructive h-9 w-9 rounded-full transition-all"
                                     >
                                         <Trash2 className="h-4 w-4" />
@@ -740,6 +749,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
 
 // --- DISTRIBUTOR MANAGER ---
 function DistributorManager() {
+    const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Doc<"customers"> | null>(null);
@@ -776,6 +786,7 @@ function DistributorManager() {
                 email: formData.get("email") as string,
                 distributorId: formData.get("distributorId") as string,
                 address: formData.get("address") as string,
+                userId: user!._id,
             });
             toast.success("Distributor added");
             setIsAddOpen(false);
@@ -794,6 +805,7 @@ function DistributorManager() {
                 email: formData.get("email") as string,
                 distributorId: formData.get("distributorId") as string,
                 address: formData.get("address") as string,
+                userId: user!._id,
             });
             toast.success("Distributor updated");
             setEditingItem(null);
@@ -803,7 +815,7 @@ function DistributorManager() {
     const handleDelete = async () => {
         if (!deletingId) return;
         try {
-            await deleteDistributor({ id: deletingId });
+            await deleteDistributor({ id: deletingId, userId: user!._id });
             toast.success("Distributor deleted");
             setDeletingId(null);
         } catch (error) { toast.error(formatError(error)); }
@@ -907,6 +919,7 @@ function DistributorManager() {
 
 // --- SHOP MANAGER ---
 function ShopManager() {
+    const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Doc<"shops"> | null>(null);
@@ -970,7 +983,7 @@ function ShopManager() {
     const handleDelete = async () => {
         if (!deletingId) return;
         try {
-            await deleteShop({ id: deletingId });
+            await deleteShop({ id: deletingId, userId: user!._id });
             toast.success("Shop deleted");
             setDeletingId(null);
         } catch (error) { toast.error(formatError(error)); }

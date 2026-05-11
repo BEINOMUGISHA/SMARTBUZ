@@ -46,6 +46,7 @@ export default function SettingsPage() {
                 first_name: formData.get("first_name") as string,
                 last_name: formData.get("last_name") as string,
                 phone_number: formData.get("phone_number") as string,
+                adminUserId: user._id,
                 // Email is intentionally omitted/disabled
             });
             toast.success("Profile updated successfully");

@@ -67,6 +67,7 @@ export default function ShopsPage() {
 
 
 function ShopStockViewer() {
+    const { user } = useAuth();
     const shops = useQuery(api.shops.listAll);
     const [selectedShopId, setSelectedShopId] = useState<Id<"shops"> | "">("");
     const [search, setSearch] = useState("");
@@ -170,7 +171,8 @@ function ShopStockViewer() {
             await adjustStock({
                 shopId: selectedShopId as Id<"shops">,
                 stockId: editingItem.stockId,
-                newQty: q
+                newQty: q,
+                userId: user!._id,
             });
             toast.success("Stock updated successfully");
             setEditingItem(null);
@@ -188,7 +190,8 @@ function ShopStockViewer() {
         try {
             await returnStock({
                 shopId: selectedShopId as Id<"shops">,
-                stockId: stockId
+                stockId: stockId,
+                userId: user!._id,
             });
             toast.success("Item returned to warehouse");
         } catch (error) {

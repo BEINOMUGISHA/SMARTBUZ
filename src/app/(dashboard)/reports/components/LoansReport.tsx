@@ -244,9 +244,9 @@ function LoansTab({
                     totalItems: totalLoansCount,
                     onNext: () => {
                         const totalPages = Math.ceil(totalLoansCount / rowsPerPage);
-                        if (page < totalPages) setPage(p => p + 1);
+                        if (page < totalPages) setPage((p: number) => p + 1);
                     },
-                    onPrev: () => setPage(p => Math.max(1, p - 1)),
+                    onPrev: () => setPage((p: number) => Math.max(1, p - 1)),
                     canLoadMore: loansStatus === "CanLoadMore"
                 }}
                 columns={[

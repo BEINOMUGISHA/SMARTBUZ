@@ -545,6 +545,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
 }
 
 function CategoryManager() {
+    const { user } = useAuth();
     const categories = useQuery(api.categories.get);
     const addCategory = useMutation(api.categories.add);
     const deleteCategory = useMutation(api.categories.remove);
@@ -555,7 +556,7 @@ function CategoryManager() {
         e.preventDefault();
         if (!name) return;
         try {
-            await addCategory({ type: name });
+            await addCategory({ type: name, userId: user!._id });
             toast.success("Category added");
             setName("");
         } catch (error) {
@@ -566,7 +567,7 @@ function CategoryManager() {
     const handleDelete = async () => {
         if (!deletingId) return;
         try {
-            await deleteCategory({ id: deletingId });
+            await deleteCategory({ id: deletingId, userId: user!._id });
             toast.success("Category removed");
             setDeletingId(null);
         } catch (error) {

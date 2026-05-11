@@ -148,6 +148,7 @@ export function LoansView() {
                 loanId: selectedLoan._id,
                 amount,
                 date: new Date().toISOString(),
+                userId: user!._id,
             });
 
             toast.success("Payment recorded successfully");
