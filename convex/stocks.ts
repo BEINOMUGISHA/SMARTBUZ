@@ -334,6 +334,23 @@ export const getByCode = query({
     },
 });
 
+// Get a single stock with details
+export const getStock = query({
+    args: { id: v.id("stocks") },
+    handler: async (ctx, args) => {
+        const stock = await ctx.db.get(args.id);
+        if (!stock) return null;
+
+        // Get category if available
+        const category = stock.categoryId ? await ctx.db.get(stock.categoryId) : null;
+
+        return {
+            ...stock,
+            category,
+        };
+    },
+});
+
 // Add stock
 export const add = mutation({
     args: {

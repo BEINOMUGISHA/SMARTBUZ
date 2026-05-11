@@ -16,6 +16,13 @@ import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Id } from "../../../../../convex/_generated/dataModel";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+} from "@/components/ui/sheet";
 
 export function ShopsReport() {
     const [activeNestedTab, setActiveNestedTab] = useState("overview");
@@ -30,6 +37,12 @@ export function ShopsReport() {
     const [overviewCustomer, setOverviewCustomer] = useState<string>("all");
     const [overviewSearch, setOverviewSearch] = useState("");
     const [dashView, setDashView] = useState<"sales" | "loans">("sales");
+
+    // View Details state
+    const [viewingSaleId, setViewingSaleId] = useState<Id<"sales"> | null>(null);
+    const [viewingLoanId, setViewingLoanId] = useState<Id<"loans"> | null>(null);
+    const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
+    const [viewType, setViewType] = useState<"sale" | "loan">("sale");
 
     // --- ISSUED STOCK TAB STATE ---
     const [issuedReportMode, setIssuedReportMode] = useState<"daily" | "range">("range");
@@ -62,8 +75,8 @@ export function ShopsReport() {
     const salesArgs = {
         startDate: overviewDateRange.from,
         endDate: overviewDateRange.to,
-        shopId: overviewShop === "all" ? undefined : (overviewShop as Id<"shops">),
-        customerId: overviewCustomer === "all" ? undefined : (overviewCustomer as Id<"customers">),
+        shopId: !overviewShop || overviewShop === "all" ? undefined : (overviewShop as Id<"shops">),
+        customerId: !overviewCustomer || overviewCustomer === "all" ? undefined : (overviewCustomer as Id<"customers">),
     };
 
     const { results: shopSales, status: salesStatus, loadMore: loadMoreSales, isLoading: salesLoading } = usePaginatedQuery(
@@ -108,7 +121,23 @@ export function ShopsReport() {
         { initialNumItems: 50 }
     );
 
+    // View Details queries
+    const saleWithDetails = useQuery(api.sales.getSale, viewType === "sale" && viewingSaleId ? { id: viewingSaleId } : "skip");
+    const loanWithDetails = useQuery(api.loans.getLoanWithDetails, viewType === "loan" && viewingLoanId ? { id: viewingLoanId } : "skip");
+
     const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
+
+    const handleViewSale = (sale: any) => {
+        setViewingSaleId(sale._id);
+        setViewType("sale");
+        setIsViewSheetOpen(true);
+    };
+
+    const handleViewLoan = (loan: any) => {
+        setViewingLoanId(loan._id);
+        setViewType("loan");
+        setIsViewSheetOpen(true);
+    };
 
     return (
         <div className="space-y-6">
@@ -216,6 +245,7 @@ export function ShopsReport() {
                             isLoading={loansLoading}
                             summaryData={summaryData}
                             variant="loans"
+                            onViewDetails={handleViewLoan}
                             columns={[
                                 {
                                     header: "Date/Time",
@@ -298,6 +328,7 @@ export function ShopsReport() {
                             isLoading={salesLoading}
                             summaryData={summaryData}
                             variant="sales"
+                            onViewDetails={handleViewSale}
                             columns={[
                                 {
                                     header: "Date/Time",
@@ -639,6 +670,91 @@ export function ShopsReport() {
                     />
                 </TabsContent>
             </Tabs>
+
+            {/* View Details Sheet */}
+            <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
+                <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
+                    <SheetHeader>
+                        <SheetTitle>
+                            {viewType === "sale" ? "Sale Details" : "Loan Details"}
+                        </SheetTitle>
+                        <SheetDescription>
+                            Complete information about this {viewType} record.
+                        </SheetDescription>
+                    </SheetHeader>
+                    {viewType === "sale" && saleWithDetails ? (
+                        <div className="space-y-6 py-6">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Date/Time</span>
+                                    <span className="font-semibold">{format(new Date(saleWithDetails._creationTime), "dd MMM yyyy HH:mm:ss")}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
+                                    <span className="font-bold text-lg text-emerald-600">UGX {saleWithDetails.total.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Branch</span>
+                                    <span className="font-semibold">{saleWithDetails.shop?.name || "Main Warehouse"}</span>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Sold By</h3>
+                                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                                    {saleWithDetails.user ? (
+                                        <>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Name</span>
+                                                <span className="font-semibold capitalize">{saleWithDetails.user.first_name} {saleWithDetails.user.last_name}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Email</span>
+                                                <span className="font-semibold text-sm">{saleWithDetails.user.email}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Role</span>
+                                                <Badge className="capitalize">{saleWithDetails.user.roles?.[0] || "N/A"}</Badge>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-sm text-muted-foreground">User information not available</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ) : viewType === "loan" && loanWithDetails ? (
+                        <div className="space-y-6 py-6">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Date</span>
+                                    <span className="font-semibold">{format(new Date(loanWithDetails.date), "dd MMM yyyy")}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
+                                    <span className="font-bold text-lg text-emerald-600">UGX {loanWithDetails.amount.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Balance Due</span>
+                                    <span className="font-bold text-lg text-destructive">UGX {loanWithDetails.balance.toLocaleString()}</span>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Customer Information</h3>
+                                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="font-semibold">{loanWithDetails.customer?.name || loanWithDetails.manualCustomerName || "N/A"}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center py-12">
+                            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        </div>
+                    )}
+                </SheetContent>
+            </Sheet>
         </div >
     );
 }

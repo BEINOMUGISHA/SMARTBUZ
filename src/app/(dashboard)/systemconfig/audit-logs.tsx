@@ -21,18 +21,27 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Loader2, Search, Calendar as CalendarIcon, FilterX } from "lucide-react";
+import { Loader2, Search, Calendar as CalendarIcon, FilterX, Eye, Clock, User, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { PaginationControls } from "./page";
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+} from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
 
 export function AuditLogsManager() {
     const [actionFilter, setActionFilter] = useState("");
     const [userFilter, setUserFilter] = useState<string>("all");
     const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
+    const [selectedLog, setSelectedLog] = useState<any>(null);
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -65,13 +74,14 @@ export function AuditLogsManager() {
     };
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Audit Logs</CardTitle>
-                <CardDescription>View system activity and track user actions.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="flex flex-col gap-6">
+        <>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Audit Logs</CardTitle>
+                    <CardDescription>View system activity and track user actions.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col gap-6">
                     {/* Filters */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-muted/20 p-4 rounded-xl border">
                         <div className="space-y-2">
@@ -167,14 +177,14 @@ export function AuditLogsManager() {
                     )}
 
                     {/* Table */}
-                    <div className="rounded-md border overflow-hidden">
+                    <div className="rounded-md border overflow-auto max-h-[600px]">
                         <Table>
                             <TableHeader className="bg-muted/50">
                                 <TableRow>
                                     <TableHead>Time</TableHead>
                                     <TableHead>User</TableHead>
+                                    <TableHead className="w-[50%]">Details</TableHead>
                                     <TableHead>Action</TableHead>
-                                    <TableHead className="w-[40%]">Details</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -210,11 +220,20 @@ export function AuditLogsManager() {
                                                         <span className="text-muted-foreground italic">Unknown User</span>
                                                     )}
                                                 </TableCell>
-                                                <TableCell>
-                                                    <span className="font-semibold text-foreground/80">{log.action}</span>
-                                                </TableCell>
-                                                <TableCell className="text-sm text-muted-foreground">
+                                                <TableCell className="text-sm text-muted-foreground max-w-md truncate">
                                                     {log.details}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="link"
+                                                            className="font-semibold text-foreground/80 hover:text-primary p-0 h-auto flex items-center gap-1"
+                                                            onClick={() => setSelectedLog(log)}
+                                                        >
+                                                            {log.action}
+                                                            <Eye className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         );
@@ -237,5 +256,92 @@ export function AuditLogsManager() {
                 </div>
             </CardContent>
         </Card>
+
+        {/* Detail Sheet */}
+        <Sheet open={!!selectedLog} onOpenChange={(open) => {
+            if (!open) setSelectedLog(null);
+        }}>
+            <SheetContent className="w-[500px] sm:w-[600px] p-6 overflow-y-auto">
+                {selectedLog && (
+                    <>
+                        <SheetHeader>
+                            <SheetTitle className="flex items-center gap-2">
+                                <Eye className="h-5 w-5" />
+                                Activity Log Details
+                            </SheetTitle>
+                            <SheetDescription>
+                                View detailed information about this system activity.
+                            </SheetDescription>
+                        </SheetHeader>
+                        <div className="space-y-6 mt-6">
+                            {/* Action Badge */}
+                            <div className="flex flex-col gap-2">
+                                <Label className="text-xs font-semibold uppercase text-muted-foreground">Action</Label>
+                                <Badge variant="secondary" className="w-fit text-base py-1 px-3">
+                                    {selectedLog.action}
+                                </Badge>
+                            </div>
+
+                            {/* Timestamp */}
+                            <div className="flex flex-col gap-2">
+                                <Label className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-2">
+                                    <Clock className="h-4 w-4" />
+                                    Timestamp
+                                </Label>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <span className="font-medium">{format(new Date(selectedLog.timestamp), "MMMM dd, yyyy")}</span>
+                                    <span className="text-muted-foreground">at</span>
+                                    <span className="font-mono">{format(new Date(selectedLog.timestamp), "HH:mm:ss")}</span>
+                                </div>
+                            </div>
+
+                            {/* User */}
+                            <div className="flex flex-col gap-2">
+                                <Label className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-2">
+                                    <User className="h-4 w-4" />
+                                    User
+                                </Label>
+                                {(() => {
+                                    const user = users.find(u => u._id === selectedLog.userId);
+                                    return user ? (
+                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm text-primary font-bold">
+                                                {user.first_name[0]}{user.last_name[0]}
+                                            </div>
+                                            <div>
+                                                <div className="font-medium">{user.first_name} {user.last_name}</div>
+                                                <div className="text-sm text-muted-foreground">{user.email}</div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <span className="text-muted-foreground italic">Unknown User</span>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Details */}
+                            <div className="flex flex-col gap-2">
+                                <Label className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-2">
+                                    <FileText className="h-4 w-4" />
+                                    Details
+                                </Label>
+                                <div className="p-4 rounded-lg bg-muted/50 text-sm leading-relaxed">
+                                    {selectedLog.details}
+                                </div>
+                            </div>
+
+                            {/* Log ID */}
+                            <div className="flex flex-col gap-2">
+                                <Label className="text-xs font-semibold uppercase text-muted-foreground">Log ID</Label>
+                                <div className="font-mono text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                                    {selectedLog._id}
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
+            </SheetContent>
+        </Sheet>
+        </>
     );
 }

@@ -243,6 +243,33 @@ export const getLoanPayments = query({
     },
 });
 
+// Get a single loan with details
+export const getLoanWithDetails = query({
+    args: { id: v.id("loans") },
+    handler: async (ctx, args) => {
+        const loan = await ctx.db.get(args.id);
+        if (!loan) return null;
+
+        const [customer, sale] = await Promise.all([
+            loan.customerId ? ctx.db.get(loan.customerId) : null,
+            loan.salesId ? ctx.db.get(loan.salesId) : null,
+        ]);
+
+        // Get user from sale if available
+        let user = null;
+        if (sale) {
+            user = await ctx.db.get(sale.userId);
+        }
+
+        return {
+            ...loan,
+            customer,
+            user,
+            sale,
+        };
+    },
+});
+
 export const getLoansCount = query({
     args: {
         from: v.optional(v.string()),

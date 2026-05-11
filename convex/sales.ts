@@ -305,6 +305,282 @@ export const create = mutation({
     },
 });
 
+// Edit an existing sale - reverses ALL side-effects of the original sale and re-applies new ones.
+// This affects: stock (warehouse/shop), loans, payments, promotion redemptions.
+export const editSale = mutation({
+    args: {
+        saleId: v.id("sales"),
+        userId: v.id("users"), // Acting user (for audit)
+        // Editable fields (mirrors create)
+        customerId: v.optional(v.id("customers")),
+        manualCustomerName: v.optional(v.string()),
+        total: v.number(),
+        clientType: v.string(),
+        paymentMode: v.string(),
+        items: v.array(v.object({
+            stockId: v.id("stocks"),
+            name: v.string(),
+            productCode: v.string(),
+            price: v.number(),
+            quantity: v.number(),
+            pv: v.number(),
+            bv: v.number(),
+        })),
+        isLoan: v.optional(v.boolean()),
+        paymentDueDate: v.optional(v.string()),
+        initialDeposit: v.optional(v.number()),
+        packageType: v.optional(v.string()),
+        deliveryStatus: v.optional(v.string()),
+        customerPhone: v.optional(v.string()),
+        customerLocation: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        const existingSale = await ctx.db.get(args.saleId);
+        if (!existingSale) throw new Error("Sale not found");
+
+        // Determine the shop context from the original sale (preserve original location)
+        const shopId = existingSale.shopId;
+        const shop = shopId ? await ctx.db.get(shopId) : null;
+
+        // -----------------------------------------------------------------
+        // 1) REVERSE original stock deductions
+        // -----------------------------------------------------------------
+        if (shop) {
+            const updatedShopStocks = [...shop.issuedStocks];
+            for (const item of existingSale.items) {
+                const idx = updatedShopStocks.findIndex(s => s.stockId === item.stockId);
+                if (idx !== -1) {
+                    updatedShopStocks[idx] = {
+                        ...updatedShopStocks[idx],
+                        qty: updatedShopStocks[idx].qty + item.quantity,
+                    };
+                } else {
+                    // Item no longer present in shop list; add it back
+                    updatedShopStocks.push({
+                        stockId: item.stockId,
+                        name: item.name,
+                        productCode: item.productCode || "",
+                        qty: item.quantity,
+                        price: item.price,
+                        pv: item.pv,
+                        bv: item.bv,
+                    } as any);
+                }
+            }
+            await ctx.db.patch(shop._id, { issuedStocks: updatedShopStocks });
+        } else {
+            for (const item of existingSale.items) {
+                const stock = await ctx.db.get(item.stockId);
+                if (stock) {
+                    await ctx.db.patch(item.stockId, { qty: stock.qty + item.quantity });
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 2) REVERSE original loan and its payments
+        // -----------------------------------------------------------------
+        const existingLoans = await ctx.db
+            .query("loans")
+            .withIndex("by_salesId", (q) => q.eq("salesId", args.saleId))
+            .collect();
+
+        for (const loan of existingLoans) {
+            const payments = await ctx.db
+                .query("payments")
+                .withIndex("by_loan", (q) => q.eq("loanId", loan._id))
+                .collect();
+            for (const p of payments) {
+                await ctx.db.delete(p._id);
+            }
+            await ctx.db.delete(loan._id);
+        }
+
+        // -----------------------------------------------------------------
+        // 3) REVERSE original promotion redemptions for this sale
+        // -----------------------------------------------------------------
+        const existingRedemptions = await ctx.db
+            .query("promotionRedemptions")
+            .filter((q) => q.eq(q.field("salesId"), args.saleId))
+            .collect();
+        for (const r of existingRedemptions) {
+            await ctx.db.delete(r._id);
+        }
+
+        // -----------------------------------------------------------------
+        // 4) APPLY new stock deductions
+        // -----------------------------------------------------------------
+        const refreshedShop = shopId ? await ctx.db.get(shopId) : null;
+        if (refreshedShop) {
+            const updatedStocks = [...refreshedShop.issuedStocks];
+            for (const item of args.items) {
+                const idx = updatedStocks.findIndex(s => s.stockId === item.stockId);
+                if (idx === -1) {
+                    throw new Error(`Item ${item.name} not found in shop stock`);
+                }
+                updatedStocks[idx] = {
+                    ...updatedStocks[idx],
+                    qty: updatedStocks[idx].qty - item.quantity,
+                };
+            }
+            await ctx.db.patch(refreshedShop._id, { issuedStocks: updatedStocks });
+        } else {
+            const stockIds = args.items.map(i => i.stockId);
+            const stockDocs = await Promise.all(stockIds.map(id => ctx.db.get(id)));
+            const stockMap = new Map(
+                stockDocs.filter((s): s is NonNullable<typeof s> => s !== null).map(s => [s._id, s])
+            );
+            for (const item of args.items) {
+                const stock = stockMap.get(item.stockId);
+                if (!stock) throw new Error(`Item ${item.name} not found in warehouse`);
+                await ctx.db.patch(item.stockId, { qty: stock.qty - item.quantity });
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 5) UPDATE sale record (preserve original invoiceNumber, date, shopId, userId, transactionType)
+        // -----------------------------------------------------------------
+        await ctx.db.patch(args.saleId, {
+            customerId: args.customerId,
+            manualCustomerName: args.manualCustomerName,
+            total: args.total,
+            clientType: args.clientType,
+            paymentMode: args.paymentMode,
+            items: args.items,
+            isLoan: args.isLoan,
+            paymentDueDate: args.paymentDueDate,
+            initialDeposit: args.initialDeposit,
+            packageType: args.packageType,
+            deliveryStatus: args.deliveryStatus,
+            customerPhone: args.customerPhone,
+            customerLocation: args.customerLocation,
+        });
+
+        // -----------------------------------------------------------------
+        // 6) RE-APPLY promotion redemptions (matches create logic)
+        // -----------------------------------------------------------------
+        const triggeredRedemptions: any[] = [];
+        const newDate = new Date().toISOString();
+
+        const activePromotions = await ctx.db
+            .query("promotions")
+            .filter((q) => q.eq(q.field("isActive"), true))
+            .collect();
+
+        if (activePromotions.length > 0) {
+            const activePromoIds = new Set(activePromotions.map(p => p._id));
+            const cartStockIds = new Set(args.items.map(i => i.stockId));
+            const allPromotionProducts = await ctx.db.query("promotionProducts").collect();
+            const relevantPromoProducts = allPromotionProducts.filter(pp =>
+                activePromoIds.has(pp.promotionId) && cartStockIds.has(pp.stockId)
+            );
+
+            for (const item of args.items) {
+                const triggers = relevantPromoProducts.filter(pp => pp.stockId === item.stockId);
+                for (const trigger of triggers) {
+                    const promotion = activePromotions.find(p => p._id === trigger.promotionId);
+                    if (!promotion) continue;
+                    const redemptionCount = Math.floor(item.quantity / trigger.requiredQuantity);
+                    if (redemptionCount > 0) {
+                        const redemptionData = {
+                            promotionId: promotion._id,
+                            salesId: args.saleId,
+                            customerId: args.customerId,
+                            userId: existingSale.userId,
+                            shopId: shopId,
+                            date: newDate,
+                            redeemedQuantity: redemptionCount,
+                            productName: item.name,
+                            productCode: item.productCode,
+                            prize: promotion.prize,
+                        };
+                        await ctx.db.insert("promotionRedemptions", redemptionData);
+                        triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
+                    }
+                }
+            }
+
+            const totalPV = args.items.reduce((sum, i) => sum + (i.pv * i.quantity), 0);
+            const totalBV = args.items.reduce((sum, i) => sum + (i.bv * i.quantity), 0);
+            for (const promotion of activePromotions) {
+                if (promotion.triggerType === "TotalPV" && promotion.threshold && totalPV >= promotion.threshold) {
+                    const redemptionCount = Math.floor(totalPV / promotion.threshold);
+                    if (redemptionCount > 0) {
+                        await ctx.db.insert("promotionRedemptions", {
+                            promotionId: promotion._id,
+                            salesId: args.saleId,
+                            customerId: args.customerId,
+                            userId: existingSale.userId,
+                            shopId: shopId,
+                            date: newDate,
+                            redeemedQuantity: redemptionCount,
+                            productName: "WHOLE SALE (PV)",
+                            productCode: "THRESHOLD",
+                            prize: promotion.prize,
+                        });
+                    }
+                } else if (promotion.triggerType === "TotalBV" && promotion.threshold && totalBV >= promotion.threshold) {
+                    const redemptionCount = Math.floor(totalBV / promotion.threshold);
+                    if (redemptionCount > 0) {
+                        await ctx.db.insert("promotionRedemptions", {
+                            promotionId: promotion._id,
+                            salesId: args.saleId,
+                            customerId: args.customerId,
+                            userId: existingSale.userId,
+                            shopId: shopId,
+                            date: newDate,
+                            redeemedQuantity: redemptionCount,
+                            productName: "WHOLE SALE (BV)",
+                            productCode: "THRESHOLD",
+                            prize: promotion.prize,
+                        });
+                    }
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 7) RE-CREATE loan + initial deposit if applicable
+        // -----------------------------------------------------------------
+        if (args.isLoan && args.paymentDueDate) {
+            const deposit = args.initialDeposit || 0;
+            const loanBalance = args.total - deposit;
+
+            const loanId = await ctx.db.insert("loans", {
+                customerId: args.customerId,
+                manualCustomerName: args.manualCustomerName,
+                salesId: args.saleId,
+                amount: args.total,
+                balance: loanBalance,
+                date: newDate,
+            });
+
+            if (deposit > 0) {
+                await ctx.db.insert("payments", {
+                    loanId: loanId,
+                    shopId: shopId,
+                    customerId: args.customerId,
+                    amount: deposit,
+                    date: newDate,
+                    balance: loanBalance,
+                });
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 8) Log activity
+        // -----------------------------------------------------------------
+        await ctx.db.insert("activityLogs", {
+            userId: args.userId,
+            action: "Edit Sale",
+            details: `Edited sale ${existingSale.invoiceNumber || args.saleId} - New total: UGX ${args.total.toLocaleString()}, ${args.items.length} item(s), Payment: ${args.paymentMode}${args.isLoan ? " (Loan)" : ""}`,
+            timestamp: new Date().toISOString(),
+        });
+
+        return { saleId: args.saleId, redemptions: triggeredRedemptions };
+    },
+});
+
 // Get My Sales Stats (Total, Cash, HP, etc.) for a date range
 export const mySalesStats = query({
     args: {

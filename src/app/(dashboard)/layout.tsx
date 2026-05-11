@@ -15,6 +15,7 @@ import {
     Package,
     Menu,
     ChevronRight,
+    Receipt,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const navItems = [
     { href: "/inventory", label: "Inventory", icon: BarChart3 },
     { href: "/sales", label: "Sales", icon: ShoppingCart },
     { href: "/shops", label: "Shops", icon: Store },
+    { href: "/expenditures", label: "Expenditures", icon: Receipt },
     { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
@@ -86,7 +88,7 @@ export default function DashboardLayout({
                         .filter(item => {
                             if (user.roles.includes("admin")) return true;
                             if (user.roles.includes("sales")) {
-                                return item.label === "Dashboard" || item.label === "Sales";
+                                return item.label === "Dashboard" || item.label === "Sales" || item.label === "Expenditures";
                             }
                             return false;
                         })

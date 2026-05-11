@@ -155,17 +155,19 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
                 }
             ];
 
-        case "loans":
+        case "loans": {
+            const totalLoaned = data.totalLoanedAmount ?? 0;
+            const totalOutstanding = data.totalOutstandingBalance ?? 0;
             return [
                 {
                     title: "Total Loaned",
-                    value: `UGX ${data.totalRevenue.toLocaleString()}`,
-                    description: `${data.loanCount || 0} ACTIVE LOANS`,
+                    value: `UGX ${totalLoaned.toLocaleString()}`,
+                    description: `${data.loanCount || 0} LOAN RECORDS`,
                     color: "border-l-red-500"
                 },
                 {
                     title: "Outstanding",
-                    value: `UGX ${(data.totalOutstandingBalance || 0).toLocaleString()}`,
+                    value: `UGX ${totalOutstanding.toLocaleString()}`,
                     description: "BALANCE DUE",
                     color: "border-l-orange-500"
                 },
@@ -177,11 +179,12 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
                 },
                 {
                     title: "Paid Amount",
-                    value: `UGX ${(data.totalRevenue - (data.totalOutstandingBalance || 0)).toLocaleString()}`,
+                    value: `UGX ${Math.max(0, totalLoaned - totalOutstanding).toLocaleString()}`,
                     description: "ALREADY COLLECTED",
                     color: "border-l-emerald-500"
                 }
             ];
+        }
 
         case "promotions":
             return [

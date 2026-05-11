@@ -13,6 +13,13 @@ import { ReportSummary } from "./ReportSummary";
 import { SearchableSelect } from "./SearchableSelect";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { CreditCard, Store, Users, UserCircle } from "lucide-react";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+} from "@/components/ui/sheet";
 
 export function LoansReport() {
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
@@ -32,11 +39,15 @@ export function LoansReport() {
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
+    // View Details state
+    const [viewingLoanId, setViewingLoanId] = useState<Id<"loans"> | null>(null);
+    const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
+
     const loansArgs = {
         startDate: dateRange.from,
         endDate: dateRange.to,
-        shopId: selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
-        customerId: customerId === "all" ? undefined : (customerId as Id<"customers">),
+        shopId: !selectedShop || selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
+        customerId: !customerId || customerId === "all" ? undefined : (customerId as Id<"customers">),
         clientType: clientType === "All" ? undefined : clientType,
     };
 
@@ -47,12 +58,16 @@ export function LoansReport() {
     );
 
     const totalLoansCount = useQuery(api.reports.getLoanSummaryCount, loansArgs) || 0;
-    const summaryData = useQuery(api.reports.getReportsSummary, {
-        ...loansArgs,
-        search: search || undefined
-    });
+    const summaryData = useQuery(api.reports.getLoanReportSummary, loansArgs);
+
+    const loanWithDetails = useQuery(api.loans.getLoanWithDetails, viewingLoanId ? { id: viewingLoanId } : "skip");
 
     const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
+
+    const handleViewDetails = (loan: any) => {
+        setViewingLoanId(loan._id);
+        setIsViewSheetOpen(true);
+    };
 
     return (
         <div className="space-y-6">
@@ -131,6 +146,7 @@ export function LoansReport() {
                 isLoading={loansLoading}
                 search={search}
                 variant="loans"
+                onViewDetails={handleViewDetails}
                 pagination={{
                     currentPage: page,
                     totalPages: Math.ceil(totalLoansCount / rowsPerPage),
@@ -222,6 +238,106 @@ export function LoansReport() {
                     }
                 ]}
             />
+
+            {/* View Details Sheet */}
+            <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
+                <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
+                    <SheetHeader>
+                        <SheetTitle>Loan Details</SheetTitle>
+                        <SheetDescription>
+                            Complete information about this loan record.
+                        </SheetDescription>
+                    </SheetHeader>
+                    {loanWithDetails ? (
+                        <div className="space-y-6 py-6">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Date</span>
+                                    <span className="font-semibold">{format(new Date(loanWithDetails.date), "dd MMM yyyy")}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
+                                    <span className="font-bold text-lg text-emerald-600">UGX {loanWithDetails.amount.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Balance Due</span>
+                                    <span className="font-bold text-lg text-destructive">UGX {loanWithDetails.balance.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Status</span>
+                                    <Badge variant={loanWithDetails.balance > 0 ? "destructive" : "outline"}>
+                                        {loanWithDetails.balance > 0 ? "Outstanding" : "Cleared"}
+                                    </Badge>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Customer Information</h3>
+                                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="font-semibold">{loanWithDetails.customer?.name || loanWithDetails.manualCustomerName || "N/A"}</span>
+                                    </div>
+                                    {loanWithDetails.customer?.phone && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">Phone</span>
+                                            <span className="font-semibold text-sm">{loanWithDetails.customer.phone}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Sold By</h3>
+                                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                                    {loanWithDetails.user ? (
+                                        <>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Name</span>
+                                                <span className="font-semibold capitalize">{loanWithDetails.user.first_name} {loanWithDetails.user.last_name}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Email</span>
+                                                <span className="font-semibold text-sm">{loanWithDetails.user.email}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Role</span>
+                                                <Badge className="capitalize">{loanWithDetails.user.roles?.[0] || "N/A"}</Badge>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-sm text-muted-foreground">User information not available</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {loanWithDetails.sale && loanWithDetails.sale.items && loanWithDetails.sale.items.length > 0 && (
+                                <div className="space-y-3">
+                                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Items ({loanWithDetails.sale.items.length})</h3>
+                                    <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                                        {loanWithDetails.sale.items.map((item: any, idx: number) => (
+                                            <div key={idx} className="flex items-center justify-between py-2 border-b last:border-0">
+                                                <div className="flex-1">
+                                                    <div className="font-semibold text-sm">{item.name}</div>
+                                                    <div className="text-[10px] text-muted-foreground">{item.productCode || "N/A"}</div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="font-semibold text-sm">{item.quantity} x {item.price.toLocaleString()}</div>
+                                                    <div className="text-[10px] text-muted-foreground">{(item.quantity * item.price).toLocaleString()}</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center py-12">
+                            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        </div>
+                    )}
+                </SheetContent>
+            </Sheet>
         </div>
     );
 }

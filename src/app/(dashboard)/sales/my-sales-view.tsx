@@ -21,7 +21,8 @@ import {
     Calendar as CalendarIcon,
     FileSpreadsheet,
     FileText,
-    Printer
+    Printer,
+    Pencil
 } from "lucide-react";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
 import { getStatsForVariant } from "../reports/components/ReportSummary";
@@ -48,6 +49,7 @@ import { Id } from "../../../../convex/_generated/dataModel";
 
 import { ReceiptModal } from "@/components/ReceiptModal";
 import { ReceiptData } from "@/components/ReceiptTemplate";
+import { EditSaleSheet } from "./edit-sale-sheet";
 
 export function MySalesView() {
     const { user } = useAuth();
@@ -68,6 +70,10 @@ export function MySalesView() {
     // Receipt Modal State
     const [printReceiptData, setPrintReceiptData] = useState<ReceiptData | null>(null);
     const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+
+    // Edit Sale State
+    const [editingSale, setEditingSale] = useState<any | null>(null);
+    const [isEditOpen, setIsEditOpen] = useState(false);
 
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
@@ -432,7 +438,7 @@ export function MySalesView() {
                                     <TableHead className="w-[40%]">Items (Qty x Name [PV/BV])</TableHead>
                                     <TableHead className="text-right">Total PV/BV</TableHead>
                                     <TableHead className="text-right">Total (UGX)</TableHead>
-                                    <TableHead className="w-[50px]"></TableHead>
+                                    <TableHead className="w-[100px] text-center">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -520,6 +526,18 @@ export function MySalesView() {
                                                     )}
                                                 </TableCell>
                                                 <TableCell>
+                                                    <div className="flex items-center justify-center gap-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        title="Edit Sale"
+                                                        onClick={() => {
+                                                            setEditingSale(sale);
+                                                            setIsEditOpen(true);
+                                                        }}
+                                                    >
+                                                        <Pencil className="h-4 w-4 text-blue-600" />
+                                                    </Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -575,6 +593,7 @@ export function MySalesView() {
                                                     >
                                                         <Printer className="h-4 w-4" />
                                                     </Button>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         )
@@ -642,6 +661,15 @@ export function MySalesView() {
                         />
                     )
                 }
+
+                <EditSaleSheet
+                    sale={editingSale}
+                    open={isEditOpen}
+                    onOpenChange={(o) => {
+                        setIsEditOpen(o);
+                        if (!o) setEditingSale(null);
+                    }}
+                />
             </div >
 
             {/* HIDDEN PRINT CONTENT */}

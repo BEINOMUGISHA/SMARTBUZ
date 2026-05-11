@@ -154,6 +154,7 @@ export default defineSchema({
         expense: v.string(),
         receivedBy: v.string(),
         type: v.string(), // category of expense
+        userId: v.optional(v.id("users")), // user who recorded the expense
     }).index("by_date", ["date"]),
 
     shops: defineTable({

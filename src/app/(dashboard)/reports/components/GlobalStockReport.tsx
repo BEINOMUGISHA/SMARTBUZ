@@ -10,6 +10,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StockEnteredReport } from "./StockEnteredReport";
 import { ReportSummary } from "./ReportSummary";
 import { SearchableSelect } from "./SearchableSelect";
+import { Id } from "../../../../../convex/_generated/dataModel";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+} from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
 
 export function GlobalStockReport() {
     const [subTab, setSubTab] = useState("regular");
@@ -89,6 +98,10 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
+    // View Details state
+    const [viewingStockId, setViewingStockId] = useState<Id<"stocks"> | null>(null);
+    const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
+
     const { results: stockRecords, status: stockStatus, loadMore: loadMoreStock, isLoading: stockLoading } = usePaginatedQuery(
         api.reports.getStockSummary,
         { halfPrice, search: search || undefined, searchType: searchType },
@@ -96,6 +109,12 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
     );
 
     const totalStockCount = useQuery(api.reports.getStockSummaryCount, { halfPrice, search: search || undefined, searchType: searchType }) || 0;
+    const stockWithDetails = useQuery(api.stocks.getStock, viewingStockId ? { id: viewingStockId } : "skip");
+
+    const handleViewDetails = (stock: any) => {
+        setViewingStockId(stock._id);
+        setIsViewSheetOpen(true);
+    };
 
     useEffect(() => {
         if (stockStatus === "CanLoadMore" && stockRecords.length < (page * rowsPerPage)) {
@@ -106,102 +125,169 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
     const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
 
     return (
-        <ReportTable
-            title={`${halfPrice ? "HP" : "Regular"} Inventory Status`}
-            subtitle={`Combined view of HQ and all shop holdings (${halfPrice ? "Half Price" : "Regular"})`}
-            data={stockRecords?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
-            summaryData={summaryData}
-            isLoading={stockLoading}
-            variant="stock"
-            pagination={{
-                currentPage: page,
-                totalPages: Math.ceil(totalStockCount / rowsPerPage),
-                rowsPerPage: rowsPerPage,
-                onRowsPerPageChange: (rows) => {
-                    setRowsPerPage(rows);
-                    setPage(1);
-                },
-                totalItems: totalStockCount,
-                onNext: () => {
-                    const totalPages = Math.ceil(totalStockCount / rowsPerPage);
-                    if (page < totalPages) setPage(p => p + 1);
-                },
-                onPrev: () => setPage(p => Math.max(1, p - 1)),
-                canLoadMore: stockStatus === "CanLoadMore"
-            }}
-            columns={[
-                {
-                    header: "Product", accessor: (item: any) => (
-                        <div className="flex flex-col">
-                            <span className="font-black text-primary">{item.name}</span>
-                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">{item.productCode}</span>
+        <>
+            <ReportTable
+                title={`${halfPrice ? "HP" : "Regular"} Inventory Status`}
+                subtitle={`Combined view of HQ and all shop holdings (${halfPrice ? "Half Price" : "Regular"})`}
+                data={stockRecords?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
+                summaryData={summaryData}
+                isLoading={stockLoading}
+                variant="stock"
+                onViewDetails={handleViewDetails}
+                pagination={{
+                    currentPage: page,
+                    totalPages: Math.ceil(totalStockCount / rowsPerPage),
+                    rowsPerPage: rowsPerPage,
+                    onRowsPerPageChange: (rows) => {
+                        setRowsPerPage(rows);
+                        setPage(1);
+                    },
+                    totalItems: totalStockCount,
+                    onNext: () => {
+                        const totalPages = Math.ceil(totalStockCount / rowsPerPage);
+                        if (page < totalPages) setPage(p => p + 1);
+                    },
+                    onPrev: () => setPage(p => Math.max(1, p - 1)),
+                    canLoadMore: stockStatus === "CanLoadMore"
+                }}
+                columns={[
+                    {
+                        header: "Product", accessor: (item: any) => (
+                            <div className="flex flex-col">
+                                <span className="font-black text-primary">{item.name}</span>
+                                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">{item.productCode}</span>
+                            </div>
+                        )
+                    },
+                    {
+                        header: "Category",
+                        accessor: (item: any) => item.categoryName || "General",
+                        className: "text-[10px] font-bold uppercase text-muted-foreground"
+                    },
+                    {
+                        header: "Supplier",
+                        accessor: (item: any) => item.supplier || "-",
+                        className: "text-[10px] font-bold uppercase text-muted-foreground"
+                    },
+                    {
+                        header: "HQ Qty",
+                        accessor: (item: any) => (
+                            <span className="font-bold">{item.hqQty.toLocaleString()}</span>
+                        ),
+                        className: "text-center"
+                    },
+                    {
+                        header: "Shop Qty",
+                        accessor: (item: any) => (
+                            <span className="font-bold text-emerald-600">{item.shopQty.toLocaleString()}</span>
+                        ),
+                        className: "text-center"
+                    },
+                    {
+                        header: "Total Qty",
+                        accessor: (item: any) => (
+                            <span className="font-black text-primary text-lg">{item.totalQty.toLocaleString()}</span>
+                        ),
+                        className: "text-center"
+                    },
+                    {
+                        header: "Total PV",
+                        accessor: (item: any) => (
+                            <span className="font-black text-emerald-700 text-xs">{(item.pv * item.totalQty).toLocaleString()}</span>
+                        ),
+                        exportValue: (item: any) => (item.pv * item.totalQty).toLocaleString(),
+                        className: "text-right"
+                    },
+                    {
+                        header: "Total BV",
+                        accessor: (item: any) => (
+                            <span className="font-black text-blue-600 text-xs">{(item.bv * item.totalQty).toLocaleString()}</span>
+                        ),
+                        exportValue: (item: any) => (item.bv * item.totalQty).toLocaleString(),
+                        className: "text-right"
+                    },
+                    {
+                        header: "Total Cost",
+                        accessor: (item: any) => (
+                            <span className="font-black text-emerald-700 text-xs">{(item.purchasePrice * item.totalQty).toLocaleString()}</span>
+                        ),
+                        exportValue: (item: any) => (item.purchasePrice * item.totalQty).toLocaleString(),
+                        className: "text-right"
+                    },
+                    {
+                        header: "Total Value",
+                        accessor: (item: any) => (
+                            <span className="font-black text-primary text-xs">{(item.price * item.totalQty).toLocaleString()}</span>
+                        ),
+                        exportValue: (item: any) => (item.price * item.totalQty).toLocaleString(),
+                        className: "text-right"
+                    },
+                ]}
+            />
+
+            {/* View Details Sheet */}
+            <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
+                <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
+                    <SheetHeader>
+                        <SheetTitle>Stock Details</SheetTitle>
+                        <SheetDescription>
+                            Complete information about this stock record.
+                        </SheetDescription>
+                    </SheetHeader>
+                    {stockWithDetails ? (
+                        <div className="space-y-6 py-6">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Product</span>
+                                    <span className="font-semibold">{stockWithDetails.name}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Product Code</span>
+                                    <span className="font-semibold">{stockWithDetails.productCode}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Category</span>
+                                    <span className="font-semibold">{stockWithDetails.category?.type || "General"}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Supplier</span>
+                                    <span className="font-semibold">{stockWithDetails.supplier || "-"}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Quantity</span>
+                                    <span className="font-semibold">{stockWithDetails.qty}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Purchase Price</span>
+                                    <span className="font-semibold">UGX {stockWithDetails.purchasePrice?.toLocaleString() || 0}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Selling Price</span>
+                                    <span className="font-semibold">UGX {stockWithDetails.price?.toLocaleString() || 0}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">PV</span>
+                                    <span className="font-semibold">{stockWithDetails.pv}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">BV</span>
+                                    <span className="font-semibold">{stockWithDetails.bv}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Half Price</span>
+                                    <Badge variant={stockWithDetails.halfPrice ? "secondary" : "outline"}>
+                                        {stockWithDetails.halfPrice ? "Yes" : "No"}
+                                    </Badge>
+                                </div>
+                            </div>
                         </div>
-                    )
-                },
-                {
-                    header: "Category",
-                    accessor: (item: any) => item.categoryName || "General",
-                    className: "text-[10px] font-bold uppercase text-muted-foreground"
-                },
-                {
-                    header: "Supplier",
-                    accessor: (item: any) => item.supplier || "-",
-                    className: "text-[10px] font-bold uppercase text-muted-foreground"
-                },
-                {
-                    header: "HQ Qty",
-                    accessor: (item: any) => (
-                        <span className="font-bold">{item.hqQty.toLocaleString()}</span>
-                    ),
-                    className: "text-center"
-                },
-                {
-                    header: "Shops Qty",
-                    accessor: (item: any) => item.shopQty.toLocaleString(),
-                    className: "text-center"
-                },
-                {
-                    header: "Combined",
-                    accessor: (item: any) => (
-                        <div className="bg-primary/10 px-2 py-1 rounded-lg font-black text-primary text-center">
-                            {item.totalQty.toLocaleString()}
+                    ) : (
+                        <div className="flex items-center justify-center py-12">
+                            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                         </div>
-                    ),
-                    className: "text-center"
-                },
-                {
-                    header: "Total PV",
-                    accessor: (item: any) => (
-                        <span className="font-black text-amber-600 text-xs">{(item.pv * item.totalQty).toLocaleString()}</span>
-                    ),
-                    exportValue: (item: any) => (item.pv * item.totalQty).toLocaleString(),
-                    className: "text-right"
-                },
-                {
-                    header: "Total BV",
-                    accessor: (item: any) => (
-                        <span className="font-black text-blue-600 text-xs">{(item.bv * item.totalQty).toLocaleString()}</span>
-                    ),
-                    exportValue: (item: any) => (item.bv * item.totalQty).toLocaleString(),
-                    className: "text-right"
-                },
-                {
-                    header: "Total Cost",
-                    accessor: (item: any) => (
-                        <span className="font-black text-emerald-700 text-xs">{(item.purchasePrice * item.totalQty).toLocaleString()}</span>
-                    ),
-                    exportValue: (item: any) => (item.purchasePrice * item.totalQty).toLocaleString(),
-                    className: "text-right"
-                },
-                {
-                    header: "Total Value",
-                    accessor: (item: any) => (
-                        <span className="font-black text-primary text-xs">{(item.price * item.totalQty).toLocaleString()}</span>
-                    ),
-                    exportValue: (item: any) => (item.price * item.totalQty).toLocaleString(),
-                    className: "text-right"
-                },
-            ]}
-        />
+                    )}
+                </SheetContent>
+            </Sheet>
+        </>
     );
 }

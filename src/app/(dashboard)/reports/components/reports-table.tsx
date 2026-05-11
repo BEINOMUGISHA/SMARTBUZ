@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { getStatsForVariant, SummaryVariant } from "./ReportSummary";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Printer, FileSpreadsheet, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer, FileSpreadsheet, FileText, Eye } from "lucide-react";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
 import { cn } from "@/lib/utils";
 import {
@@ -49,6 +49,7 @@ interface ReportTableProps<T> {
     compact?: boolean;
     printId?: string;
     variant?: SummaryVariant;
+    onViewDetails?: (item: T) => void;
 }
 
 export function ReportTable<T>({
@@ -63,6 +64,7 @@ export function ReportTable<T>({
     compact,
     printId,
     variant,
+    onViewDetails,
 }: ReportTableProps<T>) {
     const internalId = React.useId().replace(/:/g, "");
     const actualPrintId = printId || `report-print-${internalId}`;
@@ -146,6 +148,11 @@ export function ReportTable<T>({
                                         {col.header}
                                     </TableHead>
                                 ))}
+                                {onViewDetails && (
+                                    <TableHead className={cn("font-black text-primary uppercase text-[10px] tracking-wider py-4 text-center w-[80px]", compact && "py-2 text-[9px]")}>
+                                        Actions
+                                    </TableHead>
+                                )}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -157,11 +164,16 @@ export function ReportTable<T>({
                                                 <div className="h-4 w-full animate-pulse rounded bg-muted" />
                                             </TableCell>
                                         ))}
+                                        {onViewDetails && (
+                                            <TableCell>
+                                                <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))
                             ) : data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
+                                    <TableCell colSpan={columns.length + (onViewDetails ? 1 : 0)} className="h-32 text-center text-muted-foreground">
                                         No data found.
                                     </TableCell>
                                 </TableRow>
@@ -175,6 +187,18 @@ export function ReportTable<T>({
                                                     : (item[col.accessor] as React.ReactNode)}
                                             </TableCell>
                                         ))}
+                                        {onViewDetails && (
+                                            <TableCell className={cn("py-3 text-center w-[80px]", compact && "py-1.5")}>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => onViewDetails(item)}
+                                                    className="h-7 w-7"
+                                                >
+                                                    <Eye className="h-3.5 w-3.5 text-green-600" />
+                                                </Button>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))
                             )}

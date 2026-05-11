@@ -14,6 +14,13 @@ import { ReportSummary } from "./ReportSummary";
 import { SearchableSelect } from "./SearchableSelect";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+} from "@/components/ui/sheet";
 
 export function DetailedSalesReport() {
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
@@ -30,14 +37,18 @@ export function DetailedSalesReport() {
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
+    // View Details state
+    const [viewingSaleId, setViewingSaleId] = useState<Id<"sales"> | null>(null);
+    const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
+
     const shops = useQuery(api.shops.listAll);
     const customers = useQuery(api.customers.listAll);
 
     const salesArgs = {
         startDate: dateRange.from,
         endDate: dateRange.to,
-        shopId: selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
-        customerId: customerId === "all" ? undefined : (customerId as Id<"customers">),
+        shopId: !selectedShop || selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
+        customerId: !customerId || customerId === "all" ? undefined : (customerId as Id<"customers">),
         clientType: clientType === "All" ? undefined : clientType,
         transactionType: transactionType === "All" ? undefined : transactionType,
     };
@@ -52,11 +63,18 @@ export function DetailedSalesReport() {
     const summaryData = useQuery(api.reports.getReportsSummary, {
         startDate: dateRange.from,
         endDate: dateRange.to,
-        shopId: selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
-        customerId: customerId === "all" ? undefined : (customerId as Id<"customers">),
+        shopId: !selectedShop || selectedShop === "all" ? undefined : (selectedShop as Id<"shops">),
+        customerId: !customerId || customerId === "all" ? undefined : (customerId as Id<"customers">),
         clientType: clientType === "All" ? undefined : clientType,
         search: search || undefined
     });
+
+    const saleWithDetails = useQuery(api.sales.getSale, viewingSaleId ? { id: viewingSaleId } : "skip");
+
+    const handleViewDetails = (sale: any) => {
+        setViewingSaleId(sale._id);
+        setIsViewSheetOpen(true);
+    };
 
     useEffect(() => {
         if (salesStatus === "CanLoadMore" && salesRecords.length < (page * rowsPerPage)) {
@@ -153,6 +171,7 @@ export function DetailedSalesReport() {
                 isLoading={salesLoading}
                 search={search}
                 variant="sales"
+                onViewDetails={handleViewDetails}
                 pagination={{
                     currentPage: page,
                     totalPages: Math.ceil(totalSalesCount / rowsPerPage),
@@ -285,6 +304,120 @@ export function DetailedSalesReport() {
                     }
                 ]}
             />
+
+            {/* View Details Sheet */}
+            <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
+                <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
+                    <SheetHeader>
+                        <SheetTitle>Sale Details</SheetTitle>
+                        <SheetDescription>
+                            Complete information about this sale transaction.
+                        </SheetDescription>
+                    </SheetHeader>
+                    {saleWithDetails ? (
+                        <div className="space-y-6 py-6">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Date/Time</span>
+                                    <span className="font-semibold">{format(new Date(saleWithDetails._creationTime), "dd MMM yyyy HH:mm:ss")}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Invoice No</span>
+                                    <span className="font-semibold">{saleWithDetails.invoiceNumber || "---"}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
+                                    <span className="font-bold text-lg text-emerald-600">UGX {saleWithDetails.total.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Payment Mode</span>
+                                    <Badge variant={saleWithDetails.paymentMode === "Loan" ? "destructive" : "outline"}>
+                                        {saleWithDetails.paymentMode || "Cash"}
+                                    </Badge>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Client Type</span>
+                                    <span className="font-semibold">{saleWithDetails.clientType}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-3 border-b">
+                                    <span className="text-sm font-medium text-muted-foreground">Branch</span>
+                                    <span className="font-semibold">{saleWithDetails.shop?.name || "Main Warehouse"}</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Customer Information</h3>
+                                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="font-semibold">{saleWithDetails.customer?.name || saleWithDetails.manualCustomerName || "Walk-in"}</span>
+                                    </div>
+                                    {saleWithDetails.customerPhone && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">Phone</span>
+                                            <span className="font-semibold text-sm">{saleWithDetails.customerPhone}</span>
+                                        </div>
+                                    )}
+                                    {saleWithDetails.customerLocation && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-muted-foreground">Location</span>
+                                            <span className="font-semibold text-sm">{saleWithDetails.customerLocation}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Sold By</h3>
+                                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                                    {saleWithDetails.user ? (
+                                        <>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Name</span>
+                                                <span className="font-semibold capitalize">{saleWithDetails.user.first_name} {saleWithDetails.user.last_name}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Email</span>
+                                                <span className="font-semibold text-sm">{saleWithDetails.user.email}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Role</span>
+                                                <Badge className="capitalize">{saleWithDetails.user.roles?.[0] || "N/A"}</Badge>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-sm text-muted-foreground">User information not available</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {saleWithDetails.items && saleWithDetails.items.length > 0 && (
+                                <div className="space-y-3">
+                                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Items ({saleWithDetails.items.length})</h3>
+                                    <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                                        {saleWithDetails.items.map((item: any, idx: number) => (
+                                            <div key={idx} className="flex items-center justify-between py-2 border-b last:border-0">
+                                                <div className="flex-1">
+                                                    <div className="font-semibold text-sm">{item.name}</div>
+                                                    <div className="text-[10px] text-muted-foreground">{item.productCode || "N/A"}</div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="font-semibold text-sm">{item.quantity} x {item.price.toLocaleString()}</div>
+                                                    <div className="text-[10px] text-muted-foreground">{(item.quantity * item.price).toLocaleString()}</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center py-12">
+                            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        </div>
+                    )}
+                </SheetContent>
+            </Sheet>
         </div >
     );
 }

@@ -209,6 +209,74 @@ export const getDetailedSalesReportCount = query({
     }
 });
 
+// Dedicated summary stats for the Loans Report tab
+export const getLoanReportSummary = query({
+    args: {
+        customerId: v.optional(v.id("customers")),
+        shopId: v.optional(v.id("shops")),
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        clientType: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let loanQuery = ctx.db.query("loans");
+        if (args.customerId) {
+            loanQuery = loanQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
+        }
+        if (args.startDate && args.endDate) {
+            const endStr = args.endDate + "T23:59:59.999";
+            loanQuery = loanQuery.filter(q => q.and(
+                q.gte(q.field("date"), args.startDate!),
+                q.lte(q.field("date"), endStr)
+            ));
+        }
+        const loans = await loanQuery.collect();
+
+        // Join with sales for shop/clientType filtering and PV/BV calc
+        const salesIds = [...new Set(loans.map(l => l.salesId))];
+        const salesDocs = await Promise.all(salesIds.map(id => ctx.db.get(id)));
+        const salesMap = new Map(salesDocs.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
+
+        const filtered = loans.filter(l => {
+            const sale = salesMap.get(l.salesId);
+            const matchesShop = !args.shopId || sale?.shopId === args.shopId;
+            const matchesClient = !args.clientType || args.clientType === "All" || sale?.clientType === args.clientType;
+            return matchesShop && matchesClient;
+        });
+
+        let totalLoanedAmount = 0;
+        let totalOutstandingBalance = 0;
+        let totalPV = 0;
+        let totalBV = 0;
+        for (const loan of filtered) {
+            totalLoanedAmount += loan.amount;
+            totalOutstandingBalance += loan.balance || 0;
+            const sale = salesMap.get(loan.salesId);
+            if (sale) {
+                for (const item of sale.items) {
+                    totalPV += (item.pv || 0) * item.quantity;
+                    totalBV += (item.bv || 0) * item.quantity;
+                }
+            }
+        }
+
+        return {
+            totalRevenue: 0,
+            totalCostOfSales: 0,
+            totalProfit: 0,
+            totalExpenses: 0,
+            totalInventorySellingPrice: 0,
+            totalInventoryCostPrice: 0,
+            itemCount: 0,
+            totalPV,
+            totalBV,
+            loanCount: filtered.length,
+            totalLoanedAmount,
+            totalOutstandingBalance,
+        };
+    },
+});
+
 export const getLoanSummary = query({
     args: {
         paginationOpts: paginationOptsValidator,
@@ -252,15 +320,7 @@ export const getLoanSummary = query({
             });
         }
 
-        // Apply pagination manually after filtering
-        const totalCount = filteredResults.length;
-        const pageItems = filteredResults.slice(
-            args.paginationOpts.numItems * (args.paginationOpts.id ? 1 : 0), // Simplistic, but let's assume standard offset for report
-            args.paginationOpts.numItems
-        );
-
-        // Wait, convex pagination is cursor based.
-        // For reports with complex filters, we often collect all and paginate manually.
+        // Enrich all filtered loans (client paginates the result)
         const customerIds = [...new Set(filteredResults.map(l => l.customerId).filter((id): id is Id<"customers"> => !!id))];
         const salesIds = [...new Set(filteredResults.map(l => l.salesId))];
 
@@ -272,7 +332,7 @@ export const getLoanSummary = query({
         const customerMap = new Map(customers.filter((c): c is NonNullable<typeof c> => c !== null).map(c => [c._id, c]));
         const salesMap = new Map(salesDocs.filter((s): s is NonNullable<typeof s> => s !== null).map(s => [s._id, s]));
 
-        const page = pageItems.map(l => {
+        const page = filteredResults.map(l => {
             const customer = l.customerId ? customerMap.get(l.customerId) : undefined;
             const sale = salesMap.get(l.salesId);
             return {
@@ -290,9 +350,8 @@ export const getLoanSummary = query({
 
         return {
             page,
-            isDone: totalCount <= (args.paginationOpts.numItems + (args.paginationOpts.id ? args.paginationOpts.numItems : 0)), // Simple check for manual pagination
-            status: totalCount > args.paginationOpts.numItems ? "CanLoadMore" : "Exhausted",
-            continueCursor: "" // Cursor-less pagination for filtered results
+            isDone: true,
+            continueCursor: ""
         };
     }
 });
