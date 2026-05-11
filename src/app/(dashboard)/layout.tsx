@@ -16,6 +16,10 @@ import {
     Menu,
     ChevronRight,
     Receipt,
+    ChevronDown,
+    TrendingUp,
+    DollarSign,
+    CreditCard,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,7 +35,19 @@ const navItems = [
     { href: "/sales", label: "Sales", icon: ShoppingCart },
     { href: "/shops", label: "Shops", icon: Store },
     { href: "/expenditures", label: "Expenditures", icon: Receipt },
-    { href: "/reports", label: "Reports", icon: BarChart3 },
+];
+
+const reportsSubItems = [
+    { href: "/reports/overview", label: "Overview", icon: BarChart3 },
+    { href: "/reports/sales", label: "Sales", icon: ShoppingCart },
+    { href: "/reports/shops", label: "Shops", icon: Store },
+    { href: "/reports/stock", label: "Global Stock", icon: Package },
+    { href: "/reports/loans", label: "Loans", icon: CreditCard },
+    { href: "/reports/expenses", label: "Expenses", icon: Receipt },
+    { href: "/reports/products", label: "Products", icon: TrendingUp },
+    { href: "/reports/customers", label: "Customers", icon: Users },
+    { href: "/reports/users", label: "Staff", icon: Users },
+    { href: "/reports/profit", label: "Profit Margin", icon: DollarSign },
 ];
 
 export default function DashboardLayout({
@@ -44,12 +60,20 @@ export default function DashboardLayout({
     const pathname = usePathname();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isReportsOpen, setIsReportsOpen] = useState(false);
 
     useEffect(() => {
         if (!isLoading && !user) {
             router.push("/auth/login");
         }
     }, [user, isLoading, router]);
+
+    // Auto-expand Reports if on a reports route
+    useEffect(() => {
+        if (pathname.startsWith("/reports")) {
+            setIsReportsOpen(true);
+        }
+    }, [pathname]);
 
     if (isLoading || !user) {
         return (
@@ -116,6 +140,57 @@ export default function DashboardLayout({
                                 </Link>
                             );
                         })}
+
+                    {/* Reports Collapsible Section */}
+                    {user.roles.includes("admin") && (
+                        <div className="pt-2">
+                            {!isCollapsed && (
+                                <button
+                                    onClick={() => setIsReportsOpen(!isReportsOpen)}
+                                    className={cn(
+                                        "w-full flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-all hover:bg-sidebar-accent",
+                                        pathname.startsWith("/reports") ? "text-sidebar-primary" : "text-muted-foreground"
+                                    )}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <BarChart3 className="h-5 w-5" />
+                                        <span>Reports</span>
+                                    </div>
+                                    <ChevronDown className={cn("h-4 w-4 transition-transform", isReportsOpen ? "rotate-180" : "")} />
+                                </button>
+                            )}
+                            {isCollapsed && (
+                                <Link
+                                    href="/reports/overview"
+                                    className="flex justify-center items-center rounded-xl px-2 py-3 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-primary transition-colors"
+                                    title="Reports"
+                                >
+                                    <BarChart3 className="h-5 w-5" />
+                                </Link>
+                            )}
+                            {isReportsOpen && !isCollapsed && (
+                                <div className="mt-1 ml-4 space-y-1 animate-in slide-in-from-left-2 duration-200">
+                                    {reportsSubItems.map((item) => {
+                                        const isActive = pathname === item.href;
+                                        return (
+                                            <Link
+                                                key={item.href}
+                                                href={item.href}
+                                                onClick={() => setIsMobileOpen(false)}
+                                                className={cn(
+                                                    "flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium transition-all hover:bg-sidebar-accent/50",
+                                                    isActive ? "text-sidebar-primary bg-sidebar-accent/50" : "text-muted-foreground"
+                                                )}
+                                            >
+                                                <item.icon className="h-4 w-4" />
+                                                <span>{item.label}</span>
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </nav>
             </div>
 

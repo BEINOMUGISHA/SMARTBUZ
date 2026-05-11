@@ -18,7 +18,7 @@ interface SummaryData {
     loanCount?: number;
 }
 
-export type SummaryVariant = "sales" | "overview" | "shops" | "stock" | "loans" | "promotions";
+export type SummaryVariant = "sales" | "overview" | "shops" | "stock" | "loans" | "promotions" | "payments" | "aged" | "expenses" | "products" | "customers" | "users" | "profit";
 
 interface ReportSummaryProps {
     data?: SummaryData;

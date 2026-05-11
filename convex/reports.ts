@@ -797,3 +797,939 @@ export const getStockEntries = query({
         });
     }
 });
+
+// ============================================================
+// EXPENSES REPORT
+// ============================================================
+
+// Expenses list with filters and enrichment
+export const getExpensesReport = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        type: v.optional(v.string()),
+        userId: v.optional(v.id("users")),
+        search: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let expenses = await (args.startDate && args.endDate
+            ? ctx.db.query("expenses").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("expenses").collect()
+        );
+
+        // Sort by date desc
+        expenses.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+        // Enrich with user info
+        const userIds = [...new Set(expenses.map(e => e.userId).filter((id): id is Id<"users"> => !!id))];
+        const users = await Promise.all(userIds.map(id => ctx.db.get(id)));
+        const userMap = new Map(users.filter((u): u is NonNullable<typeof u> => !!u).map(u => [u._id, u]));
+
+        let enriched = expenses.map(e => {
+            const user = e.userId ? userMap.get(e.userId) : null;
+            return {
+                ...e,
+                userName: user ? `${user.first_name} ${user.last_name}` : e.receivedBy || "System",
+                userEmail: user?.email || "-",
+            };
+        });
+
+        // Filter by type
+        if (args.type) {
+            enriched = enriched.filter(e => e.type === args.type);
+        }
+
+        // Filter by user
+        if (args.userId) {
+            enriched = enriched.filter(e => e.userId === args.userId);
+        }
+
+        // Search filter
+        if (args.search) {
+            const s = args.search.toLowerCase();
+            enriched = enriched.filter(e =>
+                e.expense.toLowerCase().includes(s) ||
+                e.type.toLowerCase().includes(s) ||
+                e.userName.toLowerCase().includes(s) ||
+                e.receivedBy.toLowerCase().includes(s)
+            );
+        }
+
+        return enriched;
+    },
+});
+
+// Expenses summary with category breakdown
+export const getExpensesReportSummary = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        type: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let expenses = await (args.startDate && args.endDate
+            ? ctx.db.query("expenses").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("expenses").collect()
+        );
+
+        if (args.type) {
+            expenses = expenses.filter(e => e.type === args.type);
+        }
+
+        const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+        const expenseCount = expenses.length;
+        const avgExpense = expenseCount > 0 ? totalExpenses / expenseCount : 0;
+
+        // Group by category (type)
+        const categoryMap = new Map<string, number>();
+        for (const e of expenses) {
+            const current = categoryMap.get(e.type) || 0;
+            categoryMap.set(e.type, current + e.amount);
+        }
+
+        const categories = Array.from(categoryMap.entries()).map(([type, total]) => ({ type, total }));
+
+        // Sort categories by total desc
+        categories.sort((a, b) => b.total - a.total);
+
+        return {
+            totalExpenses,
+            expenseCount,
+            avgExpense,
+            categories,
+        };
+    },
+});
+
+// ============================================================
+// PRODUCT PERFORMANCE REPORT
+// ============================================================
+
+// Product performance list with filters and enrichment
+export const getProductPerformanceReport = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+        search: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let sales = await (args.startDate && args.endDate
+            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").collect()
+        );
+
+        // Filter by shop
+        if (args.shopId) {
+            sales = sales.filter(s => s.shopId === args.shopId);
+        }
+
+        // Aggregate product performance
+        const productMap = new Map<string, any>();
+
+        for (const sale of sales) {
+            for (const item of sale.items) {
+                const key = item.stockId;
+                if (!productMap.has(key)) {
+                    productMap.set(key, {
+                        stockId: item.stockId,
+                        productName: item.name,
+                        productCode: item.productCode || "N/A",
+                        totalQuantity: 0,
+                        totalRevenue: 0,
+                        totalPV: 0,
+                        totalBV: 0,
+                        saleCount: 0,
+                    });
+                }
+                const product = productMap.get(key);
+                product.totalQuantity += item.quantity;
+                product.totalRevenue += item.quantity * item.price;
+                product.totalPV += item.quantity * item.pv;
+                product.totalBV += item.quantity * item.bv;
+                product.saleCount += 1;
+            }
+        }
+
+        // Convert to array and sort by revenue desc
+        let products = Array.from(productMap.values());
+        products.sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+        // Search filter
+        if (args.search) {
+            const s = args.search.toLowerCase();
+            products = products.filter(p =>
+                p.productName.toLowerCase().includes(s) ||
+                p.productCode.toLowerCase().includes(s)
+            );
+        }
+
+        return products;
+    },
+});
+
+// Product performance summary with metrics
+export const getProductPerformanceSummary = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+    },
+    handler: async (ctx, args) => {
+        let sales = await (args.startDate && args.endDate
+            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").collect()
+        );
+
+        // Filter by shop
+        if (args.shopId) {
+            sales = sales.filter(s => s.shopId === args.shopId);
+        }
+
+        const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
+        const totalSalesCount = sales.length;
+
+        // Aggregate product performance
+        const productMap = new Map<string, any>();
+
+        for (const sale of sales) {
+            for (const item of sale.items) {
+                const key = item.stockId;
+                if (!productMap.has(key)) {
+                    productMap.set(key, {
+                        stockId: item.stockId,
+                        productName: item.name,
+                        totalQuantity: 0,
+                        totalRevenue: 0,
+                        totalPV: 0,
+                        totalBV: 0,
+                    });
+                }
+                const product = productMap.get(key);
+                product.totalQuantity += item.quantity;
+                product.totalRevenue += item.quantity * item.price;
+                product.totalPV += item.quantity * item.pv;
+                product.totalBV += item.quantity * item.bv;
+            }
+        }
+
+        const products = Array.from(productMap.values());
+        const productCount = products.length;
+        const topProduct = products.sort((a, b) => b.totalRevenue - a.totalRevenue)[0];
+
+        const totalQuantity = products.reduce((sum, p) => sum + p.totalQuantity, 0);
+        const totalPV = products.reduce((sum, p) => sum + p.totalPV, 0);
+        const totalBV = products.reduce((sum, p) => sum + p.totalBV, 0);
+
+        return {
+            totalRevenue,
+            totalSalesCount,
+            productCount,
+            totalQuantity,
+            totalPV,
+            totalBV,
+            topProduct: topProduct ? {
+                name: topProduct.productName,
+                revenue: topProduct.totalRevenue,
+                quantity: topProduct.totalQuantity,
+            } : null,
+        };
+    },
+});
+
+// ============================================================
+// CUSTOMER ANALYTICS REPORT
+// ============================================================
+
+// Customer analytics list with filters and enrichment
+export const getCustomerAnalyticsReport = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+        clientType: v.optional(v.string()),
+        search: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let sales = await (args.startDate && args.endDate
+            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").collect()
+        );
+
+        // Filter by shop
+        if (args.shopId) {
+            sales = sales.filter(s => s.shopId === args.shopId);
+        }
+
+        // Filter by client type
+        if (args.clientType && args.clientType !== "All") {
+            sales = sales.filter(s => s.clientType === args.clientType);
+        }
+
+        // Aggregate by customer
+        const customerMap = new Map<Id<"customers">, any>();
+
+        for (const sale of sales) {
+            const customerId = sale.customerId;
+            if (!customerId) continue;
+
+            if (!customerMap.has(customerId)) {
+                customerMap.set(customerId, {
+                    customerId,
+                    customerName: "Unknown",
+                    customerPhone: "-",
+                    clientType: sale.clientType || "Unknown",
+                    totalPurchases: 0,
+                    totalSpent: 0,
+                    totalPV: 0,
+                    totalBV: 0,
+                    firstPurchaseDate: sale.date,
+                    lastPurchaseDate: sale.date,
+                    purchaseCount: 0,
+                });
+            }
+            const customer = customerMap.get(customerId);
+            customer.totalPurchases += 1;
+            customer.totalSpent += sale.total;
+            // Calculate PV/BV from items
+            const itemPV = sale.items.reduce((sum, item) => sum + (item.pv * item.quantity), 0);
+            const itemBV = sale.items.reduce((sum, item) => sum + (item.bv * item.quantity), 0);
+            customer.totalPV += itemPV;
+            customer.totalBV += itemBV;
+            customer.purchaseCount += 1;
+
+            if (sale.date < customer.firstPurchaseDate) {
+                customer.firstPurchaseDate = sale.date;
+            }
+            if (sale.date > customer.lastPurchaseDate) {
+                customer.lastPurchaseDate = sale.date;
+            }
+        }
+
+        // Enrich with customer details
+        const customerIds = Array.from(customerMap.keys());
+        const customers = await Promise.all(customerIds.map(id => ctx.db.get(id)));
+        const customerDetailsMap = new Map(customers.filter((c): c is NonNullable<typeof c> => !!c).map(c => [c._id, c]));
+
+        for (const [customerId, data] of customerMap.entries()) {
+            const details = customerDetailsMap.get(customerId);
+            if (details) {
+                data.customerName = details.name;
+                data.customerPhone = details.phone || "-";
+            }
+        }
+
+        // Convert to array and sort by spend desc
+        let customersList = Array.from(customerMap.values());
+        customersList.sort((a, b) => b.totalSpent - a.totalSpent);
+
+        // Search filter
+        if (args.search) {
+            const s = args.search.toLowerCase();
+            customersList = customersList.filter(c =>
+                c.customerName.toLowerCase().includes(s) ||
+                c.customerPhone.toLowerCase().includes(s)
+            );
+        }
+
+        return customersList;
+    },
+});
+
+// Customer analytics summary with metrics
+export const getCustomerAnalyticsSummary = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+        clientType: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let sales = await (args.startDate && args.endDate
+            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").collect()
+        );
+
+        // Filter by shop
+        if (args.shopId) {
+            sales = sales.filter(s => s.shopId === args.shopId);
+        }
+
+        // Filter by client type
+        if (args.clientType && args.clientType !== "All") {
+            sales = sales.filter(s => s.clientType === args.clientType);
+        }
+
+        const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
+        const totalSalesCount = sales.length;
+
+        // Aggregate by customer
+        const customerMap = new Map<Id<"customers">, any>();
+
+        for (const sale of sales) {
+            const customerId = sale.customerId;
+            if (!customerId) continue;
+
+            if (!customerMap.has(customerId)) {
+                customerMap.set(customerId, {
+                    totalSpent: 0,
+                    purchaseCount: 0,
+                    clientType: sale.clientType || "Unknown",
+                });
+            }
+            const customer = customerMap.get(customerId);
+            customer.totalSpent += sale.total;
+            customer.purchaseCount += 1;
+        }
+
+        const customersList = Array.from(customerMap.values());
+        const customerCount = customersList.length;
+        const avgSpentPerCustomer = customerCount > 0 ? totalRevenue / customerCount : 0;
+        const topCustomer = customersList.sort((a, b) => b.totalSpent - a.totalSpent)[0];
+
+        // Count by client type
+        const standardClientCount = customersList.filter(c => c.clientType === "Standard Client").length;
+        const hpClientCount = customersList.filter(c => c.clientType === "HP Client").length;
+
+        return {
+            totalRevenue,
+            totalSalesCount,
+            customerCount,
+            avgSpentPerCustomer,
+            topCustomer: topCustomer ? {
+                spent: topCustomer.totalSpent,
+                purchases: topCustomer.purchaseCount,
+            } : null,
+            standardClientCount,
+            hpClientCount,
+        };
+    },
+});
+
+// ============================================================
+// USER/STAFF PERFORMANCE REPORT
+// ============================================================
+
+// User performance list with filters and enrichment
+export const getUserPerformanceReport = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+        search: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let sales = await (args.startDate && args.endDate
+            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").collect()
+        );
+
+        // Filter by shop
+        if (args.shopId) {
+            sales = sales.filter(s => s.shopId === args.shopId);
+        }
+
+        // Aggregate by user
+        const userMap = new Map<Id<"users">, any>();
+
+        for (const sale of sales) {
+            const userId = sale.userId;
+            if (!userId) continue;
+
+            if (!userMap.has(userId)) {
+                userMap.set(userId, {
+                    userId,
+                    userName: "Unknown",
+                    userEmail: "-",
+                    totalSales: 0,
+                    totalRevenue: 0,
+                    totalPV: 0,
+                    totalBV: 0,
+                    totalItems: 0,
+                });
+            }
+            const user = userMap.get(userId);
+            user.totalSales += 1;
+            user.totalRevenue += sale.total;
+            user.totalItems += sale.items.reduce((sum, item) => sum + item.quantity, 0);
+            const itemPV = sale.items.reduce((sum, item) => sum + (item.pv * item.quantity), 0);
+            const itemBV = sale.items.reduce((sum, item) => sum + (item.bv * item.quantity), 0);
+            user.totalPV += itemPV;
+            user.totalBV += itemBV;
+        }
+
+        // Enrich with user details
+        const userIds = Array.from(userMap.keys());
+        const users = await Promise.all(userIds.map(id => ctx.db.get(id)));
+        const userDetailsMap = new Map(users.filter((u): u is NonNullable<typeof u> => !!u).map(u => [u._id, u]));
+
+        for (const [userId, data] of userMap.entries()) {
+            const details = userDetailsMap.get(userId);
+            if (details) {
+                data.userName = `${details.first_name} ${details.last_name}`;
+                data.userEmail = details.email || "-";
+            }
+        }
+
+        // Convert to array and sort by revenue desc
+        let usersList = Array.from(userMap.values());
+        usersList.sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+        // Search filter
+        if (args.search) {
+            const s = args.search.toLowerCase();
+            usersList = usersList.filter(u =>
+                u.userName.toLowerCase().includes(s) ||
+                u.userEmail.toLowerCase().includes(s)
+            );
+        }
+
+        return usersList;
+    },
+});
+
+// User performance summary with metrics
+export const getUserPerformanceSummary = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+    },
+    handler: async (ctx, args) => {
+        let sales = await (args.startDate && args.endDate
+            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").collect()
+        );
+
+        // Filter by shop
+        if (args.shopId) {
+            sales = sales.filter(s => s.shopId === args.shopId);
+        }
+
+        const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
+        const totalSalesCount = sales.length;
+
+        // Aggregate by user
+        const userMap = new Map<Id<"users">, any>();
+
+        for (const sale of sales) {
+            const userId = sale.userId;
+            if (!userId) continue;
+
+            if (!userMap.has(userId)) {
+                userMap.set(userId, {
+                    totalRevenue: 0,
+                    totalSales: 0,
+                });
+            }
+            const user = userMap.get(userId);
+            user.totalRevenue += sale.total;
+            user.totalSales += 1;
+        }
+
+        const usersList = Array.from(userMap.values());
+        const userCount = usersList.length;
+        const avgRevenuePerUser = userCount > 0 ? totalRevenue / userCount : 0;
+        const topUser = usersList.sort((a, b) => b.totalRevenue - a.totalRevenue)[0];
+
+        const avgSalesPerUser = userCount > 0 ? totalSalesCount / userCount : 0;
+
+        return {
+            totalRevenue,
+            totalSalesCount,
+            userCount,
+            avgRevenuePerUser,
+            avgSalesPerUser,
+            topUser: topUser ? {
+                revenue: topUser.totalRevenue,
+                sales: topUser.totalSales,
+            } : null,
+        };
+    },
+});
+
+// ============================================================
+// PROFIT MARGIN REPORT
+// ============================================================
+
+// Profit margin list with filters and enrichment
+export const getProfitMarginReport = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+        search: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        let sales = await (args.startDate && args.endDate
+            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").collect()
+        );
+
+        // Filter by shop
+        if (args.shopId) {
+            sales = sales.filter(s => s.shopId === args.shopId);
+        }
+
+        // Aggregate by product
+        const productMap = new Map<string, any>();
+
+        // Fetch all stocks for cost price lookup
+        const stockIds = [...new Set(sales.flatMap(s => s.items.map(i => i.stockId)))];
+        const stocks = await Promise.all(stockIds.map(id => ctx.db.get(id)));
+        const stockMap = new Map(stocks.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
+
+        for (const sale of sales) {
+            for (const item of sale.items) {
+                const key = item.stockId;
+                const revenue = item.quantity * item.price;
+                const stock = stockMap.get(key);
+                const purchasePrice = stock?.purchasePrice || 0;
+                const cost = item.quantity * purchasePrice;
+
+                if (!productMap.has(key)) {
+                    productMap.set(key, {
+                        stockId: item.stockId,
+                        productName: item.name,
+                        productCode: item.productCode || "N/A",
+                        totalQuantity: 0,
+                        totalRevenue: 0,
+                        totalCost: 0,
+                        totalProfit: 0,
+                        profitMargin: 0,
+                    });
+                }
+                const product = productMap.get(key);
+                product.totalQuantity += item.quantity;
+                product.totalRevenue += revenue;
+                product.totalCost += cost;
+                product.totalProfit += (revenue - cost);
+            }
+        }
+
+        // Calculate profit margins
+        for (const product of productMap.values()) {
+            product.profitMargin = product.totalRevenue > 0 ? (product.totalProfit / product.totalRevenue) * 100 : 0;
+        }
+
+        // Convert to array and sort by profit desc
+        let products = Array.from(productMap.values());
+        products.sort((a, b) => b.totalProfit - a.totalProfit);
+
+        // Search filter
+        if (args.search) {
+            const s = args.search.toLowerCase();
+            products = products.filter(p =>
+                p.productName.toLowerCase().includes(s) ||
+                p.productCode.toLowerCase().includes(s)
+            );
+        }
+
+        return products;
+    },
+});
+
+// Profit margin summary with metrics
+export const getProfitMarginSummary = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+    },
+    handler: async (ctx, args) => {
+        let sales = await (args.startDate && args.endDate
+            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").collect()
+        );
+
+        // Filter by shop
+        if (args.shopId) {
+            sales = sales.filter(s => s.shopId === args.shopId);
+        }
+
+        const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
+
+        // Calculate total cost from items
+        let totalCost = 0;
+        const productMap = new Map<string, any>();
+
+        // Fetch all stocks for purchase price lookup
+        const stockIds = [...new Set(sales.flatMap(s => s.items.map(i => i.stockId)))];
+        const stocks = await Promise.all(stockIds.map(id => ctx.db.get(id)));
+        const stockMap = new Map(stocks.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
+
+        for (const sale of sales) {
+            for (const item of sale.items) {
+                const stock = stockMap.get(item.stockId);
+                const purchasePrice = stock?.purchasePrice || 0;
+                const cost = item.quantity * purchasePrice;
+                totalCost += cost;
+
+                const key = item.stockId;
+                if (!productMap.has(key)) {
+                    productMap.set(key, {
+                        totalRevenue: 0,
+                        totalCost: 0,
+                    });
+                }
+                const product = productMap.get(key);
+                product.totalRevenue += item.quantity * item.price;
+                product.totalCost += cost;
+            }
+        }
+
+        const totalProfit = totalRevenue - totalCost;
+        const overallMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+
+        const products = Array.from(productMap.values());
+        const productCount = products.length;
+        const profitableProducts = products.filter(p => p.totalRevenue > p.totalCost).length;
+        const avgMargin = productCount > 0 ? products.reduce((sum, p) => sum + ((p.totalRevenue - p.totalCost) / p.totalRevenue) * 100, 0) / productCount : 0;
+
+        const topProduct = products.sort((a, b) => (b.totalRevenue - b.totalCost) - (a.totalRevenue - a.totalCost))[0];
+
+        return {
+            totalRevenue,
+            totalCost,
+            totalProfit,
+            overallMargin,
+            productCount,
+            profitableProducts,
+            avgMargin,
+            topProduct: topProduct ? {
+                name: topProduct.stockId, // This should be enriched with product name
+                profit: topProduct.totalRevenue - topProduct.totalCost,
+                margin: ((topProduct.totalRevenue - topProduct.totalCost) / topProduct.totalRevenue) * 100,
+            } : null,
+        };
+    },
+});
+
+// ============================================================
+// PAYMENTS / COLLECTIONS REPORT
+// ============================================================
+
+// Collections list - all loan payments with filters and enrichment
+export const getPaymentsReport = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+        customerId: v.optional(v.id("customers")),
+        userId: v.optional(v.id("users")),
+        search: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        // 1. Filter payments by date
+        let payments = await (args.startDate && args.endDate
+            ? ctx.db.query("payments").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("payments").collect()
+        );
+
+        // 2. Filter by shop/customer
+        if (args.shopId) payments = payments.filter(p => p.shopId === args.shopId);
+        if (args.customerId) payments = payments.filter(p => p.customerId === args.customerId);
+
+        // 3. Sort by date desc
+        payments.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+        // 4. Enrich: loan, customer, shop, user (via loan's sale)
+        const loanIds = [...new Set(payments.map(p => p.loanId))];
+        const customerIds = [...new Set(payments.map(p => p.customerId).filter((id): id is Id<"customers"> => !!id))];
+        const shopIds = [...new Set(payments.map(p => p.shopId).filter((id): id is Id<"shops"> => !!id))];
+
+        const [loans, customers, shops] = await Promise.all([
+            Promise.all(loanIds.map(id => ctx.db.get(id))),
+            Promise.all(customerIds.map(id => ctx.db.get(id))),
+            Promise.all(shopIds.map(id => ctx.db.get(id))),
+        ]);
+
+        const loanMap = new Map(loans.filter((l): l is NonNullable<typeof l> => !!l).map(l => [l._id, l]));
+        const customerMap = new Map(customers.filter((c): c is NonNullable<typeof c> => !!c).map(c => [c._id, c]));
+        const shopMap = new Map(shops.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
+
+        // Get sales (to derive recording user) for each loan
+        const salesIds = [...new Set(loans.filter((l): l is NonNullable<typeof l> => !!l).map(l => l.salesId))];
+        const salesDocs = await Promise.all(salesIds.map(id => ctx.db.get(id)));
+        const salesMap = new Map(salesDocs.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
+
+        const userIds = [...new Set(
+            salesDocs.filter((s): s is NonNullable<typeof s> => !!s).map(s => s.userId)
+        )];
+        const users = await Promise.all(userIds.map(id => ctx.db.get(id)));
+        const userMap = new Map(users.filter((u): u is NonNullable<typeof u> => !!u).map(u => [u._id, u]));
+
+        // 5. Build enriched list
+        let enriched = payments.map(p => {
+            const loan = loanMap.get(p.loanId);
+            const customer = p.customerId ? customerMap.get(p.customerId) : null;
+            const shop = p.shopId ? shopMap.get(p.shopId) : null;
+            const sale = loan ? salesMap.get(loan.salesId) : null;
+            const recordedBy = sale ? userMap.get(sale.userId) : null;
+            return {
+                ...p,
+                loan,
+                customerName: customer?.name || loan?.manualCustomerName || "Walk-in/Unknown",
+                customerPhone: customer?.phone || "-",
+                customerType: sale?.clientType || "Unknown",
+                shopName: shop?.name || "Main HQ",
+                loanAmount: loan?.amount || 0,
+                originalSaleId: loan?.salesId,
+                recordedBy: recordedBy ? `${recordedBy.first_name} ${recordedBy.last_name}` : "System",
+            };
+        });
+
+        // 6. Filter by user (recorded by sale's user)
+        if (args.userId) {
+            enriched = enriched.filter(p => {
+                const loan = loanMap.get(p.loanId);
+                if (!loan) return false;
+                const sale = salesMap.get(loan.salesId);
+                return sale?.userId === args.userId;
+            });
+        }
+
+        // 7. Search filter
+        if (args.search) {
+            const s = args.search.toLowerCase();
+            enriched = enriched.filter(p =>
+                p.customerName.toLowerCase().includes(s) ||
+                p.customerPhone.toLowerCase().includes(s) ||
+                p.shopName.toLowerCase().includes(s) ||
+                p.recordedBy.toLowerCase().includes(s)
+            );
+        }
+
+        return enriched;
+    },
+});
+
+// Aggregate summary for the Payments tab
+export const getPaymentsReportSummary = query({
+    args: {
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        shopId: v.optional(v.id("shops")),
+        customerId: v.optional(v.id("customers")),
+    },
+    handler: async (ctx, args) => {
+        let payments = await (args.startDate && args.endDate
+            ? ctx.db.query("payments").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("payments").collect()
+        );
+        if (args.shopId) payments = payments.filter(p => p.shopId === args.shopId);
+        if (args.customerId) payments = payments.filter(p => p.customerId === args.customerId);
+
+        const totalCollected = payments.reduce((sum, p) => sum + p.amount, 0);
+        const paymentCount = payments.length;
+        const uniqueCustomers = new Set(payments.map(p => p.customerId).filter(Boolean)).size;
+        const uniqueLoans = new Set(payments.map(p => p.loanId)).size;
+        const avgPayment = paymentCount > 0 ? totalCollected / paymentCount : 0;
+
+        // Outstanding from all currently active loans (not date filtered)
+        const allLoans = await ctx.db.query("loans").collect();
+        const totalOutstanding = allLoans.reduce((sum, l) => sum + (l.balance || 0), 0);
+        const recoveryRate = totalCollected + totalOutstanding > 0
+            ? (totalCollected / (totalCollected + totalOutstanding)) * 100
+            : 0;
+
+        return {
+            totalCollected,
+            paymentCount,
+            uniqueCustomers,
+            uniqueLoans,
+            avgPayment,
+            totalOutstanding,
+            recoveryRate,
+        };
+    },
+});
+
+// Aged debtors - outstanding loans bucketed by age
+export const getAgedDebtors = query({
+    args: {
+        shopId: v.optional(v.id("shops")),
+        customerId: v.optional(v.id("customers")),
+        search: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        // Get all loans with outstanding balance
+        const allLoans = await ctx.db.query("loans").collect();
+        const outstanding = allLoans.filter(l => (l.balance || 0) > 0);
+
+        // Enrich with sale (for shopId/clientType) and customer
+        const salesIds = [...new Set(outstanding.map(l => l.salesId))];
+        const customerIds = [...new Set(outstanding.map(l => l.customerId).filter((id): id is Id<"customers"> => !!id))];
+
+        const [salesDocs, customers] = await Promise.all([
+            Promise.all(salesIds.map(id => ctx.db.get(id))),
+            Promise.all(customerIds.map(id => ctx.db.get(id))),
+        ]);
+        const salesMap = new Map(salesDocs.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
+        const customerMap = new Map(customers.filter((c): c is NonNullable<typeof c> => !!c).map(c => [c._id, c]));
+
+        const now = Date.now();
+
+        let enriched = outstanding.map(l => {
+            const sale = salesMap.get(l.salesId);
+            const customer = l.customerId ? customerMap.get(l.customerId) : null;
+            const loanDate = l.date ? new Date(l.date).getTime() : (sale?.date ? new Date(sale.date).getTime() : now);
+            const ageDays = Math.max(0, Math.floor((now - loanDate) / (1000 * 60 * 60 * 24)));
+
+            let bucket: "current" | "30" | "60" | "90" | "over90";
+            if (ageDays <= 30) bucket = "current";
+            else if (ageDays <= 60) bucket = "30";
+            else if (ageDays <= 90) bucket = "60";
+            else if (ageDays <= 120) bucket = "90";
+            else bucket = "over90";
+
+            return {
+                ...l,
+                customerName: customer?.name || l.manualCustomerName || "Walk-in/Unknown",
+                customerPhone: customer?.phone || "-",
+                clientType: sale?.clientType || "Unknown",
+                shopId: sale?.shopId,
+                ageDays,
+                bucket,
+                originalAmount: l.amount,
+                outstandingBalance: l.balance || 0,
+                paidAmount: l.amount - (l.balance || 0),
+                dueDate: sale?.paymentDueDate,
+            };
+        });
+
+        // Filters
+        if (args.shopId) enriched = enriched.filter(l => l.shopId === args.shopId);
+        if (args.customerId) enriched = enriched.filter(l => l.customerId === args.customerId);
+        if (args.search) {
+            const s = args.search.toLowerCase();
+            enriched = enriched.filter(l =>
+                l.customerName.toLowerCase().includes(s) ||
+                l.customerPhone.toLowerCase().includes(s)
+            );
+        }
+
+        // Sort by age desc (oldest first)
+        enriched.sort((a, b) => b.ageDays - a.ageDays);
+
+        // Bucket totals
+        const buckets = {
+            current: { count: 0, total: 0 },
+            "30": { count: 0, total: 0 },
+            "60": { count: 0, total: 0 },
+            "90": { count: 0, total: 0 },
+            over90: { count: 0, total: 0 },
+        };
+        for (const l of enriched) {
+            buckets[l.bucket].count += 1;
+            buckets[l.bucket].total += l.outstandingBalance;
+        }
+
+        return {
+            loans: enriched,
+            buckets,
+            totalOutstanding: enriched.reduce((sum, l) => sum + l.outstandingBalance, 0),
+            totalDebtors: enriched.length,
+        };
+    },
+});
