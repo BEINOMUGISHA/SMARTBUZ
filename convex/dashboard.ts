@@ -30,7 +30,17 @@ export const getStats = query({
         }
 
         const filteredSales = await salesQuery.order("desc").collect();
-        const totalCustomers = (await ctx.db.query("customers").collect()).length;
+        
+        // Calculate total customers - if shopId is provided, count customers who have made purchases at that shop
+        let totalCustomers;
+        if (args.shopId) {
+            // For shop-specific view, count unique customers who have made purchases at this shop
+            const customerIds = new Set(filteredSales.map(s => s.customerId).filter((id): id is Id<"customers"> => !!id));
+            totalCustomers = customerIds.size;
+        } else {
+            // For admin view, count all customers globally
+            totalCustomers = (await ctx.db.query("customers").collect()).length;
+        }
 
         // 2. Calculate Revenue
         const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
