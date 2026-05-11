@@ -15,11 +15,24 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "TIENS POS - Smart Inventory & Sales",
   description: "Advanced Point of Sale system for Tiens Uganda",
+  manifest: "/manifest.json",
+  themeColor: "#0f172a",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "TIENS POS",
+  },
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+  },
 };
 
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { AuthProvider } from "@/context/auth-context";
 import { Toaster } from "@/components/ui/sonner";
+import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 
 export default function RootLayout({
   children,
@@ -33,6 +46,7 @@ export default function RootLayout({
       >
         <ConvexClientProvider>
           <AuthProvider>
+            <ServiceWorkerRegistration />
             {children}
             <Toaster />
           </AuthProvider>
