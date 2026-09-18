@@ -156,11 +156,22 @@ export default function LoginPage() {
                 <div className="absolute inset-0 bg-white/10 group-hover:translate-x-full transition-transform duration-500 skew-x-12" />
               </Button>
             </form>
+
+            <div className="space-y-3 pt-2 text-center">
+              <Link href="/auth/register" className="inline-flex items-center justify-center text-sm font-bold text-primary hover:text-primary/80 transition-colors">
+                Create a new account
+              </Link>
+              <div>
+                <Link href="/auth/forgot-password" className="inline-flex items-center justify-center text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                  Forgot your password?
+                </Link>
+              </div>
+            </div>
           </div>
 
           <div className="pt-4 text-center">
             <p className="text-sm font-medium text-muted-foreground/60">
-              &copy; {new Date().getFullYear()} TIENS POS • Specialized for Tiens Uganda
+              &copy; {new Date().getFullYear()} SMART_BUZ • Smart Business Operations
             </p>
           </div>
         </div>

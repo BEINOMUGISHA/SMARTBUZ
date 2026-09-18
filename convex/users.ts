@@ -134,6 +134,68 @@ export const update = mutation({
     },
 });
 
+// Register a new user account from the public auth flow
+export const register = mutation({
+    args: {
+        first_name: v.string(),
+        last_name: v.string(),
+        email: v.string(),
+        password: v.string(),
+        phone_number: v.optional(v.string()),
+        roles: v.optional(v.array(v.string())),
+    },
+    handler: async (ctx, args) => {
+        const email = args.email.trim().toLowerCase();
+        if (!email) {
+            throw new Error("Email is required");
+        }
+
+        if (!args.password || args.password.length < 6) {
+            throw new Error("Password must be at least 6 characters long");
+        }
+
+        const existing = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", email))
+            .unique();
+
+        if (existing) {
+            throw new Error("An account with this email already exists");
+        }
+
+        const hashedPassword = bcrypt.hashSync(args.password, 10);
+
+        const userId = await ctx.db.insert("users", {
+            first_name: args.first_name.trim(),
+            middle_name: undefined,
+            last_name: args.last_name.trim(),
+            email,
+            password: hashedPassword,
+            roles: args.roles ?? ["sales"],
+            phone_number: args.phone_number,
+            address: undefined,
+            date_of_birth: undefined,
+            gender: undefined,
+            marital_status: undefined,
+            nationality: undefined,
+            profile_picture: undefined,
+        });
+
+        const user = await ctx.db.get(userId);
+
+        if (user) {
+            await ctx.db.insert("activityLogs", {
+                userId: user._id,
+                action: "User Registration",
+                details: `User ${user.first_name} ${user.last_name} registered a new account`,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        return { success: true, userId };
+    },
+});
+
 // Login verification
 export const login = mutation({
     args: {
