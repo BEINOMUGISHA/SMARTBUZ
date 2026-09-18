@@ -177,6 +177,20 @@ export default defineSchema({
         ),
     }).index("by_user", ["userId"]),
 
+    businessProfiles: defineTable({
+        businessName: v.string(),
+        businessType: v.string(),
+        industry: v.optional(v.string()),
+        modules: v.array(v.string()),
+        currency: v.optional(v.string()),
+        country: v.optional(v.string()),
+        taxEnabled: v.optional(v.boolean()),
+        isActive: v.boolean(),
+        createdBy: v.optional(v.id("users")),
+        updatedAt: v.optional(v.string()),
+    }).index("by_businessType", ["businessType"])
+        .index("by_active", ["isActive"]),
+
     banking: defineTable({
         date: v.string(),
         amount: v.number(),

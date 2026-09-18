@@ -57,7 +57,8 @@ export default function SystemConfigPage() {
             </div>
 
             <Tabs defaultValue="users" value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 lg:w-[600px] h-auto p-1 bg-muted/50 border shadow-sm">
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 lg:w-[720px] h-auto p-1 bg-muted/50 border shadow-sm">
+                    <TabsTrigger value="business" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Business</TabsTrigger>
                     <TabsTrigger value="users" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Users</TabsTrigger>
                     <TabsTrigger value="promotions" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Promotions</TabsTrigger>
                     <TabsTrigger value="distributors" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Distributors</TabsTrigger>
@@ -65,6 +66,9 @@ export default function SystemConfigPage() {
                     <TabsTrigger value="audit" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Audit Logs</TabsTrigger>
                 </TabsList>
 
+                <TabsContent value="business" className="mt-6">
+                    <BusinessProfileManager />
+                </TabsContent>
                 <TabsContent value="users" className="mt-6">
                     <UserManager />
                 </TabsContent>
@@ -163,6 +167,284 @@ export function PaginationControls({
                 </div>
             </div>
         </div>
+    );
+}
+
+function BusinessProfileManager() {
+    const { user } = useAuth();
+    const currentProfile = useQuery((api as any).businessProfiles.getActive, {});
+    const businessProfiles = useQuery((api as any).businessProfiles.list, {});
+    const createProfile = useMutation((api as any).businessProfiles.create);
+    const updateProfile = useMutation((api as any).businessProfiles.update);
+
+    const [businessName, setBusinessName] = useState("SMART_BUZ");
+    const [businessType, setBusinessType] = useState("Retail");
+    const [industry, setIndustry] = useState("Retail");
+    const [currency, setCurrency] = useState("UGX");
+    const [country, setCountry] = useState("Uganda");
+    const [taxEnabled, setTaxEnabled] = useState(false);
+    const [selectedModules, setSelectedModules] = useState<string[]>([
+        "sales",
+        "inventory",
+        "customers",
+        "reports",
+    ]);
+
+    const moduleOptions = [
+        "sales",
+        "inventory",
+        "customers",
+        "reports",
+        "payments",
+        "loans",
+        "promotions",
+        "bookings",
+        "appointments",
+        "projects",
+        "inventory-tracking",
+        "crm",
+    ];
+
+    const businessTypeOptions = [
+        "Retail",
+        "Hospitality",
+        "Travel",
+        "Salon & Wellness",
+        "Education",
+        "Healthcare",
+        "Real Estate",
+        "Construction",
+        "Automotive",
+        "Logistics",
+        "Professional Services",
+        "General Business",
+    ];
+
+    const industryOptions = [
+        "Retail",
+        "Restaurant",
+        "Hotel",
+        "Travel Agency",
+        "Salon",
+        "School",
+        "Clinic",
+        "Pharmacy",
+        "Construction",
+        "Garage",
+        "Transport",
+        "Agency",
+        "Manufacturing",
+        "Fashion",
+        "Agriculture",
+        "Other",
+    ];
+
+    const toggleModule = (moduleName: string) => {
+        setSelectedModules((current) =>
+            current.includes(moduleName)
+                ? current.filter((item) => item !== moduleName)
+                : [...current, moduleName]
+        );
+    };
+
+    const loadProfile = (profile: any) => {
+        if (!profile) return;
+        setBusinessName(profile.businessName || "SMART_BUZ");
+        setBusinessType(profile.businessType || "Retail");
+        setIndustry(profile.industry || "Retail");
+        setCurrency(profile.currency || "UGX");
+        setCountry(profile.country || "Uganda");
+        setTaxEnabled(Boolean(profile.taxEnabled));
+        setSelectedModules(Array.isArray(profile.modules) ? profile.modules : []);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!user) {
+            toast.error("You must be logged in to configure business settings.");
+            return;
+        }
+
+        try {
+            if (currentProfile) {
+                await updateProfile({
+                    id: currentProfile._id,
+                    businessName,
+                    businessType,
+                    industry,
+                    modules: selectedModules,
+                    currency,
+                    country,
+                    taxEnabled,
+                    updatedBy: user._id,
+                });
+                toast.success("Business profile updated");
+            } else {
+                await createProfile({
+                    businessName,
+                    businessType,
+                    industry,
+                    modules: selectedModules,
+                    currency,
+                    country,
+                    taxEnabled,
+                    createdBy: user._id,
+                });
+                toast.success("Business profile created");
+            }
+        } catch (error) {
+            toast.error(formatError(error));
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Business Profile Configuration</CardTitle>
+                <CardDescription>Configure the system for the business type and modules you need.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label>Business Name</Label>
+                                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="SMART_BUZ" required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Business Type</Label>
+                                <Select value={businessType} onValueChange={setBusinessType}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select business type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {businessTypeOptions.map((type) => (
+                                            <SelectItem key={type} value={type}>{type}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Industry</Label>
+                                <Select value={industry} onValueChange={setIndustry}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select industry" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {industryOptions.map((option) => (
+                                            <SelectItem key={option} value={option}>{option}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Currency</Label>
+                                <Select value={currency} onValueChange={setCurrency}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Currency" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="UGX">UGX</SelectItem>
+                                        <SelectItem value="USD">USD</SelectItem>
+                                        <SelectItem value="KES">KES</SelectItem>
+                                        <SelectItem value="TZS">TZS</SelectItem>
+                                        <SelectItem value="RWF">RWF</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Country</Label>
+                                <Select value={country} onValueChange={setCountry}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Country" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Uganda">Uganda</SelectItem>
+                                        <SelectItem value="Kenya">Kenya</SelectItem>
+                                        <SelectItem value="Tanzania">Tanzania</SelectItem>
+                                        <SelectItem value="Rwanda">Rwanda</SelectItem>
+                                        <SelectItem value="Global">Global</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2 flex items-center justify-start pt-8">
+                                <div className="flex items-center space-x-2">
+                                    <Switch checked={taxEnabled} onCheckedChange={setTaxEnabled} />
+                                    <Label>Tax enabled</Label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <Label className="text-sm font-semibold">Enabled Modules</Label>
+                            <div className="flex flex-wrap gap-2">
+                                {moduleOptions.map((moduleName) => {
+                                    const selected = selectedModules.includes(moduleName);
+                                    return (
+                                        <Button
+                                            type="button"
+                                            key={moduleName}
+                                            variant={selected ? "default" : "outline"}
+                                            className="rounded-full capitalize"
+                                            onClick={() => toggleModule(moduleName)}
+                                        >
+                                            {moduleName}
+                                        </Button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <Button type="submit">{currentProfile ? "Save profile" : "Create profile"}</Button>
+                            {currentProfile && (
+                                <Button type="button" variant="outline" onClick={() => loadProfile(currentProfile)}>Reset</Button>
+                            )}
+                        </div>
+                    </form>
+
+                    <Card className="bg-muted/20">
+                        <CardHeader>
+                            <CardTitle className="text-base">Current profile</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm">
+                            {currentProfile ? (
+                                <>
+                                    <div><strong>Name:</strong> {currentProfile.businessName}</div>
+                                    <div><strong>Type:</strong> {currentProfile.businessType}</div>
+                                    <div><strong>Industry:</strong> {currentProfile.industry || "General"}</div>
+                                    <div><strong>Currency:</strong> {currentProfile.currency}</div>
+                                    <div><strong>Country:</strong> {currentProfile.country}</div>
+                                    <div><strong>Modules:</strong> {currentProfile.modules?.join(", ") || "No modules selected"}</div>
+                                </>
+                            ) : (
+                                <div className="text-muted-foreground">No active business profile configured yet.</div>
+                            )}
+
+                            {businessProfiles && businessProfiles.length > 0 && (
+                                <div className="pt-3 border-t">
+                                    <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Saved profiles</div>
+                                    <div className="space-y-2">
+                                        {businessProfiles.map((profile: any) => (
+                                            <button
+                                                key={profile._id}
+                                                type="button"
+                                                onClick={() => loadProfile(profile)}
+                                                className="w-full text-left rounded-md border bg-background p-2 hover:bg-muted/40"
+                                            >
+                                                <div className="font-medium">{profile.businessName}</div>
+                                                <div className="text-xs text-muted-foreground">{profile.businessType} • {profile.industry || "General"}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 

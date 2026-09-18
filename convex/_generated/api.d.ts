@@ -10,6 +10,7 @@
 
 import type * as activityLogs from "../activityLogs.js";
 import type * as banking from "../banking.js";
+import type * as businessProfiles from "../businessProfiles.js";
 import type * as categories from "../categories.js";
 import type * as customers from "../customers.js";
 import type * as dashboard from "../dashboard.js";
@@ -35,6 +36,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   activityLogs: typeof activityLogs;
   banking: typeof banking;
+  businessProfiles: typeof businessProfiles;
   categories: typeof categories;
   customers: typeof customers;
   dashboard: typeof dashboard;

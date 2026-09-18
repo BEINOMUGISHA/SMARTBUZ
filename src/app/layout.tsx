@@ -13,14 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TIENS POS - Smart Inventory & Sales",
-  description: "Advanced Point of Sale system for Tiens Uganda",
+  title: "SMART_BUZ - Smart Inventory & Sales",
+  description: "Advanced Point of Sale system for modern retail businesses",
   manifest: "/manifest.json",
   themeColor: "#0f172a",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "TIENS POS",
+    title: "SMART_BUZ",
   },
   viewport: {
     width: "device-width",
