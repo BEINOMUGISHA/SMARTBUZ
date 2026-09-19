@@ -24,7 +24,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 export default function InventoryPage() {
     const stats = useQuery(api.stocks.getInventoryStats);
-    const lowStockAudit = useQuery(api.stocks.getLowStockAudit, { threshold: 15 });
+    const lowStockAudit = useQuery(api.stocks.getLowStockAudit, { threshold: 15, lookbackDays: 7 });
     const activities = useQuery(api.activityLogs.list, { paginationOpts: { numItems: 8, cursor: null } });
 
     if (!stats) {
@@ -341,6 +341,9 @@ export default function InventoryPage() {
                                 <TableHead className="pl-6 font-bold py-4">Product</TableHead>
                                 <TableHead className="font-bold">Category</TableHead>
                                 <TableHead className="text-center font-bold">Qty Left</TableHead>
+                                <TableHead className="text-center font-bold">Daily Sell</TableHead>
+                                <TableHead className="text-center font-bold">Days Left</TableHead>
+                                <TableHead className="text-center font-bold">Reorder</TableHead>
                                 <TableHead className="text-right font-bold">Valuation</TableHead>
                                 <TableHead className="text-right pr-6 font-bold">Status</TableHead>
                             </TableRow>
@@ -348,7 +351,7 @@ export default function InventoryPage() {
                         <TableBody>
                             {lowStockAudit?.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground font-medium">
+                                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground font-medium">
                                         No low stock items detected. Warehouse levels are healthy.
                                     </TableCell>
                                 </TableRow>
@@ -366,6 +369,13 @@ export default function InventoryPage() {
                                             <span className={item.qty <= 5 ? "text-red-500 font-black" : "font-bold"}>
                                                 {item.qty}
                                             </span>
+                                        </TableCell>
+                                        <TableCell className="text-center font-mono text-xs">{item.dailyVelocity}</TableCell>
+                                        <TableCell className="text-center font-mono text-xs">
+                                            {item.daysToStockOut === null ? "—" : `${item.daysToStockOut}d`}
+                                        </TableCell>
+                                        <TableCell className="text-center font-mono text-xs">
+                                            {item.recommendedOrder > 0 ? `${item.recommendedOrder} units` : "—"}
                                         </TableCell>
                                         <TableCell className="text-right font-mono text-xs">
                                             UGX {item.valuation.toLocaleString()}

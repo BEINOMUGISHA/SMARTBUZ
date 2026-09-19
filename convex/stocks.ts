@@ -219,24 +219,51 @@ export const getInventoryStats = query({
 });
 
 export const getLowStockAudit = query({
-    args: { threshold: v.optional(v.number()) },
+    args: {
+        threshold: v.optional(v.number()),
+        lookbackDays: v.optional(v.number()),
+    },
     handler: async (ctx, args) => {
         const threshold = args.threshold ?? 10;
+        const lookbackDays = args.lookbackDays ?? 7;
         const lowStock = await ctx.db
             .query("stocks")
             .withIndex("by_qty")
             .filter(q => q.lt(q.field("qty"), threshold))
             .collect();
 
-        // Enrich with category names
         const categories = await ctx.db.query("categories").collect();
         const catMap = new Map(categories.map(c => [c._id, c.type]));
 
-        return lowStock.map(s => ({
-            ...s,
-            categoryName: catMap.get(s.categoryId) || "Unknown",
-            valuation: s.qty * s.price
-        }));
+        const sales = await ctx.db.query("sales").collect();
+        const startTime = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+        const soldByStock = new Map<Id<"stocks">, number>();
+
+        for (const sale of sales) {
+            const saleTime = new Date(sale.date).getTime();
+            if (saleTime < startTime) continue;
+
+            for (const item of sale.items) {
+                const current = soldByStock.get(item.stockId) ?? 0;
+                soldByStock.set(item.stockId, current + item.quantity);
+            }
+        }
+
+        return lowStock.map(s => {
+            const soldInWindow = soldByStock.get(s._id) ?? 0;
+            const dailyVelocity = soldInWindow / Math.max(1, lookbackDays);
+            const daysToStockOut = dailyVelocity > 0 ? s.qty / dailyVelocity : Number.POSITIVE_INFINITY;
+            const recommendedOrder = Math.max(0, Math.ceil((dailyVelocity * 7) + threshold - s.qty));
+
+            return {
+                ...s,
+                categoryName: catMap.get(s.categoryId) || "Unknown",
+                valuation: s.qty * s.price,
+                dailyVelocity: Number(dailyVelocity.toFixed(2)),
+                daysToStockOut: Number.isFinite(daysToStockOut) ? Number(daysToStockOut.toFixed(1)) : null,
+                recommendedOrder,
+            };
+        });
     }
 });
 

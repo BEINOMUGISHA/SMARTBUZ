@@ -38,6 +38,45 @@ type CartItem = {
     bv: number;
 };
 
+type OfflineSaleDraft = {
+    id: string;
+    createdAt: string;
+    isHp: boolean;
+    cart: CartItem[];
+    selectedCustomerId: Id<"customers"> | "walk-in";
+    clientType: string;
+    paymentMethod: string;
+    isLoan: boolean;
+    manualName: string;
+    paymentDate: string;
+    initialDeposit: string;
+    deliveryStatus: "Taken" | "Pending";
+    customerPhone: string;
+    customerLocation: string;
+    isPackageSale: boolean;
+    packageType: "Bronze" | "Silver" | "Gold";
+};
+
+const OFFLINE_DRAFT_KEY = "pos_offline_sale_drafts";
+
+function readOfflineDrafts(): OfflineSaleDraft[] {
+    if (typeof window === "undefined") return [];
+
+    try {
+        const raw = window.localStorage.getItem(OFFLINE_DRAFT_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeOfflineDrafts(drafts: OfflineSaleDraft[]) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(OFFLINE_DRAFT_KEY, JSON.stringify(drafts));
+}
+
 export default function SalesPage() {
     return (
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
@@ -139,6 +178,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [isLoading, setIsLoading] = useState(false);
     const [receiptData, setReceiptData] = useState<any | null>(null);
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
+    const [isOffline, setIsOffline] = useState(typeof navigator !== "undefined" ? !navigator.onLine : false);
+    const [offlineDrafts, setOfflineDrafts] = useState<OfflineSaleDraft[]>([]);
 
     // Auto-select "Loan" payment method when isLoan is true
     useEffect(() => {
@@ -208,6 +249,29 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         }
     }, [cart, isHp, isLoaded]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const updateOnlineStatus = () => setIsOffline(!navigator.onLine);
+        updateOnlineStatus();
+        window.addEventListener("online", updateOnlineStatus);
+        window.addEventListener("offline", updateOnlineStatus);
+
+        const drafts = readOfflineDrafts();
+        setOfflineDrafts(drafts);
+
+        return () => {
+            window.removeEventListener("online", updateOnlineStatus);
+            window.removeEventListener("offline", updateOnlineStatus);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isOffline && user && offlineDrafts.length > 0) {
+            void syncOfflineDrafts();
+        }
+    }, [isOffline, user, offlineDrafts.length]);
+
     const totalPages = Math.ceil(totalStocksCount / rowsPerPage);
     const paginatedStocks = stocks; // Already paginated on server
 
@@ -276,6 +340,107 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         setCart(prev => prev.filter(i => i.stockId !== stockId));
     };
 
+    const saveOfflineDraft = (customCart: CartItem[] = cart) => {
+        if (typeof window === "undefined") return;
+
+        const draft: OfflineSaleDraft = {
+            id: crypto.randomUUID(),
+            createdAt: new Date().toISOString(),
+            isHp,
+            cart: customCart,
+            selectedCustomerId,
+            clientType,
+            paymentMethod,
+            isLoan,
+            manualName,
+            paymentDate,
+            initialDeposit,
+            deliveryStatus,
+            customerPhone,
+            customerLocation,
+            isPackageSale,
+            packageType,
+        };
+
+        const drafts = readOfflineDrafts();
+        const nextDrafts = [...drafts, draft];
+        writeOfflineDrafts(nextDrafts);
+        setOfflineDrafts(nextDrafts);
+        toast.warning("Sale saved offline. It will sync automatically when you reconnect.");
+    };
+
+    const restoreOfflineDraft = (draftId: string) => {
+        const draft = offlineDrafts.find(item => item.id === draftId);
+        if (!draft) return;
+
+        setCart(draft.cart);
+        setSelectedCustomerId(draft.selectedCustomerId);
+        setClientType(draft.clientType);
+        setPaymentMethod(draft.paymentMethod);
+        setIsLoan(draft.isLoan);
+        setManualName(draft.manualName);
+        setPaymentDate(draft.paymentDate);
+        setInitialDeposit(draft.initialDeposit);
+        setDeliveryStatus(draft.deliveryStatus);
+        setCustomerPhone(draft.customerPhone);
+        setCustomerLocation(draft.customerLocation);
+        setIsPackageSale(draft.isPackageSale);
+        setPackageType(draft.packageType);
+
+        const filteredDrafts = offlineDrafts.filter(item => item.id !== draftId);
+        writeOfflineDrafts(filteredDrafts);
+        setOfflineDrafts(filteredDrafts);
+        toast.success("Offline draft restored.");
+    };
+
+    const syncOfflineDrafts = async () => {
+        if (!user || isOffline) return;
+
+        const drafts = readOfflineDrafts();
+        if (drafts.length === 0) return;
+
+        const remaining: OfflineSaleDraft[] = [];
+
+        for (const draft of drafts) {
+            try {
+                await createSale({
+                    userId: user._id,
+                    total: draft.cart.reduce((sum, item) => sum + (item.price * item.qty), 0),
+                    clientType: draft.clientType,
+                    paymentMode: draft.paymentMethod,
+                    manualCustomerName: draft.manualName || undefined,
+                    items: draft.cart.map(item => ({
+                        stockId: item.stockId,
+                        name: item.name,
+                        productCode: item.productCode,
+                        price: item.price,
+                        quantity: item.qty,
+                        pv: item.pv,
+                        bv: item.bv,
+                    })),
+                    customerId: draft.selectedCustomerId === "walk-in" ? undefined : draft.selectedCustomerId,
+                    isLoan: draft.isLoan,
+                    paymentDueDate: draft.isLoan ? draft.paymentDate : undefined,
+                    initialDeposit: draft.isLoan ? Number(draft.initialDeposit || 0) : undefined,
+                    packageType: draft.isPackageSale ? draft.packageType : undefined,
+                    deliveryStatus: draft.deliveryStatus,
+                    customerPhone: draft.customerPhone || undefined,
+                    customerLocation: draft.customerLocation || undefined,
+                    transactionType: "Sale",
+                });
+            } catch (error) {
+                remaining.push(draft);
+            }
+        }
+
+        writeOfflineDrafts(remaining);
+        setOfflineDrafts(remaining);
+
+        if (remaining.length < drafts.length) {
+            toast.success("Offline sales synced successfully.");
+        }
+    };
+
     // Checkout Handler
     const handleCheckout = async () => {
         const newErrors: Record<string, boolean> = {};
@@ -319,6 +484,14 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
         try {
             setIsLoading(true);
+
+            if (!navigator.onLine) {
+                saveOfflineDraft();
+                setCart([]);
+                setIsLoading(false);
+                return;
+            }
+
             const result = await createSale({
                 userId: user._id,
                 total: cartTotal,
@@ -337,7 +510,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 customerId: selectedCustomerId === "walk-in" ? undefined : selectedCustomerId,
                 isLoan,
                 paymentDueDate: isLoan ? paymentDate : undefined,
-                initialDeposit: isLoan ? depositValue : undefined, // Pass deposit
+                initialDeposit: isLoan ? depositValue : undefined,
                 packageType: isPackageSale ? packageType : undefined,
                 deliveryStatus,
                 customerPhone: customerPhone || undefined,
@@ -407,6 +580,14 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
         } catch (error) {
             console.error(error);
+
+            if (!navigator.onLine) {
+                saveOfflineDraft();
+                setCart([]);
+                setIsLoading(false);
+                return;
+            }
+
             toast.error(formatError(error));
         } finally {
             setIsLoading(false);
@@ -564,6 +745,36 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 <ShoppingCart className="h-5 w-5" /> Current Order
                             </CardTitle>
                         </CardHeader>
+
+                        <div className="px-4 pt-3">
+                            <div className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium ${isOffline ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+                                <span>{isOffline ? "Offline mode: sales will save locally" : "Online mode: sales sync instantly"}</span>
+                                {offlineDrafts.length > 0 && (
+                                    <Button variant="secondary" size="sm" onClick={() => void syncOfflineDrafts()} className="h-7 text-[10px]">
+                                        Sync {offlineDrafts.length}
+                                    </Button>
+                                )}
+                            </div>
+
+                            {offlineDrafts.length > 0 && (
+                                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                                    <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-amber-700">Offline drafts</div>
+                                    <div className="space-y-2">
+                                        {offlineDrafts.slice(0, 3).map((draft) => (
+                                            <button
+                                                key={draft.id}
+                                                type="button"
+                                                onClick={() => restoreOfflineDraft(draft.id)}
+                                                className="flex w-full items-center justify-between rounded-md border border-amber-200 bg-white px-2 py-1.5 text-left text-xs"
+                                            >
+                                                <span>{draft.cart.reduce((sum, item) => sum + item.qty, 0)} items · {new Date(draft.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                <span className="font-bold text-amber-700">Resume</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         {/* GLOBAL PROMOTION BANNER */}
                         {(!isHp && activePromotions?.globalPromotions) && (
@@ -877,15 +1088,25 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             )}
                         </div>
 
-                        <Button
-                            size="lg"
-                            className={`w-full font-bold text-lg ${isLoan ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"}`}
-                            disabled={cart.length === 0 || !user}
-                            onClick={handleCheckout}
-                        >
-                            {isLoading || !user ? <Loader2 className="animate-spin mr-2" /> : isLoan ? <CreditCard className="mr-2 h-5 w-5" /> : <Banknote className="mr-2 h-5 w-5" />}
-                            {isLoan ? "Record Loan Sale" : "Complete Sale"}
-                        </Button>
+                        <div className="grid grid-cols-2 gap-2 p-3 border-t bg-muted/40">
+                            <Button
+                                variant="outline"
+                                className="font-bold"
+                                onClick={() => saveOfflineDraft()}
+                                disabled={cart.length === 0}
+                            >
+                                Save Draft
+                            </Button>
+                            <Button
+                                size="lg"
+                                className={`w-full font-bold text-lg ${isLoan ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"}`}
+                                disabled={cart.length === 0 || !user}
+                                onClick={handleCheckout}
+                            >
+                                {isLoading || !user ? <Loader2 className="animate-spin mr-2" /> : isLoan ? <CreditCard className="mr-2 h-5 w-5" /> : <Banknote className="mr-2 h-5 w-5" />}
+                                {isLoan ? "Record Loan Sale" : "Complete Sale"}
+                            </Button>
+                        </div>
                     </Card>
                 </div>
             </div>
