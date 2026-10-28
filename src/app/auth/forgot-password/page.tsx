@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Image from "next/image";
@@ -25,7 +25,23 @@ export default function ForgotPasswordPage() {
         e.preventDefault();
         setLoading(true);
         try {
-            await requestReset({ email });
+            // Step 1: Generate and store the reset code in Convex
+            const result = await requestReset({ email });
+
+            // Step 2: FIX #5 - Deliver code via real email (Resend), not console.log
+            if (result?.code) {
+                const emailRes = await fetch("/api/send-reset-email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, code: result.code }),
+                });
+                if (!emailRes.ok) {
+                    toast.error("Account found, but email delivery failed. Contact support.");
+                    setLoading(false);
+                    return;
+                }
+            }
+
             setSubmitted(true);
             toast.success("Reset code sent to your email");
         } catch (error: any) {
@@ -64,23 +80,25 @@ export default function ForgotPasswordPage() {
             {/* Left side: Hero Section (Desktop only) */}
             <div className="hidden bg-muted lg:block relative">
                 <Image
-                    src="/bac.jpg"
+                    src="/images/pos-hero.jpg"
                     alt="Forgot Password Background"
                     fill
                     className="object-cover"
                     priority
                 />
-                <div className="absolute inset-0 bg-primary/30 backdrop-blur-[3px] flex flex-col items-center justify-center p-12 text-white">
-                    {/* <div className="mb-12">
-                        <Image src="/logo.ico" alt="Logo" width={240} height={80} className="object-contain brightness-0 invert" />
-                    </div> */}
+                <div className="absolute inset-0 bg-primary/40 backdrop-blur-[3px] flex flex-col items-center justify-center p-12 text-white">
+                    <div className="mb-6 h-16 w-16 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                        <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                    </div>
                     <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">Recover Your <br />Account</h2>
                     <p className="text-xl text-center max-w-md opacity-90 font-medium">
                         Don't worry, we'll help you get back into your POS system in no time.
                     </p>
                 </div>
                 <div className="absolute bottom-8 left-0 right-0 text-center text-white/60 text-sm">
-                    Tiens Uganda Support Team • Secure Recovery
+                    SMARTBUZ Support Team â€¢ Secure Recovery
                 </div>
             </div>
 
@@ -141,7 +159,7 @@ export default function ForgotPasswordPage() {
 
                     <div className="pt-4 text-center">
                         <p className="text-sm font-medium text-muted-foreground/60">
-                            Need help? Contact Tiens Uganda IT Support
+                            Need help? Contact SMARTBUZ IT Support
                         </p>
                     </div>
                 </div>

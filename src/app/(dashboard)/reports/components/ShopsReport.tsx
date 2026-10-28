@@ -113,7 +113,7 @@ export function ShopsReport() {
     const stats = useQuery(api.promotions.redemptionsStats, promotionsStatsArgs);
     const listArgs = {
         ...promotionsStatsArgs,
-        email: "admin@tiens.com" // Backend allows override with targetShopId
+        email: "admin@smartbuz.com" // Backend allows override with targetShopId
     };
     const { results: redemptions, status: redemptionStatus } = usePaginatedQuery(
         api.promotions.listRedemptions,

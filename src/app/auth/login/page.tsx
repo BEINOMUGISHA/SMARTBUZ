@@ -42,23 +42,25 @@ export default function LoginPage() {
       {/* Left side: Hero Section (Desktop only) */}
       <div className="hidden bg-muted lg:block relative">
         <Image
-          src="/bac.jpg"
+          src="/images/pos-hero.jpg"
           alt="Login Background"
           fill
           className="object-cover"
           priority
         />
-        <div className="absolute inset-0 bg-primary/30 backdrop-blur-[3px] flex flex-col items-center justify-center p-12 text-white">
-          {/* <div className="mb-12">
-            <Image src="/logo.ico" alt="Logo" width={240} height={80} className="object-contain brightness-0 invert" />
-          </div> */}
-          <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">Empowering Health, <br />Enriching Life</h2>
+        <div className="absolute inset-0 bg-primary/40 backdrop-blur-[3px] flex flex-col items-center justify-center p-12 text-white">
+          <div className="mb-6 h-16 w-16 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
+            <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+          <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">Run Your Business <br />Smarter, Faster</h2>
           <p className="text-xl text-center max-w-md opacity-90 font-medium">
-            Access the Tiens Uganda POS Management System to manage your business with precision and ease.
+            Manage sales, inventory, customers, and reports — all from one powerful platform built for every business niche.
           </p>
         </div>
         <div className="absolute bottom-8 left-0 right-0 text-center text-white/60 text-sm">
-          Trusted by Tiens Distributors & Staff across Uganda
+          Trusted by businesses across East Africa • Powered by SMARTBUZ
         </div>
       </div>
 

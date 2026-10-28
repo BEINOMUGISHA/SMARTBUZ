@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
@@ -434,7 +434,7 @@ function BusinessProfileManager() {
                                                 className="w-full text-left rounded-md border bg-background p-2 hover:bg-muted/40"
                                             >
                                                 <div className="font-medium">{profile.businessName}</div>
-                                                <div className="text-xs text-muted-foreground">{profile.businessType} • {profile.industry || "General"}</div>
+                                                <div className="text-xs text-muted-foreground">{profile.businessType} â€¢ {profile.industry || "General"}</div>
                                             </button>
                                         ))}
                                     </div>
@@ -453,7 +453,7 @@ function UserManager() {
     const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
-    const [editingItem, setEditingItem] = useState<Doc<"users"> | null>(null);
+    const [editingItem, setEditingItem] = useState<Omit<Doc<"users">, "password"> | null>(null);
     const [deletingId, setDeletingId] = useState<Id<"users"> | null>(null);
 
     // Pagination [TRUE]
@@ -1382,4 +1382,5 @@ function ShopManager() {
         </Card>
     );
 }
+
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useAuth } from "@/context/auth-context";
@@ -45,6 +46,10 @@ export function PromotionsReportView() {
 
     // 1. Stats
     const stats = useQuery(api.promotions.redemptionsStats, queryArgs);
+    const activeProfile = useQuery(api.businessProfiles.getActive);
+    const businessName = activeProfile?.businessName || "SMARTBUZ POS";
+    const businessAddress = activeProfile?.businessAddress || "";
+    const businessPhone = activeProfile?.businessPhone || "";
 
     // 2. Paginated List
     const { results, status, loadMore } = usePaginatedQuery(
@@ -249,8 +254,23 @@ export function PromotionsReportView() {
                                 </TableRow>
                             ) : results.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                                        No redemptions found.
+                                    <TableCell colSpan={7} className="h-64 text-center">
+                                        <div className="flex flex-col items-center justify-center space-y-3 py-6">
+                                            <div className="relative h-20 w-20 rounded-2xl overflow-hidden shadow-lg border border-primary/20 bg-muted/20">
+                                                <Image
+                                                    src="/images/promo-rewards.jpg"
+                                                    alt="Promotions & Rewards"
+                                                    fill
+                                                    className="object-cover"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="font-bold text-sm text-foreground">No Promo Redemptions Yet</p>
+                                                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                                                    Sales qualifying for active reward rules will automatically appear here with full prize and client tracking.
+                                                </p>
+                                            </div>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ) : (
@@ -312,15 +332,17 @@ export function PromotionsReportView() {
             <div id="promotions-report-print" className="hidden print:report-print-view bg-white text-black p-4 min-h-screen">
                 <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans relative">
                     <div className="text-center px-20">
-                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">TIENS HEALTH PRODUCTS</h2>
-                        <p className="text-[11px] leading-tight font-bold text-gray-600">6th Floor, King Fahd Plaza, Plot 52 Kampala Rd</p>
-                        <p className="text-[11px] font-bold text-gray-500">P.O.Box .... Kampala, Tel: +256 (0) 702 794 458 | 0773 662 136</p>
+                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
+                        {businessAddress && <p className="text-[11px] leading-tight font-bold text-gray-600">{businessAddress}</p>}
+                        {businessPhone && <p className="text-[11px] font-bold text-gray-500">Tel: {businessPhone}</p>}
                         <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
                             OFFICIAL PROMOTIONS REDEMPTIONS REPORT
                         </div>
                     </div>
                     <div className="absolute right-0 top-0 h-full flex items-start pt-1">
-                        <img src="/logo.ico" alt="Logo" className="h-20 w-20 object-contain" />
+                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-black text-2xl text-emerald-800 bg-emerald-50">
+                            {businessName.slice(0, 2).toUpperCase()}
+                        </div>
                     </div>
                 </div>
 

@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Package, User, Loader2, ChevronLeft, ChevronRight, CalendarIcon, Store, Check, ChevronsUpDown, Download } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Package, User, Loader2, ChevronLeft, ChevronRight, CalendarIcon, Store, Check, ChevronsUpDown, Download, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
@@ -26,6 +26,9 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn, formatError } from "@/lib/utils";
 import { generateRestockPDF } from "@/lib/restock-pdf";
 import { PromotionsReportView } from "./promotions-report-view";
+import { PromoCartBanner } from "@/components/promo-cart-banner";
+import { queueOfflineSale } from "@/lib/offline-sales-manager";
+import { MobileMoneyModal } from "@/components/mobile-money-modal";
 // Types
 type CartItem = {
     stockId: Id<"stocks">;
@@ -177,6 +180,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [packageType, setPackageType] = useState<"Bronze" | "Silver" | "Gold">("Bronze");
     const [isLoading, setIsLoading] = useState(false);
     const [receiptData, setReceiptData] = useState<any | null>(null);
+    const [isMoMoModalOpen, setIsMoMoModalOpen] = useState(false);
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
     const [isOffline, setIsOffline] = useState(typeof navigator !== "undefined" ? !navigator.onLine : false);
     const [offlineDrafts, setOfflineDrafts] = useState<OfflineSaleDraft[]>([]);
@@ -213,6 +217,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const isStocksLoading = shopData === undefined;
 
     const customers = useQuery(api.customers.listAll);
+    const activeProfile = useQuery(api.businessProfiles.getActive);
     const createSale = useMutation(api.sales.create);
     const activePromotions = useQuery(api.promotions.getActivePromotionsWithProducts);
 
@@ -278,6 +283,79 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
     const totalPV = cart.reduce((sum, item) => sum + (item.pv * item.qty), 0);
     const totalBV = cart.reduce((sum, item) => sum + (item.bv * item.qty), 0);
+
+    const promoEvaluation = useMemo(() => {
+        if (!activePromotions) return { unlockedRewards: [], nudges: [] };
+        
+        const unlockedRewards: any[] = [];
+        const nudges: any[] = [];
+
+        // 1. Product promotions
+        for (const item of cart) {
+            const promo = activePromotions.productPromotions?.[item.stockId];
+            if (promo) {
+                const count = Math.floor(item.qty / promo.requiredQty);
+                if (count > 0) {
+                    unlockedRewards.push({
+                        promotionId: item.stockId,
+                        promotionName: promo.promotionName,
+                        prize: promo.prize,
+                        count,
+                        triggerLabel: `${item.name} (x${item.qty})`,
+                    });
+                }
+                const remaining = promo.requiredQty - (item.qty % promo.requiredQty);
+                if (remaining > 0 && remaining <= 3) {
+                    const currentInTier = item.qty % promo.requiredQty;
+                    nudges.push({
+                        promotionId: item.stockId,
+                        promotionName: promo.promotionName,
+                        prize: promo.prize,
+                        neededAmount: remaining,
+                        currentAmount: currentInTier,
+                        targetAmount: promo.requiredQty,
+                        unit: "units",
+                        productName: item.name,
+                        progressPercentage: Math.round((currentInTier / promo.requiredQty) * 100),
+                    });
+                }
+            }
+        }
+
+        // 2. Global PV/BV promotions
+        for (const promo of (activePromotions.globalPromotions || [])) {
+            if (!promo.threshold) continue;
+            const current = promo.triggerType === "TotalPV" ? totalPV : totalBV;
+            const unit = promo.triggerType === "TotalPV" ? "PV" : "BV";
+            const count = Math.floor(current / promo.threshold);
+            if (count > 0) {
+                unlockedRewards.push({
+                    promotionId: promo._id,
+                    promotionName: promo.name,
+                    prize: promo.prize,
+                    count,
+                    triggerLabel: `${unit}: ${current.toFixed(1)}`,
+                });
+            } else {
+                const remaining = promo.threshold - current;
+                const progress = Math.min(100, Math.round((current / promo.threshold) * 100));
+                if (progress >= 25) {
+                    nudges.push({
+                        promotionId: promo._id,
+                        promotionName: promo.name,
+                        prize: promo.prize,
+                        neededAmount: Number(remaining.toFixed(1)),
+                        currentAmount: Number(current.toFixed(1)),
+                        targetAmount: promo.threshold,
+                        unit,
+                        progressPercentage: progress,
+                    });
+                }
+            }
+        }
+
+        return { unlockedRewards, nudges };
+    }, [cart, activePromotions, totalPV, totalBV]);
 
     // Cart Actions
     const addToCart = (stock: any) => {
@@ -485,14 +563,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         try {
             setIsLoading(true);
 
-            if (!navigator.onLine) {
-                saveOfflineDraft();
-                setCart([]);
-                setIsLoading(false);
-                return;
-            }
+            const shopPrefix = isShopUser ? (shopData.shop.serialNumber?.split("-")[0] || "SHOP") : "HQ";
+            let result: any;
 
-            const result = await createSale({
+            const salePayload = {
                 userId: user._id,
                 total: cartTotal,
                 clientType,
@@ -516,7 +590,20 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 customerPhone: customerPhone || undefined,
                 customerLocation: customerLocation || undefined,
                 transactionType: "Sale",
-            });
+            };
+
+            if (!navigator.onLine) {
+                const clientOfflineId = await queueOfflineSale(salePayload, shopPrefix);
+                result = {
+                    saleId: clientOfflineId,
+                    invoiceNumber: clientOfflineId,
+                    redemptions: promoEvaluation.unlockedRewards,
+                    isOffline: true,
+                };
+                toast.warning("Working Offline: Sale queued locally. Receipt ready.");
+            } else {
+                result = await createSale(salePayload);
+            }
 
             // Handle both legacy (string ID) and new (object) return types for safety
             // const saleId = typeof result === "object" ? result.saleId : result;
@@ -527,6 +614,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             const fullName = `${user.first_name} ${user.last_name}${user.middle_name ? ` ${user.middle_name}` : ""}`;
 
             const receipt = {
+                businessName: activeProfile?.businessName || (isShopUser ? shopData.shop.name : "SMARTBUZ POS"),
+                businessAddress: activeProfile?.businessAddress || (isShopUser ? shopData.shop.location : "Headquarters"),
+                businessPhone: activeProfile?.businessPhone || (isShopUser ? shopData.shop.contact : undefined),
                 customer: selectedCustomer ? {
                     name: selectedCustomer.name,
                     phone: selectedCustomer.phone,
@@ -970,6 +1060,19 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                         </div>
                                     </div>
 
+                                    {paymentMethod === "Mobile Money" && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => setIsMoMoModalOpen(true)}
+                                            className="w-full h-8 text-xs font-bold gap-1.5 border-amber-400 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 animate-in fade-in"
+                                        >
+                                            <Smartphone className="h-3.5 w-3.5 text-amber-500" />
+                                            <span>Send USSD MoMo Prompt (MTN / Airtel)</span>
+                                        </Button>
+                                    )}
+
                                     <div className="flex items-center justify-between bg-background p-2 px-3 rounded-lg border h-9 mt-6">
                                         <Label htmlFor="loan-toggle" className="text-xs font-medium cursor-pointer">Loan Sale?</Label>
                                         <Switch
@@ -1088,6 +1191,13 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             )}
                         </div>
 
+                        <div className="px-3">
+                            <PromoCartBanner
+                                unlockedRewards={promoEvaluation.unlockedRewards}
+                                nudges={promoEvaluation.nudges}
+                            />
+                        </div>
+
                         <div className="grid grid-cols-2 gap-2 p-3 border-t bg-muted/40">
                             <Button
                                 variant="outline"
@@ -1116,6 +1226,18 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 isOpen={!!receiptData}
                 onClose={() => setReceiptData(null)}
                 data={receiptData}
+            />
+
+            {/* Mobile Money Prompt Modal */}
+            <MobileMoneyModal
+                isOpen={isMoMoModalOpen}
+                onClose={() => setIsMoMoModalOpen(false)}
+                amount={cartTotal}
+                initialPhone={customerPhone || (customers?.find(c => c._id === selectedCustomerId)?.phone || "")}
+                onPaymentConfirmed={(ref) => {
+                    setPaymentMethod("Mobile Money");
+                    toast.success(`Mobile Money verified with reference: ${ref}`);
+                }}
             />
         </>
     );

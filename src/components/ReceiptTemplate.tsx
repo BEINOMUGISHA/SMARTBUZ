@@ -2,6 +2,9 @@ import React from "react";
 import { cn } from "@/lib/utils";
 
 export interface ReceiptData {
+    businessName?: string;
+    businessAddress?: string;
+    businessPhone?: string;
     customer?: { name: string; phone: string; email: string; distributorId?: string };
     shop: { name: string; location: string; contact: string; serialNumber: string };
     operator: { name: string; phone?: string; email?: string };
@@ -46,16 +49,20 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                 }
             ` }} />
 
-            {/* Header section matched to photo */}
+            {/* Header section */}
             <div className="pb-2 print:break-inside-avoid">
                 <div className="flex justify-between items-start border-b border-black pb-4 mb-4">
                     <div className="flex-1 text-center">
-                        <h2 className="text-2xl font-black text-black tracking-tighter uppercase mb-1">TIENS HEALTH PRODUCTS</h2>
-                        <p className="text-[10px] leading-tight opacity-90">6th Floor, King Fahd Plaza, Plot 52 Kampala Rd</p>
-                        <p className="text-[10px] leading-tight opacity-90">P.O.Box .... Kampala, Tel: +256 (0) 702 794 458 | 0773 662 136</p>
+                        <h2 className="text-2xl font-black text-black tracking-tighter uppercase mb-1">
+                            {data.businessName || data.shop?.name || "OFFICIAL RECEIPT"}
+                        </h2>
+                        <p className="text-[10px] leading-tight opacity-90">{data.businessAddress || data.shop?.location || ""}</p>
+                        <p className="text-[10px] leading-tight opacity-90">
+                            {data.businessPhone ? `Tel: ${data.businessPhone}` : (data.shop?.contact ? `Tel: ${data.shop.contact}` : "")}
+                        </p>
                     </div>
-                    <div className="w-[80px] h-[80px] shrink-0 ml-4">
-                        <img src="/logo.ico" alt="TIENS Logo" className="w-full h-full object-contain grayscale" />
+                    <div className="w-[72px] h-[72px] shrink-0 ml-4 border-2 border-black rounded-lg flex items-center justify-center font-black text-2xl tracking-tighter bg-slate-50">
+                        {((data.businessName || data.shop?.name || "POS").replace(/[^a-zA-Z0-9]/g, "").slice(0, 2)).toUpperCase()}
                     </div>
                 </div>
 
@@ -215,7 +222,7 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
             </div>
 
             <div className="mt-4 text-center text-[9px] font-black uppercase tracking-widest border-t border-black pt-2">
-                TIENS - BE HEALTHIER, BE WEALTHIER
+                {data.businessName || data.shop?.name || "SMARTBUZ"} • THANK YOU FOR YOUR BUSINESS
             </div>
         </div>
     );

@@ -9,6 +9,7 @@
  */
 
 import type * as activityLogs from "../activityLogs.js";
+import type * as auth from "../auth.js";
 import type * as banking from "../banking.js";
 import type * as businessProfiles from "../businessProfiles.js";
 import type * as categories from "../categories.js";
@@ -35,6 +36,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   activityLogs: typeof activityLogs;
+  auth: typeof auth;
   banking: typeof banking;
   businessProfiles: typeof businessProfiles;
   categories: typeof categories;

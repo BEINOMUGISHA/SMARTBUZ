@@ -106,6 +106,11 @@ export function LoansView() {
         { initialNumItems: rowsPerPage }
     );
 
+    const activeProfile = useQuery(api.businessProfiles.getActive);
+    const businessName = activeProfile?.businessName || "SMARTBUZ POS";
+    const businessAddress = activeProfile?.businessAddress || "";
+    const businessPhone = activeProfile?.businessPhone || "";
+
     const makePayment = useMutation(api.loans.makePayment);
 
     // Sync Load
@@ -158,6 +163,9 @@ export function LoansView() {
             if (selectedLoan.sale) {
                 const s = selectedLoan.sale;
                 const receipt: ReceiptData = {
+                    businessName: businessName,
+                    businessAddress: businessAddress || s.shop?.location,
+                    businessPhone: businessPhone || s.shop?.contact,
                     customer: selectedLoan.customer ? {
                         name: selectedLoan.customer.name,
                         phone: selectedLoan.customer.phone,
@@ -556,15 +564,17 @@ export function LoansView() {
             <div id="loans-report-print" className="hidden print:report-print-view bg-white text-black p-4 min-h-screen report-print-view">
                 <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans relative">
                     <div className="text-center px-20">
-                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">TIENS HEALTH PRODUCTS</h2>
-                        <p className="text-[11px] leading-tight font-bold text-gray-600">6th Floor, King Fahd Plaza, Plot 52 Kampala Rd</p>
-                        <p className="text-[11px] font-bold text-gray-500">P.O.Box .... Kampala, Tel: +256 (0) 702 794 458 | 0773 662 136</p>
+                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
+                        {businessAddress && <p className="text-[11px] leading-tight font-bold text-gray-600">{businessAddress}</p>}
+                        {businessPhone && <p className="text-[11px] font-bold text-gray-500">Tel: {businessPhone}</p>}
                         <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
                             OFFICIAL LOANS REPORT
                         </div>
                     </div>
                     <div className="absolute right-0 top-0 h-full flex items-start pt-1">
-                        <img src="/logo.ico" alt="Logo" className="h-20 w-20 object-contain" />
+                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-black text-2xl text-emerald-800 bg-emerald-50">
+                            {businessName.slice(0, 2).toUpperCase()}
+                        </div>
                     </div>
                 </div>
 

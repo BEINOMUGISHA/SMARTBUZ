@@ -31,6 +31,111 @@ async function generateInvoiceNumber(ctx: MutationCtx, shopId?: Id<"shops">) {
     return `${prefix}-${String(nextValue).padStart(3, "0")}`;
 }
 
+interface ProcessPromotionParams {
+    salesId: Id<"sales">;
+    customerId?: Id<"customers">;
+    userId: Id<"users">;
+    shopId?: Id<"shops">;
+    date: string;
+    items: Array<{
+        stockId: Id<"stocks">;
+        name: string;
+        productCode?: string;
+        quantity: number;
+        pv: number;
+        bv: number;
+    }>;
+}
+
+async function processPromotionTriggers(ctx: MutationCtx, params: ProcessPromotionParams) {
+    const triggeredRedemptions: any[] = [];
+    const activePromotions = await ctx.db
+        .query("promotions")
+        .filter((q) => q.eq(q.field("isActive"), true))
+        .collect();
+
+    if (activePromotions.length === 0) return triggeredRedemptions;
+
+    const activePromoIds = new Set(activePromotions.map((p) => p._id));
+    const cartStockIds = new Set(params.items.map((i) => i.stockId));
+    const allPromotionProducts = await ctx.db.query("promotionProducts").collect();
+    const relevantPromoProducts = allPromotionProducts.filter(
+        (pp) => activePromoIds.has(pp.promotionId) && cartStockIds.has(pp.stockId)
+    );
+
+    // 1. Product Triggers
+    for (const item of params.items) {
+        const triggers = relevantPromoProducts.filter((pp) => pp.stockId === item.stockId);
+        for (const trigger of triggers) {
+            const promotion = activePromotions.find((p) => p._id === trigger.promotionId);
+            if (!promotion) continue;
+            const redemptionCount = Math.floor(item.quantity / trigger.requiredQuantity);
+            if (redemptionCount > 0) {
+                const redemptionData = {
+                    promotionId: promotion._id,
+                    salesId: params.salesId,
+                    customerId: params.customerId,
+                    userId: params.userId,
+                    shopId: params.shopId,
+                    date: params.date,
+                    redeemedQuantity: redemptionCount,
+                    productName: item.name,
+                    productCode: item.productCode,
+                    prize: promotion.prize,
+                };
+                await ctx.db.insert("promotionRedemptions", redemptionData);
+                triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
+            }
+        }
+    }
+
+    // 2. Global Threshold Triggers (Total PV/BV)
+    const totalPV = params.items.reduce((sum, item) => sum + item.pv * item.quantity, 0);
+    const totalBV = params.items.reduce((sum, item) => sum + item.bv * item.quantity, 0);
+
+    for (const promotion of activePromotions) {
+        if (promotion.triggerType === "TotalPV" && promotion.threshold && totalPV >= promotion.threshold) {
+            const redemptionCount = Math.floor(totalPV / promotion.threshold);
+            if (redemptionCount > 0) {
+                const redemptionData = {
+                    promotionId: promotion._id,
+                    salesId: params.salesId,
+                    customerId: params.customerId,
+                    userId: params.userId,
+                    shopId: params.shopId,
+                    date: params.date,
+                    redeemedQuantity: redemptionCount,
+                    productName: "WHOLE SALE (PV)",
+                    productCode: "THRESHOLD",
+                    prize: promotion.prize,
+                };
+                await ctx.db.insert("promotionRedemptions", redemptionData);
+                triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
+            }
+        } else if (promotion.triggerType === "TotalBV" && promotion.threshold && totalBV >= promotion.threshold) {
+            const redemptionCount = Math.floor(totalBV / promotion.threshold);
+            if (redemptionCount > 0) {
+                const redemptionData = {
+                    promotionId: promotion._id,
+                    salesId: params.salesId,
+                    customerId: params.customerId,
+                    userId: params.userId,
+                    shopId: params.shopId,
+                    date: params.date,
+                    redeemedQuantity: redemptionCount,
+                    productName: "WHOLE SALE (BV)",
+                    productCode: "THRESHOLD",
+                    prize: promotion.prize,
+                };
+                await ctx.db.insert("promotionRedemptions", redemptionData);
+                triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
+            }
+        }
+    }
+
+    return triggeredRedemptions;
+}
+
 // List sales with pagination
 export const list = query({
     args: {
@@ -84,9 +189,26 @@ export const create = mutation({
         customerPhone: v.optional(v.string()),
         customerLocation: v.optional(v.string()),
         transactionType: v.optional(v.string()), // Sale, Swap
+        clientOfflineId: v.optional(v.string()), // Offline sync idempotency key
+        isOfflineSync: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
-        console.log(`Creating sale for user ${args.userId} (Client: ${args.clientType})`);
+        // Idempotency check: if this sale was already synced from offline queue, return it
+        if (args.clientOfflineId) {
+            const existingSale = await ctx.db
+                .query("sales")
+                .withIndex("by_clientOfflineId", (q) => q.eq("clientOfflineId", args.clientOfflineId!))
+                .first();
+            if (existingSale) {
+                return {
+                    saleId: existingSale._id,
+                    invoiceNumber: existingSale.invoiceNumber,
+                    redemptions: [],
+                    isDuplicateSync: true,
+                };
+            }
+        }
+
         const date = new Date().toISOString();
 
         // Check if user is assigned to a shop
@@ -167,103 +289,37 @@ export const create = mutation({
             customerLocation: args.customerLocation,
             transactionType: args.transactionType || "Sale",
             invoiceNumber: await generateInvoiceNumber(ctx, shop ? shop._id : args.shopId),
+            clientOfflineId: args.clientOfflineId,
+            isOfflineSync: args.isOfflineSync,
         });
 
         const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
 
+        // Record immutable stock movements in stockLedger
+        for (const item of args.items) {
+            await ctx.db.insert("stockLedger", {
+                stockId: item.stockId,
+                shopId: shop ? shop._id : args.shopId,
+                deltaQty: -item.quantity,
+                eventType: "SALE",
+                referenceId: invoiceNumberValue || saleId,
+                userId: args.userId,
+                timestamp: date,
+                notes: `Sale ${invoiceNumberValue || ""} to ${args.manualCustomerName || "Customer"}`,
+            });
+        }
+
         // ---------------------------------------------------------
         // PROMOTION TRIGGER LOGIC
         // ---------------------------------------------------------
-        const triggeredRedemptions = [];
-
-        // 1. Fetch all active promotions
-        const activePromotions = await ctx.db
-            .query("promotions")
-            .filter(q => q.eq(q.field("isActive"), true))
-            .collect();
-
-        if (activePromotions.length > 0) {
-            const activePromoIds = new Set(activePromotions.map(p => p._id));
-
-            // 2. Fetch products linked to these promotions (for Product-type triggers)
-            const cartStockIds = new Set(args.items.map(i => i.stockId));
-            const allPromotionProducts = await ctx.db
-                .query("promotionProducts")
-                .collect();
-            const relevantPromoProducts = allPromotionProducts.filter(pp =>
-                activePromoIds.has(pp.promotionId) && cartStockIds.has(pp.stockId)
-            );
-
-            // 3. Check for Product Triggers
-            for (const item of args.items) {
-                const triggers = relevantPromoProducts.filter(pp => pp.stockId === item.stockId);
-                for (const trigger of triggers) {
-                    const promotion = activePromotions.find(p => p._id === trigger.promotionId);
-                    if (!promotion) continue;
-                    const redemptionCount = Math.floor(item.quantity / trigger.requiredQuantity);
-                    if (redemptionCount > 0) {
-                        const redemptionData = {
-                            promotionId: promotion._id,
-                            salesId: saleId,
-                            customerId: args.customerId,
-                            userId: args.userId,
-                            shopId: shop ? shop._id : args.shopId,
-                            date,
-                            redeemedQuantity: redemptionCount,
-                            productName: item.name,
-                            productCode: item.productCode,
-                            prize: promotion.prize,
-                        };
-                        await ctx.db.insert("promotionRedemptions", redemptionData);
-                        triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
-                    }
-                }
-            }
-
-            // 4. Check for Global Threshold Triggers (Total PV/BV)
-            const totalPV = args.items.reduce((sum, item) => sum + (item.pv * item.quantity), 0);
-            const totalBV = args.items.reduce((sum, item) => sum + (item.bv * item.quantity), 0);
-
-            for (const promotion of activePromotions) {
-                if (promotion.triggerType === "TotalPV" && promotion.threshold && totalPV >= promotion.threshold) {
-                    const redemptionCount = Math.floor(totalPV / promotion.threshold);
-                    if (redemptionCount > 0) {
-                        const redemptionData = {
-                            promotionId: promotion._id,
-                            salesId: saleId,
-                            customerId: args.customerId,
-                            userId: args.userId,
-                            shopId: shop ? shop._id : args.shopId,
-                            date,
-                            redeemedQuantity: redemptionCount,
-                            productName: "WHOLE SALE (PV)",
-                            productCode: "THRESHOLD",
-                            prize: promotion.prize,
-                        };
-                        await ctx.db.insert("promotionRedemptions", redemptionData);
-                        triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
-                    }
-                } else if (promotion.triggerType === "TotalBV" && promotion.threshold && totalBV >= promotion.threshold) {
-                    const redemptionCount = Math.floor(totalBV / promotion.threshold);
-                    if (redemptionCount > 0) {
-                        const redemptionData = {
-                            promotionId: promotion._id,
-                            salesId: saleId,
-                            customerId: args.customerId,
-                            userId: args.userId,
-                            shopId: shop ? shop._id : args.shopId,
-                            date,
-                            redeemedQuantity: redemptionCount,
-                            productName: "WHOLE SALE (BV)",
-                            productCode: "THRESHOLD",
-                            prize: promotion.prize,
-                        };
-                        await ctx.db.insert("promotionRedemptions", redemptionData);
-                        triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
-                    }
-                }
-            }
-        }
+        const triggeredRedemptions = await processPromotionTriggers(ctx, {
+            salesId: saleId,
+            customerId: args.customerId,
+            userId: args.userId,
+            shopId: shop ? shop._id : args.shopId,
+            date,
+            items: args.items,
+        });
         // ---------------------------------------------------------
 
         // Handle Loans
@@ -356,6 +412,7 @@ export const editSale = mutation({
                     };
                 } else {
                     // Item no longer present in shop list; add it back
+                    const originalStock = await ctx.db.get(item.stockId);
                     updatedShopStocks.push({
                         stockId: item.stockId,
                         name: item.name,
@@ -364,7 +421,8 @@ export const editSale = mutation({
                         price: item.price,
                         pv: item.pv,
                         bv: item.bv,
-                    } as any);
+                        halfPrice: originalStock?.halfPrice ?? false,
+                    });
                 }
             }
             await ctx.db.patch(shop._id, { issuedStocks: updatedShopStocks });
@@ -375,6 +433,20 @@ export const editSale = mutation({
                     await ctx.db.patch(item.stockId, { qty: stock.qty + item.quantity });
                 }
             }
+        }
+
+        // Record compensating SALE_VOID events in stockLedger
+        for (const item of existingSale.items) {
+            await ctx.db.insert("stockLedger", {
+                stockId: item.stockId,
+                shopId: shopId,
+                deltaQty: item.quantity,
+                eventType: "SALE_VOID",
+                referenceId: existingSale.invoiceNumber || args.saleId,
+                userId: args.userId,
+                timestamp: new Date().toISOString(),
+                notes: `Edit rollback for sale ${existingSale.invoiceNumber || args.saleId}`,
+            });
         }
 
         // -----------------------------------------------------------------
@@ -437,6 +509,20 @@ export const editSale = mutation({
             }
         }
 
+        // Record new SALE events in stockLedger
+        for (const item of args.items) {
+            await ctx.db.insert("stockLedger", {
+                stockId: item.stockId,
+                shopId: shopId,
+                deltaQty: -item.quantity,
+                eventType: "SALE",
+                referenceId: existingSale.invoiceNumber || args.saleId,
+                userId: args.userId,
+                timestamp: new Date().toISOString(),
+                notes: `Updated sale item for ${existingSale.invoiceNumber || args.saleId}`,
+            });
+        }
+
         // -----------------------------------------------------------------
         // 5) UPDATE sale record (preserve original invoiceNumber, date, shopId, userId, transactionType)
         // -----------------------------------------------------------------
@@ -459,85 +545,15 @@ export const editSale = mutation({
         // -----------------------------------------------------------------
         // 6) RE-APPLY promotion redemptions (matches create logic)
         // -----------------------------------------------------------------
-        const triggeredRedemptions: any[] = [];
         const newDate = new Date().toISOString();
-
-        const activePromotions = await ctx.db
-            .query("promotions")
-            .filter((q) => q.eq(q.field("isActive"), true))
-            .collect();
-
-        if (activePromotions.length > 0) {
-            const activePromoIds = new Set(activePromotions.map(p => p._id));
-            const cartStockIds = new Set(args.items.map(i => i.stockId));
-            const allPromotionProducts = await ctx.db.query("promotionProducts").collect();
-            const relevantPromoProducts = allPromotionProducts.filter(pp =>
-                activePromoIds.has(pp.promotionId) && cartStockIds.has(pp.stockId)
-            );
-
-            for (const item of args.items) {
-                const triggers = relevantPromoProducts.filter(pp => pp.stockId === item.stockId);
-                for (const trigger of triggers) {
-                    const promotion = activePromotions.find(p => p._id === trigger.promotionId);
-                    if (!promotion) continue;
-                    const redemptionCount = Math.floor(item.quantity / trigger.requiredQuantity);
-                    if (redemptionCount > 0) {
-                        const redemptionData = {
-                            promotionId: promotion._id,
-                            salesId: args.saleId,
-                            customerId: args.customerId,
-                            userId: existingSale.userId,
-                            shopId: shopId,
-                            date: newDate,
-                            redeemedQuantity: redemptionCount,
-                            productName: item.name,
-                            productCode: item.productCode,
-                            prize: promotion.prize,
-                        };
-                        await ctx.db.insert("promotionRedemptions", redemptionData);
-                        triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
-                    }
-                }
-            }
-
-            const totalPV = args.items.reduce((sum, i) => sum + (i.pv * i.quantity), 0);
-            const totalBV = args.items.reduce((sum, i) => sum + (i.bv * i.quantity), 0);
-            for (const promotion of activePromotions) {
-                if (promotion.triggerType === "TotalPV" && promotion.threshold && totalPV >= promotion.threshold) {
-                    const redemptionCount = Math.floor(totalPV / promotion.threshold);
-                    if (redemptionCount > 0) {
-                        await ctx.db.insert("promotionRedemptions", {
-                            promotionId: promotion._id,
-                            salesId: args.saleId,
-                            customerId: args.customerId,
-                            userId: existingSale.userId,
-                            shopId: shopId,
-                            date: newDate,
-                            redeemedQuantity: redemptionCount,
-                            productName: "WHOLE SALE (PV)",
-                            productCode: "THRESHOLD",
-                            prize: promotion.prize,
-                        });
-                    }
-                } else if (promotion.triggerType === "TotalBV" && promotion.threshold && totalBV >= promotion.threshold) {
-                    const redemptionCount = Math.floor(totalBV / promotion.threshold);
-                    if (redemptionCount > 0) {
-                        await ctx.db.insert("promotionRedemptions", {
-                            promotionId: promotion._id,
-                            salesId: args.saleId,
-                            customerId: args.customerId,
-                            userId: existingSale.userId,
-                            shopId: shopId,
-                            date: newDate,
-                            redeemedQuantity: redemptionCount,
-                            productName: "WHOLE SALE (BV)",
-                            productCode: "THRESHOLD",
-                            prize: promotion.prize,
-                        });
-                    }
-                }
-            }
-        }
+        const triggeredRedemptions = await processPromotionTriggers(ctx, {
+            salesId: args.saleId,
+            customerId: args.customerId,
+            userId: existingSale.userId,
+            shopId: shopId,
+            date: newDate,
+            items: args.items,
+        });
 
         // -----------------------------------------------------------------
         // 7) RE-CREATE loan + initial deposit if applicable

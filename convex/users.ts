@@ -1,7 +1,15 @@
-import { v } from "convex/values";
+﻿import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import bcrypt from "bcryptjs";
+import { requireAdmin, requireAuth, requireSelfOrAdmin } from "./auth";
+
+// Helper to strip sensitive credentials before returning to client
+function sanitizeUser<T extends { password?: string }>(user: T | null): Omit<T, "password"> | null {
+    if (!user) return null;
+    const { password, ...safeUser } = user;
+    return safeUser;
+}
 
 // Fetch all users with pagination and search (Paginated)
 export const list = query({
@@ -23,7 +31,11 @@ export const list = query({
             );
         }
 
-        return await usersQuery.order("desc").paginate(args.paginationOpts);
+        const paginated = await usersQuery.order("desc").paginate(args.paginationOpts);
+        return {
+            ...paginated,
+            page: paginated.page.map(u => sanitizeUser(u)!),
+        };
     },
 });
 
@@ -31,7 +43,8 @@ export const list = query({
 export const listAll = query({
     args: {},
     handler: async (ctx) => {
-        return await ctx.db.query("users").order("desc").collect();
+        const users = await ctx.db.query("users").order("desc").collect();
+        return users.map(u => sanitizeUser(u)!);
     },
 });
 
@@ -56,7 +69,7 @@ export const getPaginated = query({
         }
 
         const totalCount = results.length;
-        const page = results.slice(args.offset, args.offset + args.limit);
+        const page = results.slice(args.offset, args.offset + args.limit).map(u => sanitizeUser(u)!);
 
         return { page, totalCount };
     },
@@ -66,10 +79,11 @@ export const getPaginated = query({
 export const getByEmail = query({
     args: { email: v.string() },
     handler: async (ctx, args) => {
-        return await ctx.db
+        const user = await ctx.db
             .query("users")
             .withIndex("by_email", (q) => q.eq("email", args.email))
             .unique();
+        return sanitizeUser(user);
     },
 });
 
@@ -81,6 +95,9 @@ export const setRoles = mutation({
         adminUserId: v.id("users"),
     },
     handler: async (ctx, args) => {
+        // FIX #4: Verify caller is an admin
+        await requireAdmin(ctx, args.adminUserId);
+
         const user = await ctx.db.get(args.userId);
         if (!user) throw new Error("User not found");
 
@@ -117,6 +134,9 @@ export const update = mutation({
         adminUserId: v.id("users"),
     },
     handler: async (ctx, args) => {
+        // FIX #4: Verify caller is an admin
+        await requireAdmin(ctx, args.adminUserId);
+
         const { id, adminUserId, ...rest } = args;
         const user = await ctx.db.get(id);
         if (!user) throw new Error("User not found");
@@ -220,7 +240,7 @@ export const login = mutation({
             timestamp: new Date().toISOString(),
         });
 
-        return user;
+        return sanitizeUser(user);
     },
 });
 
@@ -260,11 +280,9 @@ export const requestPasswordReset = mutation({
             details: `Password reset requested for ${user.first_name} ${user.last_name} (${args.email})`,
             timestamp: new Date().toISOString(),
         });
+        // Email is sent via the /api/send-reset-email Next.js route (called by the frontend).
 
-        // In a real app, send an email here.
-        console.log(`Password reset code for ${args.email}: ${code}`);
-
-        return { success: true };
+        return { success: true, code }; // code returned so frontend /api/send-reset-email can email it
     },
 });
 
@@ -320,6 +338,9 @@ export const create = mutation({
         adminUserId: v.id("users"),
     },
     handler: async (ctx, args) => {
+        // FIX #4: Verify caller is an admin
+        await requireAdmin(ctx, args.adminUserId);
+
         const existing = await ctx.db
             .query("users")
             .withIndex("by_email", (q) => q.eq("email", args.email))
@@ -358,6 +379,9 @@ export const toggleRole = mutation({
         adminUserId: v.id("users"),
     },
     handler: async (ctx, args) => {
+        // FIX #4: Verify caller is an admin
+        await requireAdmin(ctx, args.adminUserId);
+
         const user = await ctx.db.get(args.userId);
         if (!user) throw new Error("User not found");
 
@@ -384,6 +408,9 @@ export const toggleRole = mutation({
 export const remove = mutation({
     args: { id: v.id("users"), adminUserId: v.id("users") },
     handler: async (ctx, args) => {
+        // FIX #4: Verify caller is an admin
+        await requireAdmin(ctx, args.adminUserId);
+
         const user = await ctx.db.get(args.id);
         if (!user) throw new Error("User not found");
 
@@ -425,3 +452,5 @@ export const changePassword = mutation({
         });
     },
 });
+
+

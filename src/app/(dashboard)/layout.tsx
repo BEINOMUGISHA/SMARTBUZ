@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import {
     LayoutDashboard,
     ShoppingCart,
@@ -26,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
 import { cn } from "@/lib/utils";
+import { OfflineStatusBanner } from "@/components/offline-status-banner";
 
 const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -61,6 +64,9 @@ export default function DashboardLayout({
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isReportsOpen, setIsReportsOpen] = useState(false);
+    const activeBusiness = useQuery(api.businessProfiles.getActive);
+    const businessName = activeBusiness?.businessName || "SMARTBUZ POS";
+    const businessSubtitle = activeBusiness?.industry || activeBusiness?.businessType || "Omni-Channel POS";
 
     useEffect(() => {
         if (!isLoading && !user) {
@@ -79,7 +85,10 @@ export default function DashboardLayout({
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
-                    <Image src="/logo.ico" alt="Loading" width={150} height={50} className="animate-pulse" />
+                    <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white font-black text-2xl shadow-lg animate-pulse">
+                        {businessName.charAt(0)}
+                    </div>
+                    <div className="text-xs font-bold text-muted-foreground tracking-widest uppercase">{businessName}</div>
                     <div className="h-1 w-32 bg-muted rounded-full overflow-hidden">
                         <div className="h-full bg-primary animate-loading-bar" style={{ width: '50%' }} />
                     </div>
@@ -93,13 +102,13 @@ export default function DashboardLayout({
             {/* Logo Area */}
             <div className={cn("flex h-20 items-center border-b border-sidebar-border/50 transition-all", isCollapsed ? "justify-center px-2" : "px-6")}>
                 <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-                    <div className="relative h-10 w-10 overflow-hidden rounded-lg bg-white/90 p-1 shadow-md shrink-0">
-                        <Image src="/logo.ico" alt="Tiens Logo" fill className="object-contain" />
+                    <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 p-1 shadow-md shrink-0 flex items-center justify-center text-white font-black text-lg">
+                        {businessName.charAt(0)}
                     </div>
                     {!isCollapsed && (
                         <div className="flex flex-col animate-in fade-in duration-300">
-                            <span className="text-lg font-black tracking-tight text-sidebar-primary">TIENS POS</span>
-                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Tiens Uganda</span>
+                            <span className="text-lg font-black tracking-tight text-sidebar-primary">{businessName}</span>
+                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{businessSubtitle}</span>
                         </div>
                     )}
                 </Link>
@@ -283,25 +292,33 @@ export default function DashboardLayout({
             >
                 {/* Mobile Header (Only visible on small screens to toggle sidebar) */}
                 <div className="sticky top-0 z-40 flex h-16 items-center border-b bg-background/95 px-6 backdrop-blur lg:hidden justify-between shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <Image src="/logo.ico" alt="Logo" width={32} height={32} />
-                        <span className="font-bold text-lg text-primary">TIENS POS</span>
+                    <div className="flex items-center gap-2.5">
+                        <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white font-black text-sm shadow-sm">
+                            {businessName.charAt(0)}
+                        </div>
+                        <span className="font-bold text-base text-primary tracking-tight">{businessName}</span>
                     </div>
-                    <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
-                        <SheetTrigger asChild>
-                            <Button variant="ghost" size="icon" className="-mr-2">
-                                <Menu className="h-6 w-6" />
-                                <span className="sr-only">Toggle navigation menu</span>
-                            </Button>
-                        </SheetTrigger>
-                        <SheetContent side="left" className="w-[300px] p-0 border-r-0">
-                            <SidebarContent />
-                        </SheetContent>
-                    </Sheet>
+                    <div className="flex items-center gap-2">
+                        <OfflineStatusBanner />
+                        <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
+                            <SheetTrigger asChild>
+                                <Button variant="ghost" size="icon" className="-mr-2">
+                                    <Menu className="h-6 w-6" />
+                                    <span className="sr-only">Toggle navigation menu</span>
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent side="left" className="w-[300px] p-0 border-r-0">
+                                <SidebarContent />
+                            </SheetContent>
+                        </Sheet>
+                    </div>
                 </div>
 
                 <main className="flex-1 p-4 lg:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="mx-auto max-w-7xl">
+                    <div className="mx-auto max-w-7xl space-y-4">
+                        <div className="hidden lg:flex justify-end">
+                            <OfflineStatusBanner />
+                        </div>
                         {children}
                     </div>
                 </main>

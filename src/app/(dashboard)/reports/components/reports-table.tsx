@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Printer, FileSpreadsheet, FileText, Eye } from "lucide-react";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
 import { cn } from "@/lib/utils";
+import { useQuery } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
 import {
     Select,
     SelectContent,
@@ -68,6 +70,11 @@ export function ReportTable<T>({
 }: ReportTableProps<T>) {
     const internalId = React.useId().replace(/:/g, "");
     const actualPrintId = printId || `report-print-${internalId}`;
+
+    const activeProfile = useQuery(api.businessProfiles.getActive);
+    const businessName = activeProfile?.businessName || "SMARTBUZ POS";
+    const businessAddress = activeProfile?.businessAddress || "";
+    const businessPhone = activeProfile?.businessPhone || "";
 
     const handlePrint = () => {
         // We need to set a temporary class on the body to target THIS specific report
@@ -126,7 +133,19 @@ export function ReportTable<T>({
                                 console.error("Failed to load logo for PDF", error);
                             }
 
-                            exportToPDF(data, columns as any, title.replace(/\s+/g, "_").toLowerCase(), title, stats, logoBase64);
+                            exportToPDF(
+                                data,
+                                columns as any,
+                                title.replace(/\s+/g, "_").toLowerCase(),
+                                title,
+                                stats,
+                                logoBase64,
+                                {
+                                    name: businessName,
+                                    address: businessAddress,
+                                    phone: businessPhone,
+                                }
+                            );
                         }}
                         className={cn("h-7 px-3 gap-2 text-[10px] font-black uppercase border-red-600/20 text-red-700 hover:bg-red-50", compact && "h-6 px-2 text-[8px]")}
                     >
@@ -281,12 +300,12 @@ export function ReportTable<T>({
             {/* HIDDEN PRINT CONTENT */}
             {/* HIDDEN PRINT CONTENT */}
             <div id={actualPrintId} className="hidden print:report-print-view bg-white text-black p-4 min-h-screen report-print-view">
-                {/* OFFICIAL TIENS HEADER (Matching Receipt Style) */}
+                {/* OFFICIAL BUSINESS HEADER */}
                 <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans relative">
-                    <div className="text-center px-20"> {/* Padding to prevent text overlapping logo if screen is small */}
-                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">TIENS HEALTH PRODUCTS</h2>
-                        <p className="text-[11px] leading-tight font-bold text-gray-600">6th Floor, King Fahd Plaza, Plot 52 Kampala Rd</p>
-                        <p className="text-[11px] font-bold text-gray-500">P.O.Box .... Kampala, Tel: +256 (0) 702 794 458 | 0773 662 136</p>
+                    <div className="text-center px-20">
+                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
+                        {businessAddress && <p className="text-[11px] leading-tight font-bold text-gray-600">{businessAddress}</p>}
+                        {businessPhone && <p className="text-[11px] font-bold text-gray-500">Tel: {businessPhone}</p>}
                         <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
                             OFFICIAL {title}
                         </div>
@@ -294,7 +313,9 @@ export function ReportTable<T>({
 
                     {/* Logo (Right Aligned Absolute) */}
                     <div className="absolute right-0 top-0 h-full flex items-start pt-1">
-                        <img src="/logo.ico" alt="Logo" className="h-20 w-20 object-contain" />
+                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-black text-2xl text-emerald-800 bg-emerald-50">
+                            {businessName.slice(0, 2).toUpperCase()}
+                        </div>
                     </div>
                 </div>
 
@@ -381,7 +402,7 @@ export function ReportTable<T>({
                     <div className="border-t-2 border-gray-200 pt-4 text-right">
                         <p className="font-black uppercase tracking-widest text-gray-800 border-b border-dashed border-gray-300 pb-1 mb-4">Official Stamp</p>
                         <div className="h-10 invisible">Stamp Space</div>
-                        <p className="mt-2 text-gray-500 font-bold tracking-tight uppercase">TIENS HEALTH PRODUCTS CENTER</p>
+                        <p className="mt-2 text-gray-500 font-bold tracking-tight uppercase">{businessName} MANAGEMENT</p>
                     </div>
                 </div>
             </div>

@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import Image from "next/image";
 import {
     TrendingUp,
     Users,
@@ -9,7 +10,8 @@ import {
     AlertTriangle,
     CreditCard,
     ArrowUpRight,
-    Search
+    Search,
+    Sparkles,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -153,6 +155,28 @@ export default function DashboardPage() {
                             </Popover>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            {/* Hero Graphic Banner */}
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-emerald-950 via-slate-900 to-primary text-white shadow-xl min-h-[140px] flex items-center p-6 lg:p-8">
+                <Image
+                    src="/images/pos-hero.jpg"
+                    alt="POS Hero"
+                    fill
+                    className="object-cover opacity-25 mix-blend-overlay pointer-events-none"
+                    priority
+                />
+                <div className="relative z-10 max-w-xl space-y-2">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-bold text-emerald-300 border border-white/15">
+                        <Sparkles className="h-3.5 w-3.5" /> Next-Gen Multi-Niche POS
+                    </div>
+                    <h2 className="text-xl lg:text-2xl font-black tracking-tight">
+                        Welcome back, {user?.first_name || "Manager"}
+                    </h2>
+                    <p className="text-xs lg:text-sm text-white/80 line-clamp-2">
+                        Real-time point-of-sale, intelligent inventory tracking, automated commissions, and multi-branch synchronization.
+                    </p>
                 </div>
             </div>
 

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+﻿import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
 export const list = query({
@@ -29,6 +29,8 @@ export const create = mutation({
     currency: v.optional(v.string()),
     country: v.optional(v.string()),
     taxEnabled: v.optional(v.boolean()),
+    businessAddress: v.optional(v.string()),
+    businessPhone: v.optional(v.string()),
     createdBy: v.id("users"),
   },
   handler: async (ctx, args) => {
@@ -51,6 +53,8 @@ export const create = mutation({
       currency: args.currency ?? "UGX",
       country: args.country ?? "Uganda",
       taxEnabled: args.taxEnabled ?? false,
+      businessAddress: args.businessAddress,
+      businessPhone: args.businessPhone,
       isActive: true,
       createdBy: args.createdBy,
       updatedAt: now,
@@ -68,6 +72,8 @@ export const update = mutation({
     currency: v.optional(v.string()),
     country: v.optional(v.string()),
     taxEnabled: v.optional(v.boolean()),
+    businessAddress: v.optional(v.string()),
+    businessPhone: v.optional(v.string()),
     isActive: v.optional(v.boolean()),
     updatedBy: v.id("users"),
   },
@@ -113,3 +119,4 @@ export const remove = mutation({
     return true;
   },
 });
+

@@ -1,107 +1,124 @@
+/**
+ * SMARTBUZ Updated Auth Context
+ *
+ * FIX #1: Auth no longer stores a plain email in localStorage.
+ * Session is now managed via a server-issued HttpOnly signed cookie
+ * (set by POST /api/auth).
+ *
+ * The client context calls /api/auth to login/logout, and fetches
+ * /api/auth?action=me to rehydrate the session on page load.
+ * Convex queries still use the email from the validated session payload.
+ */
+
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-
 import { Id } from "../../convex/_generated/dataModel";
 
 type User = {
-    _id: Id<"users">;
-    first_name: string;
-    middle_name?: string;
-    last_name: string;
-    email: string;
-    roles: string[];
-    phone_number?: string;
+  _id: Id<"users">;
+  first_name: string;
+  middle_name?: string;
+  last_name: string;
+  email: string;
+  roles: string[];
+  phone_number?: string;
 };
 
 type AuthContextType = {
-    user: User | null;
-    isLoading: boolean;
-    login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-    logout: () => void;
-    checkRole: (roles: string[]) => boolean;
+  user: User | null;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  checkRole: (roles: string[]) => boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-    const [email, setEmail] = useState<string | null>(null);
-    const [isRestoring, setIsRestoring] = useState(true);
-    const router = useRouter();
-    const loginMutation = useMutation(api.users.login);
+  // email is sourced from the verified server session, not from raw localStorage
+  const [email, setEmail] = useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = useState(true);
+  const router = useRouter();
 
-    useEffect(() => {
-        const savedEmail = localStorage.getItem("pos_user_email");
-        console.log("AuthContext: Initial load. localStorage email:", savedEmail);
-        if (savedEmail) {
-            setEmail(savedEmail);
+  // Rehydrate session from the server-side cookie on mount
+  useEffect(() => {
+    fetch("/api/auth", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { user: null }))
+      .then((data) => {
+        if (data?.user?.email) {
+          setEmail(data.user.email);
         }
-        setIsRestoring(false);
-    }, []);
+      })
+      .catch(() => {})
+      .finally(() => setIsRestoring(false));
+  }, []);
 
-    const user = useQuery(api.users.getByEmail, email ? { email } : "skip");
+  // Fetch full user object from Convex using the session-verified email
+  const user = useQuery(api.users.getByEmail, email ? { email } : "skip");
 
-    // Loading if:
-    // 1. We haven't checked localStorage yet (isRestoring)
-    // 2. We have an email but Convex hasn't returned the user data yet
-    const isLoading = isRestoring || (email !== null && user === undefined);
+  const isLoading = isRestoring || (email !== null && user === undefined);
 
-    useEffect(() => {
-        if (!isLoading) {
-            console.log("AuthContext: State check", { email, foundUser: !!user, isLoading });
-            // Only auto-logout if we aren't loading, we have an email (attempted login), but no user found
-            if (email && !user) {
-                console.warn("AuthContext: Logout triggered. User not found for email:", email);
-                localStorage.removeItem("pos_user_email");
-                setEmail(null);
-                // We don't force push here, let the UI decide or user action
-                // But for security, if the token/email is invalid, we should probably redirect
-                // However, doing it here might conflict with other logic. 
-                // Let's keep it safe: if we had an email but query returned null, we are invalid.
-            }
-        }
-    }, [user, isLoading, email]);
+  // If the email no longer resolves to a valid user, clear the local state
+  useEffect(() => {
+    if (!isLoading && email && !user) {
+      setEmail(null);
+    }
+  }, [user, isLoading, email]);
 
-    const login = async (newEmail: string, password: string) => {
-        try {
-            const authenticatedUser = await loginMutation({ email: newEmail, password });
-            if (authenticatedUser) {
-                localStorage.setItem("pos_user_email", newEmail);
-                setEmail(newEmail);
-                router.push("/");
-                return { success: true };
-            }
-            return { success: false, error: "Authentication failed" };
-        } catch (error: any) {
-            return { success: false, error: error.message || "An error occurred" };
-        }
-    };
+  const login = useCallback(async (newEmail: string, password: string) => {
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: newEmail.trim().toLowerCase(), password }),
+      });
 
-    const logout = () => {
-        localStorage.removeItem("pos_user_email");
-        setEmail(null);
-        router.push("/auth/login");
-    };
+      const data = await res.json();
 
-    const checkRole = (allowedRoles: string[]) => {
-        if (!user) return false;
-        return user.roles.some((role: string) => allowedRoles.includes(role));
-    };
+      if (data.success && data.user?.email) {
+        setEmail(data.user.email);
+        router.push("/");
+        return { success: true };
+      }
+      return { success: false, error: data.error || "Authentication failed" };
+    } catch {
+      return { success: false, error: "Network error. Please try again." };
+    }
+  }, [router]);
 
-    return (
-        <AuthContext.Provider value={{ user: user ?? null, isLoading, login, logout, checkRole }}>
-            {children}
-        </AuthContext.Provider>
-    );
+  const logout = useCallback(async () => {
+    await fetch("/api/auth?action=logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
+    setEmail(null);
+    router.push("/auth/login");
+  }, [router]);
+
+  const checkRole = useCallback(
+    (allowedRoles: string[]) => {
+      if (!user) return false;
+      return (user as User).roles.some((role: string) => allowedRoles.includes(role));
+    },
+    [user]
+  );
+
+  return (
+    <AuthContext.Provider value={{ user: user ?? null, isLoading, login, logout, checkRole }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error("useAuth must be used within an AuthProvider");
-    }
-    return context;
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 };

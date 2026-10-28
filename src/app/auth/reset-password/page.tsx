@@ -21,23 +21,25 @@ export default function ResetPasswordPage() {
             {/* Left side: Hero Section (Desktop only) */}
             <div className="hidden bg-muted lg:block relative">
                 <Image
-                    src="/bac.jpg"
+                    src="/images/pos-hero.jpg"
                     alt="Reset Password Background"
                     fill
                     className="object-cover"
                     priority
                 />
-                <div className="absolute inset-0 bg-primary/30 backdrop-blur-[3px] flex flex-col items-center justify-center p-12 text-white">
-                    {/* <div className="mb-12">
-                        <Image src="/logo.ico" alt="Logo" width={240} height={80} className="object-contain brightness-0 invert" />
-                    </div> */}
+                <div className="absolute inset-0 bg-primary/40 backdrop-blur-[3px] flex flex-col items-center justify-center p-12 text-white">
+                    <div className="mb-6 h-16 w-16 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                        <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                    </div>
                     <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">Secure Your <br />Account</h2>
                     <p className="text-xl text-center max-w-md opacity-90 font-medium">
-                        Create a strong password to protect your sales data and customer records.
+                        Create a strong password to protect your sales data, inventory, and records.
                     </p>
                 </div>
                 <div className="absolute bottom-8 left-0 right-0 text-center text-white/60 text-sm">
-                    Tiens Uganda Security Standards • Trusted Systems
+                    Enterprise Grade Security • Powered by SMARTBUZ
                 </div>
             </div>
 
@@ -59,7 +61,7 @@ export default function ResetPasswordPage() {
 
                     <div className="pt-4 text-center">
                         <p className="text-sm font-medium text-muted-foreground/60">
-                            Questions? Contact Tiens Uganda IT Support
+                            Questions? Contact SMARTBUZ IT Support
                         </p>
                     </div>
                 </div>

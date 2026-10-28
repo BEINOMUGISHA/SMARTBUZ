@@ -38,7 +38,7 @@ export const generateRestockPDF = (
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
     doc.setFont('helvetica', 'bold');
-    doc.text(shopInfo.name || 'TIENS SHOP', 15, 15);
+    doc.text(shopInfo.name || 'SHOP RESTOCK', 15, 15);
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
@@ -103,7 +103,7 @@ export const generateRestockPDF = (
         doc.setFontSize(8);
         doc.setTextColor(150, 150, 150);
         doc.text(
-            `TIENS POS System - Generated for ${shopInfo.name} - Page ${i} of ${pageCount}`,
+            `SMARTBUZ POS System - Generated for ${shopInfo.name} - Page ${i} of ${pageCount}`,
             15,
             285
         );

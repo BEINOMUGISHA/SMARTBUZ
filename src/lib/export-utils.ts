@@ -52,7 +52,7 @@ export async function exportToExcel(data: any[], columns: Column[], filename: st
     headerRow.fill = {
         type: "pattern",
         pattern: "solid",
-        fgColor: { argb: "FF008542" } // Tiens Green
+        fgColor: { argb: "FF0f766e" } // Brand Teal Green
     };
     headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
@@ -76,54 +76,61 @@ export async function exportToExcel(data: any[], columns: Column[], filename: st
 /**
  * Exports data to a PDF file with Tiens branding and formatted tables.
  */
-export function exportToPDF(data: any[], columns: Column[], filename: string, title: string, summaryStats?: any[], logoBase64?: string) {
+export function exportToPDF(
+    data: any[],
+    columns: Column[],
+    filename: string,
+    title: string,
+    summaryStats?: any[],
+    logoBase64?: string,
+    businessInfo?: { name?: string; address?: string; phone?: string }
+) {
     const doc = new jsPDF() as any;
-
-    // --- HEADER SECTION (White BG) ---
-    // 0. Logo (Right Side)
-    // Design matching screenshot: "TIENS HEALTH PRODUCTS" is roughly centered. Logo usually goes left or above.
-    // User requested "logo.ico in ... headers". I'll put it top-center or to the left of the title.
-    // Let's place it Top-Left or Top-Center. The text is centered. Placing logo at x=80, y=10?
-    // Let's try placing it to the left of the text block if possible, or just centered above.
 
     if (logoBase64) {
         try {
-            // Add logo on the right side
             doc.addImage(logoBase64, 'PNG', 170, 15, 25, 25);
         } catch (e) {
             console.warn("Failed to add logo to PDF", e);
         }
     }
-    // 1. Title: Tiens Green, Bold, Centered
-    doc.setTextColor(0, 133, 66); // #008542
+
+    const brandName = businessInfo?.name || "SMARTBUZ POS";
+    const brandAddress = businessInfo?.address || "Point of Sale & Inventory Management System";
+    const brandPhone = businessInfo?.phone || "";
+
+    // 1. Title
+    doc.setTextColor(15, 118, 110); // Professional Teal / Slate Green
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.text("TIENS HEALTH PRODUCTS", 105, 25, { align: "center" });
+    doc.text(brandName.toUpperCase(), 105, 25, { align: "center" });
 
-    // 2. Address: Dark Gray, Normal, Centered
+    // 2. Address
     doc.setTextColor(80, 80, 80);
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("6th Floor, King Fahd Plaza, Plot 52 Kampala Rd", 105, 33, { align: "center" }); // 33 for clearance
-    doc.text("Tel: +256 (0) 702 794 458 | 0773 662 136", 105, 38, { align: "center" });   // 38 for legibility
+    doc.text(brandAddress, 105, 33, { align: "center" });
+    if (brandPhone) {
+        doc.text(`Tel: ${brandPhone}`, 105, 38, { align: "center" });
+    }
 
-    // 3. Report Badge: Green Pill with White Text
+    // 3. Report Badge
     const titleText = `OFFICIAL ${title.toUpperCase()}`;
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
-    const textWidth = doc.getTextWidth(titleText) + 20; // Padding
+    const textWidth = doc.getTextWidth(titleText) + 20;
     const pillX = 105 - (textWidth / 2);
 
-    doc.setFillColor(0, 133, 66);
-    doc.roundedRect(pillX, 44, textWidth, 8, 3, 3, "F"); // 44 to clear address
+    doc.setFillColor(15, 118, 110);
+    doc.roundedRect(pillX, 44, textWidth, 8, 3, 3, "F");
 
     doc.setTextColor(255, 255, 255);
-    doc.text(titleText, 105, 49.5, { align: "center" }); // Centered in 44-52 pill
+    doc.text(titleText, 105, 49.5, { align: "center" });
 
-    // 4. Horizontal Green Line
-    doc.setDrawColor(0, 133, 66);
+    // 4. Horizontal Line
+    doc.setDrawColor(15, 118, 110);
     doc.setLineWidth(1);
-    doc.line(10, 58, 200, 58); // 58 to clear pill
+    doc.line(10, 58, 200, 58);
 
     // --- SUMMARY SECTION ---
     let currentY = 66;

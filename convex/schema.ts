@@ -1,4 +1,4 @@
-import { defineSchema, defineTable } from "convex/server";
+﻿import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
@@ -120,10 +120,13 @@ export default defineSchema({
                 quantity: v.number(),
             })
         )),
+        clientOfflineId: v.optional(v.string()), // Idempotency key for offline queued sales
+        isOfflineSync: v.optional(v.boolean()),
     }).index("by_date", ["date"])
         .index("by_shop_date", ["shopId", "date"])
         .index("by_customer_date", ["customerId", "date"])
-        .index("by_invoiceNumber", ["invoiceNumber"]),
+        .index("by_invoiceNumber", ["invoiceNumber"])
+        .index("by_clientOfflineId", ["clientOfflineId"]),
 
     loans: defineTable({
         customerId: v.optional(v.id("customers")), // Made optional for Walk-ins
@@ -188,6 +191,8 @@ export default defineSchema({
         isActive: v.boolean(),
         createdBy: v.optional(v.id("users")),
         updatedAt: v.optional(v.string()),
+        businessAddress: v.optional(v.string()),
+        businessPhone: v.optional(v.string()),
     }).index("by_businessType", ["businessType"])
         .index("by_active", ["isActive"]),
 
@@ -241,4 +246,20 @@ export default defineSchema({
         name: v.string(), // e.g. "invoice"
         lastValue: v.number(),
     }).index("by_name", ["name"]),
+
+    stockLedger: defineTable({
+        stockId: v.id("stocks"),
+        shopId: v.optional(v.id("shops")), // null/undefined = HQ warehouse
+        deltaQty: v.number(),              // negative for sales/issues, positive for restocks/voids
+        eventType: v.string(),             // "SALE", "SALE_VOID", "RESTOCK", "SHOP_ISSUE", "ADJUSTMENT"
+        referenceId: v.optional(v.string()), // saleId, invoice number, etc.
+        userId: v.id("users"),
+        timestamp: v.string(),
+        notes: v.optional(v.string()),
+    })
+        .index("by_stockId", ["stockId"])
+        .index("by_shop_stock", ["shopId", "stockId"])
+        .index("by_timestamp", ["timestamp"])
+        .index("by_eventType", ["eventType"]),
 });
+
