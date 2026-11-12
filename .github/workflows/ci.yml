@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          # Placeholder values: the build must not depend on a live deployment,
+          # a real license key or a real email provider. See src/lib/convex-url.ts
+          # and src/app/api/send-reset-email/route.ts for the failure behaviour.
+          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+          SESSION_SECRET: ci-placeholder-session-secret-at-least-32-chars
+          LICENSE_KEYS: CI-PLACEHOLDER-LICENSE-KEY
+          RESEND_API_KEY: ci-placeholder-key
