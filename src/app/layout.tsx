@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -16,17 +16,20 @@ export const metadata: Metadata = {
   title: "SMART_BUZ - Smart Inventory & Sales",
   description: "Advanced Point of Sale system for modern retail businesses",
   manifest: "/manifest.json",
-  themeColor: "#0f172a",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "SMART_BUZ",
   },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-  },
+};
+
+// `themeColor` and `viewport` belong to the viewport export in Next.js 14+.
+// Keeping them in `metadata` logs a warning on every page load.
+export const viewport: Viewport = {
+  themeColor: "#0f172a",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 import { ConvexClientProvider } from "@/components/convex-client-provider";
