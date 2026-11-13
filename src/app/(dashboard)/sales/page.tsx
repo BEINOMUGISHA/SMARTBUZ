@@ -5,6 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id, Doc } from "../../../../convex/_generated/dataModel";
 import { useAuth } from "@/context/auth-context";
+import { useActiveCategory } from "@/hooks/use-active-category";
+import { computeVat } from "@/lib/vat";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -213,11 +215,29 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const isShopUser = !!shopData?.shop;
     const stocks = shopData?.stocks || [];
     const totalStocksCount = shopData?.totalCount || 0;
+
+    /* ── Business vertical + URA VAT configuration ── */
+    const { category: activeCategory } = useActiveCategory(user?.roles ?? []);
+    const categoryTerminology = activeCategory?.terminology ?? {
+        item: "Product",
+        outlet: "Branch",
+        staff: "Cashier",
+        customer: "Customer",
+    };
     const status = "Loaded";
     const isStocksLoading = shopData === undefined;
 
     const customers = useQuery(api.customers.listAll);
     const activeProfile = useQuery(api.businessProfiles.getActive);
+    const vatProfile = activeProfile
+        ? {
+              taxEnabled: activeProfile.taxEnabled ?? false,
+              taxRate: activeProfile.taxRate ?? 18,
+              taxInclusive: activeProfile.taxInclusive ?? true,
+              taxNote: activeProfile.taxNote,
+              tin: (activeProfile as any).tin,
+          }
+        : null;
     const createSale = useMutation(api.sales.create);
     const activePromotions = useQuery(api.promotions.getActivePromotionsWithProducts);
 
@@ -613,6 +633,13 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             const selectedCustomer = customers?.find(c => c._id === selectedCustomerId);
             const fullName = `${user.first_name} ${user.last_name}${user.middle_name ? ` ${user.middle_name}` : ""}`;
 
+            const vatFigures = computeVat(
+                cartTotal,
+                vatProfile?.taxEnabled ?? false,
+                vatProfile?.taxRate ?? 18,
+                vatProfile?.taxInclusive ?? true
+            );
+
             const receipt = {
                 businessName: activeProfile?.businessName || (isShopUser ? shopData.shop.name : "SMARTBUZ POS"),
                 businessAddress: activeProfile?.businessAddress || (isShopUser ? shopData.shop.location : "Headquarters"),
@@ -654,6 +681,15 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 customerPhone: customerPhone || selectedCustomer?.phone,
                 customerLocation: customerLocation,
                 transactionType: "Sale",
+                /* ── URA VAT compliance ── */
+                taxEnabled: vatProfile?.taxEnabled ?? false,
+                taxRate: vatProfile?.taxRate ?? 18,
+                taxInclusive: vatProfile?.taxInclusive ?? true,
+                taxNote: vatProfile?.taxNote,
+                tin: vatProfile?.tin,
+                netAmount: vatFigures.net,
+                vatAmount: vatFigures.vat,
+                itemLabel: categoryTerminology.item,
             };
 
             setReceiptData(receipt);
@@ -1482,6 +1518,7 @@ function DistributorSearch({ selectedId, onSelect, customers, error }: Distribut
 
 function SwapView() {
     const { user } = useAuth();
+    const activeProfile = useQuery(api.businessProfiles.getActive);
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [returnedItems, setReturnedItems] = useState<CartItem[]>([]);
@@ -1538,6 +1575,9 @@ function SwapView() {
             const totalBVVal = takenItems.reduce((sum, item) => sum + (item.bv * item.qty), 0);
 
             const receipt = {
+                businessName: activeProfile?.businessName || (shopData?.shop?.name || "SMARTBUZ POS"),
+                businessAddress: activeProfile?.businessAddress || (shopData?.shop?.location || "Headquarters"),
+                businessPhone: activeProfile?.businessPhone || (shopData?.shop?.contact || undefined),
                 customer: { name: "Swap Customer", phone: customerPhone, email: "" },
                 shop: {
                     name: shopData?.shop?.name || "Main Warehouse",
@@ -1551,8 +1591,8 @@ function SwapView() {
                 transactionType: "Swap",
                 date: new Date().toISOString(),
                 invoiceNumber: result.invoiceNumber || `SWAP-${Date.now()}`,
-                items: takenItems.map(i => ({ ...i })),
-                returnedItems: returnedItems.map(i => ({ ...i })),
+                items: takenItems.map(i => ({ ...i, quantity: i.qty })),
+                returnedItems: returnedItems.map(i => ({ ...i, quantity: i.qty })),
                 total: diff,
                 totalPV: totalPVVal,
                 totalBV: totalBVVal,

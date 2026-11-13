@@ -211,6 +211,46 @@ export const create = mutation({
 
         const date = new Date().toISOString();
 
+        // -----------------------------------------------------------------
+        // SERVER-SIDE PRICE + TOTAL VALIDATION
+        // The client is not trusted for money. Prices are re-read from the
+        // `stocks` table and the total is recomputed server-side, so a
+        // tampered client cannot record a sale for less than it is worth
+        // (or inflate profit reports).
+        // -----------------------------------------------------------------
+        const stockIdsForPricing = [...new Set(args.items.map((i) => i.stockId))];
+        const pricingDocs = await Promise.all(stockIdsForPricing.map((id) => ctx.db.get(id)));
+        const pricingMap = new Map(
+            pricingDocs.filter((s): s is NonNullable<typeof s> => s !== null).map((s) => [s._id, s])
+        );
+
+        let computedTotal = 0;
+        const trustedItems = args.items.map((item) => {
+            const stock = pricingMap.get(item.stockId);
+            if (!stock) {
+                throw new Error(`Item ${item.name} not found`);
+            }
+            if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+                throw new Error(`Invalid quantity for ${item.name}`);
+            }
+            // Trust the server-side price, not the client-supplied one.
+            const unitPrice = stock.price;
+            computedTotal += unitPrice * item.quantity;
+            return {
+                ...item,
+                price: unitPrice,
+                pv: stock.pv,
+                bv: stock.bv,
+            };
+        });
+
+        // Guard against a client submitting a mismatched total (e.g. 0).
+        if (Math.abs(computedTotal - args.total) > 0.01) {
+            throw new Error(
+                `Sale total mismatch: client sent ${args.total} but the server computed ${computedTotal}.`
+            );
+        }
+
         // Check if user is assigned to a shop
         const shop = await ctx.db
             .query("shops")
@@ -222,7 +262,7 @@ export const create = mutation({
             // SHOP SALE: Deduct from shop.issuedStocks (ALLOW NEGATIVE)
             const updatedStocks = [...shop.issuedStocks];
 
-            for (const item of args.items) {
+            for (const item of trustedItems) {
                 const stockIndex = updatedStocks.findIndex(s => s.stockId === item.stockId);
                 if (stockIndex === -1) {
                     throw new Error(`Item ${item.name} not found in shop stock`);
@@ -248,11 +288,11 @@ export const create = mutation({
         } else {
             // HQ SALE: Deduct from main warehouse 'stocks' (ALLOW NEGATIVE)
             // [OPTIMIZED] Batch fetch all stocks first to avoid N+1
-            const stockIds = args.items.map(i => i.stockId);
+            const stockIds = trustedItems.map(i => i.stockId);
             const stockDocs = await Promise.all(stockIds.map(id => ctx.db.get(id)));
             const stockMap = new Map(stockDocs.filter((s): s is NonNullable<typeof s> => s !== null).map(s => [s._id, s]));
 
-            for (const item of args.items) {
+            for (const item of trustedItems) {
                 const stock = stockMap.get(item.stockId);
                 if (!stock) {
                     throw new Error(`Item ${item.name} not found in warehouse`);
@@ -275,11 +315,11 @@ export const create = mutation({
             manualCustomerName: args.manualCustomerName,
             shopId: shop ? shop._id : args.shopId, // Prioritize found shop, else fallback to arg
             userId: args.userId,
-            total: args.total,
+            total: computedTotal,
             date,
             clientType: args.clientType,
             paymentMode: args.paymentMode,
-            items: args.items,
+            items: trustedItems,
             isLoan: args.isLoan,
             paymentDueDate: args.paymentDueDate,
             initialDeposit: args.initialDeposit,
@@ -296,7 +336,7 @@ export const create = mutation({
         const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
 
         // Record immutable stock movements in stockLedger
-        for (const item of args.items) {
+        for (const item of trustedItems) {
             await ctx.db.insert("stockLedger", {
                 stockId: item.stockId,
                 shopId: shop ? shop._id : args.shopId,
@@ -318,20 +358,20 @@ export const create = mutation({
             userId: args.userId,
             shopId: shop ? shop._id : args.shopId,
             date,
-            items: args.items,
+            items: trustedItems,
         });
         // ---------------------------------------------------------
 
         // Handle Loans
         if (args.isLoan && args.paymentDueDate) {
             const deposit = args.initialDeposit || 0;
-            const loanBalance = args.total - deposit;
+            const loanBalance = computedTotal - deposit;
 
             const loanId = await ctx.db.insert("loans", {
                 customerId: args.customerId !== undefined ? args.customerId : undefined, // Explicitly undefined if missing
                 manualCustomerName: args.manualCustomerName,
                 salesId: saleId,
-                amount: args.total,
+                amount: computedTotal,
                 balance: loanBalance,
                 date: new Date().toISOString(),
             });
@@ -353,7 +393,7 @@ export const create = mutation({
         await ctx.db.insert("activityLogs", {
             userId: args.userId,
             action: "Create Sale",
-            details: `${args.clientType} sale of UGX ${args.total.toLocaleString()} created at ${shop ? shop.name : "HQ"}.`,
+            details: `${args.clientType} sale of UGX ${computedTotal.toLocaleString()} created at ${shop ? shop.name : "HQ"}.`,
             timestamp: new Date().toISOString(),
         });
 
@@ -397,6 +437,32 @@ export const editSale = mutation({
         // Determine the shop context from the original sale (preserve original location)
         const shopId = existingSale.shopId;
         const shop = shopId ? await ctx.db.get(shopId) : null;
+
+        // -----------------------------------------------------------------
+        // 0) SERVER-SIDE PRICE + TOTAL VALIDATION (same rules as `create`)
+        // -----------------------------------------------------------------
+        const editStockIds = [...new Set(args.items.map((i) => i.stockId))];
+        const editPricingDocs = await Promise.all(editStockIds.map((id) => ctx.db.get(id)));
+        const editPricingMap = new Map(
+            editPricingDocs.filter((s): s is NonNullable<typeof s> => s !== null).map((s) => [s._id, s])
+        );
+
+        let editComputedTotal = 0;
+        const editTrustedItems = args.items.map((item) => {
+            const stock = editPricingMap.get(item.stockId);
+            if (!stock) throw new Error(`Item ${item.name} not found`);
+            if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+                throw new Error(`Invalid quantity for ${item.name}`);
+            }
+            editComputedTotal += stock.price * item.quantity;
+            return { ...item, price: stock.price, pv: stock.pv, bv: stock.bv };
+        });
+
+        if (Math.abs(editComputedTotal - args.total) > 0.01) {
+            throw new Error(
+                `Sale total mismatch: client sent ${args.total} but the server computed ${editComputedTotal}.`
+            );
+        }
 
         // -----------------------------------------------------------------
         // 1) REVERSE original stock deductions
@@ -485,7 +551,7 @@ export const editSale = mutation({
         const refreshedShop = shopId ? await ctx.db.get(shopId) : null;
         if (refreshedShop) {
             const updatedStocks = [...refreshedShop.issuedStocks];
-            for (const item of args.items) {
+            for (const item of editTrustedItems) {
                 const idx = updatedStocks.findIndex(s => s.stockId === item.stockId);
                 if (idx === -1) {
                     throw new Error(`Item ${item.name} not found in shop stock`);
@@ -497,12 +563,12 @@ export const editSale = mutation({
             }
             await ctx.db.patch(refreshedShop._id, { issuedStocks: updatedStocks });
         } else {
-            const stockIds = args.items.map(i => i.stockId);
+            const stockIds = editTrustedItems.map(i => i.stockId);
             const stockDocs = await Promise.all(stockIds.map(id => ctx.db.get(id)));
             const stockMap = new Map(
                 stockDocs.filter((s): s is NonNullable<typeof s> => s !== null).map(s => [s._id, s])
             );
-            for (const item of args.items) {
+            for (const item of editTrustedItems) {
                 const stock = stockMap.get(item.stockId);
                 if (!stock) throw new Error(`Item ${item.name} not found in warehouse`);
                 await ctx.db.patch(item.stockId, { qty: stock.qty - item.quantity });
@@ -510,7 +576,7 @@ export const editSale = mutation({
         }
 
         // Record new SALE events in stockLedger
-        for (const item of args.items) {
+        for (const item of editTrustedItems) {
             await ctx.db.insert("stockLedger", {
                 stockId: item.stockId,
                 shopId: shopId,
@@ -529,10 +595,10 @@ export const editSale = mutation({
         await ctx.db.patch(args.saleId, {
             customerId: args.customerId,
             manualCustomerName: args.manualCustomerName,
-            total: args.total,
+            total: editComputedTotal,
             clientType: args.clientType,
             paymentMode: args.paymentMode,
-            items: args.items,
+            items: editTrustedItems,
             isLoan: args.isLoan,
             paymentDueDate: args.paymentDueDate,
             initialDeposit: args.initialDeposit,
@@ -552,7 +618,7 @@ export const editSale = mutation({
             userId: existingSale.userId,
             shopId: shopId,
             date: newDate,
-            items: args.items,
+            items: editTrustedItems,
         });
 
         // -----------------------------------------------------------------
@@ -560,13 +626,13 @@ export const editSale = mutation({
         // -----------------------------------------------------------------
         if (args.isLoan && args.paymentDueDate) {
             const deposit = args.initialDeposit || 0;
-            const loanBalance = args.total - deposit;
+            const loanBalance = editComputedTotal - deposit;
 
             const loanId = await ctx.db.insert("loans", {
                 customerId: args.customerId,
                 manualCustomerName: args.manualCustomerName,
                 salesId: args.saleId,
-                amount: args.total,
+                amount: editComputedTotal,
                 balance: loanBalance,
                 date: newDate,
             });
@@ -1051,6 +1117,20 @@ export const swap = mutation({
                 const idx = updatedShopStocks.findIndex(s => s.stockId === item.stockId);
                 if (idx !== -1) {
                     updatedShopStocks[idx] = { ...updatedShopStocks[idx], qty: updatedShopStocks[idx].qty + item.quantity };
+                } else {
+                    const masterStock = await ctx.db.get(item.stockId);
+                    if (masterStock) {
+                        updatedShopStocks.push({
+                            stockId: item.stockId,
+                            name: masterStock.name,
+                            qty: item.quantity,
+                            price: masterStock.price,
+                            productCode: masterStock.productCode,
+                            pv: masterStock.pv,
+                            bv: masterStock.bv,
+                            halfPrice: masterStock.halfPrice || false,
+                        });
+                    }
                 }
             }
             await ctx.db.patch(shop._id, { issuedStocks: updatedShopStocks });
@@ -1109,6 +1189,33 @@ export const swap = mutation({
         });
 
         const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
+
+        // Record stock movements in stockLedger
+        for (const item of args.returnedItems) {
+            await ctx.db.insert("stockLedger", {
+                stockId: item.stockId,
+                shopId: shop ? shop._id : args.shopId,
+                deltaQty: item.quantity,
+                eventType: "SALE",
+                referenceId: invoiceNumberValue || saleId,
+                userId: args.userId,
+                timestamp: date,
+                notes: `Product Swap (Returned): ${item.name} (${item.quantity})`,
+            });
+        }
+
+        for (const item of args.takenItems) {
+            await ctx.db.insert("stockLedger", {
+                stockId: item.stockId,
+                shopId: shop ? shop._id : args.shopId,
+                deltaQty: -item.quantity,
+                eventType: "SALE",
+                referenceId: invoiceNumberValue || saleId,
+                userId: args.userId,
+                timestamp: date,
+                notes: `Product Swap (Issued): ${item.name} (${item.quantity})`,
+            });
+        }
 
         // 5. Log activity
         const returnedSummary = args.returnedItems.map(i => `${i.name} (${i.quantity})`).join(", ");

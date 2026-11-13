@@ -25,24 +25,59 @@ export interface ReceiptData {
         promotionName: string;
         prize: string;
         redeemedQuantity: number;
-        productName: string;
+        productName?: string;
     }[];
     customerPhone?: string;
     customerLocation?: string;
     transactionType?: string;
-    returnedItems?: { stockId: string; name: string; productCode?: string; quantity: number }[];
+    returnedItems?: { stockId: string; name: string; productCode?: string; quantity?: number; qty?: number; price?: number }[];
+    /* ── URA / VAT compliance ── */
+    taxEnabled?: boolean;
+    taxRate?: number;
+    taxInclusive?: boolean;
+    taxNote?: string;
+    /** Taxpayer Identification Number (URA TIN). */
+    tin?: string;
+    /** VAT-exclusive amount (net) when tax is inclusive. */
+    netAmount?: number;
+    /** VAT amount charged. */
+    vatAmount?: number;
+    /** Human label for the item being sold, e.g. "Medicine". */
+    itemLabel?: string;
 }
 
 export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
+    const isSwap = data.transactionType === "Swap";
+    const returnedItemsList = data.returnedItems || [];
+    const totalReturnedValue = returnedItemsList.reduce((sum, item) => {
+        const q = item.quantity ?? item.qty ?? 0;
+        const p = item.price ?? 0;
+        return sum + (q * p);
+    }, 0);
+
     return (
-        <div id="receipt-content" className="p-4 text-black bg-white print:p-0 print:m-0 print:w-full print-shrink font-sans leading-tight">
+        <div id="receipt-content" className="p-4 text-black bg-white print:p-0 print:m-0 print:w-full print-shrink font-sans leading-tight max-w-[148mm] mx-auto">
             <style dangerouslySetInnerHTML={{
                 __html: `
+                @page {
+                    size: A5 portrait;
+                    margin: 6mm;
+                }
                 @media print {
+                    html, body {
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: white !important;
+                    }
                     #receipt-content {
-                        width: 100%;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
                         color: black !important;
                         background: white !important;
+                        font-size: 8.5px !important;
                     }
                     .no-print { display: none !important; }
                     * { border-color: black !important; }
@@ -51,73 +86,129 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
 
             {/* Header section */}
             <div className="pb-2 print:break-inside-avoid">
-                <div className="flex justify-between items-start border-b border-black pb-4 mb-4">
+                <div className="flex justify-between items-start border-b border-black pb-3 mb-3">
                     <div className="flex-1 text-center">
-                        <h2 className="text-2xl font-black text-black tracking-tighter uppercase mb-1">
+                        <h2 className="text-xl font-black text-black tracking-tighter uppercase mb-0.5">
                             {data.businessName || data.shop?.name || "OFFICIAL RECEIPT"}
                         </h2>
-                        <p className="text-[10px] leading-tight opacity-90">{data.businessAddress || data.shop?.location || ""}</p>
-                        <p className="text-[10px] leading-tight opacity-90">
+                        {isSwap && (
+                            <div className="inline-block bg-black text-white px-2 py-0.5 text-[9px] font-black tracking-widest uppercase mb-1">
+                                Product Exchange / Swap Receipt
+                            </div>
+                        )}
+                        <p className="text-[9px] leading-tight opacity-90">{data.businessAddress || data.shop?.location || ""}</p>
+                        <p className="text-[9px] leading-tight opacity-90">
                             {data.businessPhone ? `Tel: ${data.businessPhone}` : (data.shop?.contact ? `Tel: ${data.shop.contact}` : "")}
                         </p>
+                        {data.tin && (
+                            <p className="text-[9px] font-black leading-tight uppercase">
+                                TIN: {data.tin}
+                            </p>
+                        )}
                     </div>
-                    <div className="w-[72px] h-[72px] shrink-0 ml-4 border-2 border-black rounded-lg flex items-center justify-center font-black text-2xl tracking-tighter bg-slate-50">
+                    <div className="w-[60px] h-[60px] shrink-0 ml-3 border-2 border-black rounded-lg flex items-center justify-center font-black text-xl tracking-tighter bg-slate-50">
                         {((data.businessName || data.shop?.name || "POS").replace(/[^a-zA-Z0-9]/g, "").slice(0, 2)).toUpperCase()}
                     </div>
                 </div>
 
                 {/* Info Fields Grid - Box Styles */}
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-2 text-[10px] font-bold uppercase">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[9px] font-bold uppercase">
                     {/* Row 1 */}
-                    <div className="flex items-center gap-2">
-                        <span className="shrink-0 w-24">DISTRIBUTOR'S NAME:</span>
-                        <div className="border border-black h-6 flex-1 px-1 flex items-center font-black truncate bg-white">
-                            {data.customer?.name || ""}
+                    <div className="flex items-center gap-1.5">
+                        <span className="shrink-0 w-24">CUSTOMER NAME:</span>
+                        <div className="border border-black h-5 flex-1 px-1 flex items-center font-black truncate bg-white">
+                            {data.customer?.name || "WALK-IN CUSTOMER"}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="shrink-0 w-24">DISTRIBUTOR'S CONTACTS:</span>
-                        <div className="border border-black h-6 flex-1 px-1 flex items-center bg-white">
+                    <div className="flex items-center gap-1.5">
+                        <span className="shrink-0 w-20">CONTACTS:</span>
+                        <div className="border border-black h-5 flex-1 px-1 flex items-center bg-white font-mono">
                             {data.customerPhone || data.customer?.phone || "N/A"}
                         </div>
                     </div>
 
                     {/* Row 2 */}
-                    <div className="flex items-center gap-2">
-                        <span className="shrink-0 w-24">DISTRIBUTOR ID NO:</span>
+                    <div className="flex items-center gap-1.5">
+                        <span className="shrink-0 w-24">DISTRIBUTOR ID:</span>
                         <div className="flex gap-[1px] flex-1">
                             {(data.customer?.distributorId || data.customer?.email || "").slice(0, 8).padEnd(8, " ").split("").map((char, i) => (
-                                <div key={i} className="border border-black w-6 h-6 flex items-center justify-center font-black bg-white">
+                                <div key={i} className="border border-black w-5 h-5 flex items-center justify-center font-black bg-white text-[8px]">
                                     {char.trim() || ""}
                                 </div>
                             ))}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="shrink-0 w-16 text-right">SHOP SERIAL NO:</span>
-                        <div className="border border-black h-6 w-32 px-1 flex items-center justify-center font-black bg-white">
-                            {data.shop.serialNumber || ""}
+                    <div className="flex items-center gap-1.5">
+                        <span className="shrink-0 w-20">LOCATION:</span>
+                        <div className="border border-black h-5 flex-1 px-1 flex items-center bg-white truncate">
+                            {data.customerLocation || data.shop?.location || "N/A"}
                         </div>
                     </div>
 
                     {/* Row 3 */}
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-1.5">
                         <span className="shrink-0 w-24">CLIENT TYPE:</span>
-                        <div className="border border-black h-6 flex-1 px-2 flex items-center bg-white font-black">
+                        <div className="border border-black h-5 flex-1 px-1.5 flex items-center bg-white font-black truncate">
                             {data.clientType}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className="shrink-0 w-24">RECEIPT SERIAL NO:</span>
-                        <div className="border border-black h-6 flex-1 px-2 flex items-center font-mono text-[9px] bg-white">
+                    <div className="flex items-center gap-1.5">
+                        <span className="shrink-0 w-20">SHOP SERIAL:</span>
+                        <div className="border border-black h-5 flex-1 px-1 flex items-center justify-center font-black bg-white">
+                            {data.shop.serialNumber || ""}
+                        </div>
+                    </div>
+
+                    {/* Row 4 */}
+                    <div className="flex items-center gap-1.5">
+                        <span className="shrink-0 w-24">TYPE:</span>
+                        <div className="border border-black h-5 flex-1 px-1.5 flex items-center bg-white font-black text-[8px]">
+                            {isSwap ? "PRODUCT SWAP" : "STANDARD SALE"}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="shrink-0 w-20">RECEIPT NO:</span>
+                        <div className="border border-black h-5 flex-1 px-1 flex items-center font-mono text-[8px] bg-white">
                             {data.invoiceNumber || "N/A"}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Items Table - Dense v5 Format */}
-            <div className="mt-4 border-t border-l border-black text-[9px] print:break-inside-auto mb-4">
+            {/* If SWAP: Show RETURNED ITEMS TABLE FIRST */}
+            {isSwap && returnedItemsList.length > 0 && (
+                <div className="mt-3 border-t border-l border-black text-[8.5px] print:break-inside-avoid">
+                    <div className="bg-slate-100 border-b border-r border-black p-1 font-black uppercase text-center tracking-wider text-[9px]">
+                        Items Returned / Surrendered by Customer
+                    </div>
+                    <div className="grid grid-cols-[1fr_3.5fr_1fr_1.5fr] font-black border-b border-r border-black uppercase text-center bg-slate-50 print:bg-transparent">
+                        <div className="p-1 border-r border-black flex items-center justify-center">CODE</div>
+                        <div className="p-1 border-r border-black flex items-center justify-center">PRODUCT NAME</div>
+                        <div className="p-1 border-r border-black flex items-center justify-center">QTY</div>
+                        <div className="p-1 flex items-center justify-end pr-2">VALUE (UGX)</div>
+                    </div>
+                    {returnedItemsList.map((item, idx) => {
+                        const qty = item.quantity ?? item.qty ?? 0;
+                        const lineValue = (item.price ?? 0) * qty;
+                        return (
+                            <div key={idx} className="grid grid-cols-[1fr_3.5fr_1fr_1.5fr] border-b border-r border-black text-center min-h-[22px]">
+                                <div className="p-1 border-r border-black flex items-center justify-center font-mono">{item.productCode || "-"}</div>
+                                <div className="p-1 border-r border-black flex items-center text-left pl-2 font-medium">{item.name}</div>
+                                <div className="p-1 border-r border-black flex items-center justify-center font-black">+{qty}</div>
+                                <div className="p-1 flex items-center justify-end pr-2 font-mono">{lineValue > 0 ? lineValue.toLocaleString() : "-"}</div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Items Table - Dense Format */}
+            <div className="mt-3 border-t border-l border-black text-[8.5px] print:break-inside-auto mb-3">
+                {isSwap && (
+                    <div className="bg-slate-100 border-b border-r border-black p-1 font-black uppercase text-center tracking-wider text-[9px]">
+                        Items Taken / Issued to Customer
+                    </div>
+                )}
                 {/* Custom Table Head */}
                 <div className="grid grid-cols-[0.7fr_2.5fr_0.6fr_0.6fr_0.6fr_0.7fr_0.6fr_0.6fr_0.7fr_1.2fr] font-black border-b border-r border-black uppercase text-center bg-slate-50 print:bg-transparent">
                     <div className="p-1 border-r border-black flex items-center justify-center">CODE</div>
@@ -134,44 +225,69 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
 
                 {/* Items Rows */}
                 {data.items.map((item, i) => {
-                    const totalLinePV = (item.pv || 0) * item.qty;
-                    const totalLineBV = (item.bv || 0) * item.qty;
+                    const itemQty = item.quantity ?? item.qty ?? 0;
+                    const totalLinePV = (item.pv || 0) * itemQty;
+                    const totalLineBV = (item.bv || 0) * itemQty;
                     const percentPv = item.price > 0 ? `${((item.pv / item.price) * 100).toFixed(1)}%` : "0%";
                     const percentBv = item.price > 0 ? `${((item.bv / item.price) * 100).toFixed(1)}%` : "0%";
 
                     return (
-                        <div key={i} className="grid grid-cols-[0.7fr_2.5fr_0.6fr_0.6fr_0.6fr_0.7fr_0.6fr_0.6fr_0.7fr_1.2fr] border-b border-r border-black text-center min-h-[24px]">
-                            <div className="p-1 border-r border-black flex items-center justify-center">{item.productCode || ""}</div>
-                            <div className="p-1 border-r border-black flex items-center text-left pl-2 font-medium">{item.name}</div>
-                            <div className="p-1 border-r border-black flex items-center justify-center font-black">{item.qty}</div>
+                        <div key={i} className="grid grid-cols-[0.7fr_2.5fr_0.6fr_0.6fr_0.6fr_0.7fr_0.6fr_0.6fr_0.7fr_1.2fr] border-b border-r border-black text-center min-h-[22px]">
+                            <div className="p-1 border-r border-black flex items-center justify-center font-mono text-[8px]">{item.productCode || ""}</div>
+                            <div className="p-1 border-r border-black flex items-center text-left pl-1.5 font-medium truncate">{item.name}</div>
+                            <div className="p-1 border-r border-black flex items-center justify-center font-black">{itemQty}</div>
                             <div className="p-1 border-r border-black flex items-center justify-center">{item.pv}</div>
-                            <div className="p-1 border-r border-black flex items-center justify-center italic opacity-60">{percentPv}</div>
+                            <div className="p-1 border-r border-black flex items-center justify-center italic opacity-60 text-[8px]">{percentPv}</div>
                             <div className="p-1 border-r border-black flex items-center justify-center font-bold">{totalLinePV}</div>
                             <div className="p-1 border-r border-black flex items-center justify-center">{item.bv}</div>
-                            <div className="p-1 border-r border-black flex items-center justify-center italic opacity-60">{percentBv}</div>
+                            <div className="p-1 border-r border-black flex items-center justify-center italic opacity-60 text-[8px]">{percentBv}</div>
                             <div className="p-1 border-r border-black flex items-center justify-center font-bold">{totalLineBV}</div>
-                            <div className="p-1 flex items-center justify-end pr-2 font-black">{(item.price * item.qty).toLocaleString()}</div>
+                            <div className="p-1 flex items-center justify-end pr-1.5 font-black font-mono">{(item.price * itemQty).toLocaleString()}</div>
                         </div>
                     );
                 })}
 
                 {/* Footer / Totals Row */}
                 <div className="grid grid-cols-[0.7fr_2.5fr_0.6fr_0.6fr_0.6fr_0.7fr_0.6fr_0.6fr_0.7fr_1.2fr] font-black border-b border-r border-black">
-                    <div className="col-span-5 p-1 border-r border-black text-right pr-4 uppercase">TOTAL:</div>
+                    <div className="col-span-5 p-1 border-r border-black text-right pr-3 uppercase">TOTAL:</div>
                     <div className="p-1 border-r border-black text-center border-t border-black bg-slate-50 print:bg-transparent">{data.totalPV}</div>
                     <div className="col-span-2 border-r border-black"></div>
                     <div className="p-1 border-r border-black text-center border-t border-black bg-slate-50 print:bg-transparent">{data.totalBV}</div>
-                    <div className="p-1 text-right pr-2 border-t border-black bg-slate-50 print:bg-transparent">{data.total.toLocaleString()}</div>
+                    <div className="p-1 text-right pr-1.5 border-t border-black bg-slate-50 print:bg-transparent font-mono">{data.total.toLocaleString()}</div>
                 </div>
             </div>
 
+            {/* PROMOTIONAL REWARDS WON */}
+            {data.promotions && data.promotions.length > 0 && (
+                <div className="my-2 border-2 border-black p-2 bg-slate-50 print:bg-transparent print:break-inside-avoid">
+                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider border-b border-black pb-1 mb-1">
+                        <span className="flex items-center gap-1">🎁 PROMOTIONAL REWARD WON</span>
+                        <span className="text-[8px] italic font-bold">REDEEMABLE AT COUNTER</span>
+                    </div>
+                    <div className="space-y-1">
+                        {data.promotions.map((promo, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-[8.5px]">
+                                <span className="font-bold">
+                                    {promo.promotionName}
+                                    {promo.productName && promo.productName !== "THRESHOLD" && ` (${promo.productName})`}
+                                    {promo.redeemedQuantity > 1 && ` x${promo.redeemedQuantity}`}
+                                </span>
+                                <span className="font-black border border-black px-1.5 py-0.5 bg-white uppercase text-[8.5px]">
+                                    PRIZE: {promo.prize}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Post-Table info */}
-            <div className="mt-4 text-[10px] space-y-2 print:break-inside-avoid">
+            <div className="mt-3 text-[9px] space-y-2 print:break-inside-avoid">
                 <div className="flex justify-between items-start border-b border-black border-dashed pb-2">
                     <div className="space-y-1">
                         <p className="font-bold uppercase tracking-tighter">Mode of Payment: <span className="underline ml-1">{data.paymentMode}</span></p>
                         {data.packageType && (
-                            <p className="font-black italic text-[11px] uppercase tracking-widest border border-black px-2 py-0.5 inline-block">
+                            <p className="font-black italic text-[10px] uppercase tracking-widest border border-black px-1.5 py-0.5 inline-block">
                                 PACKAGE: {data.packageType}
                             </p>
                         )}
@@ -180,48 +296,81 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                         )}
                     </div>
                     <div className="text-right space-y-1">
-                        <div className="flex justify-end gap-10 min-w-[200px]">
-                            <span className="font-bold uppercase">GRAND TOTAL (UGX):</span>
-                            <span className="text-lg font-black">{data.total.toLocaleString()}</span>
+                        {isSwap && totalReturnedValue > 0 && (
+                            <div className="flex justify-end gap-6 text-[8.5px]">
+                                <span className="font-medium">Returned Value:</span>
+                                <span className="font-bold font-mono">UGX {totalReturnedValue.toLocaleString()}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-end gap-6 min-w-[180px]">
+                            <span className="font-bold uppercase">{isSwap ? "NET BALANCE (UGX):" : "GRAND TOTAL (UGX):"}</span>
+                            <span className="text-base font-black font-mono">{data.total.toLocaleString()}</span>
                         </div>
                         {data.initialDeposit !== undefined && data.initialDeposit > 0 && (
-                            <div className="flex justify-end gap-10">
+                            <div className="flex justify-end gap-6">
                                 <span className="font-medium italic">Amount Paid:</span>
-                                <span className="font-bold">{data.initialDeposit.toLocaleString()}</span>
+                                <span className="font-bold font-mono">{data.initialDeposit.toLocaleString()}</span>
                             </div>
                         )}
                         {data.balance !== undefined && (
-                            <div className="flex justify-end gap-10 border-t border-black pt-1">
+                            <div className="flex justify-end gap-6 border-t border-black pt-1">
                                 <span className="font-black uppercase">BALANCE DUE:</span>
-                                <span className="font-black underline text-sm">{data.balance.toLocaleString()}</span>
+                                <span className="font-black underline text-xs font-mono">{data.balance.toLocaleString()}</span>
+                            </div>
+                        )}
+                        {data.taxEnabled && data.vatAmount !== undefined && (
+                            <div className="space-y-0.5 border-t border-black pt-1">
+                                {data.taxInclusive && data.netAmount !== undefined && (
+                                    <div className="flex justify-end gap-6">
+                                        <span className="font-medium italic">
+                                            Net (excl. VAT):
+                                        </span>
+                                        <span className="font-bold font-mono">
+                                            {data.netAmount.toLocaleString()}
+                                        </span>
+                                    </div>
+                                )}
+                                <div className="flex justify-end gap-6">
+                                    <span className="font-bold uppercase">
+                                        VAT @ {data.taxRate ?? 18}%:
+                                    </span>
+                                    <span className="font-bold font-mono">
+                                        {data.vatAmount.toLocaleString()}
+                                    </span>
+                                </div>
+                                {data.taxNote && (
+                                    <p className="text-right text-[7.5px] italic opacity-80">
+                                        {data.taxNote}
+                                    </p>
+                                )}
                             </div>
                         )}
                     </div>
                 </div>
 
                 {/* Operator and Date */}
-                <div className="grid grid-cols-2 gap-20 py-4 border-b border-black">
+                <div className="grid grid-cols-2 gap-12 py-3 border-b border-black">
                     <div>
-                        <p className="font-bold uppercase text-[8px] mb-1">Operator Signature:</p>
-                        <div className="border-b border-black h-8 flex items-end pb-1 font-mono text-[9px]">
+                        <p className="font-bold uppercase text-[7.5px] mb-0.5">Operator Signature:</p>
+                        <div className="border-b border-black h-6 flex items-end pb-0.5 font-mono text-[8.5px]">
                             {data.operator?.name}
                         </div>
                     </div>
                     <div>
-                        <p className="font-bold uppercase text-[8px] mb-1">Delivery Status:</p>
-                        <div className="h-8 flex items-end pb-1 font-black text-[10px]">
+                        <p className="font-bold uppercase text-[7.5px] mb-0.5">Delivery Status:</p>
+                        <div className="h-6 flex items-end pb-0.5 font-black text-[9px]">
                             {data.deliveryStatus === "Pending" ? "NOT TAKEN" : "FULLY DELIVERED"}
                         </div>
                     </div>
                 </div>
 
-                <div className="pt-2 text-[8px] italic flex justify-between uppercase font-bold opacity-60">
+                <div className="pt-1 text-[7.5px] italic flex justify-between uppercase font-bold opacity-60">
                     <span>Generated on: {new Date(data.date).toLocaleString()}</span>
                     <span>Official Document</span>
                 </div>
             </div>
 
-            <div className="mt-4 text-center text-[9px] font-black uppercase tracking-widest border-t border-black pt-2">
+            <div className="mt-3 text-center text-[8px] font-black uppercase tracking-widest border-t border-black pt-1.5">
                 {data.businessName || data.shop?.name || "SMARTBUZ"} • THANK YOU FOR YOUR BUSINESS
             </div>
         </div>
