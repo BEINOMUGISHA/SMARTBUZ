@@ -40,27 +40,54 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen w-full lg:grid lg:grid-cols-2 bg-muted/30">
       {/* Left side: Hero Section (Desktop only) */}
-      <div className="hidden bg-muted lg:block relative">
+      <div className="hidden bg-muted lg:block relative overflow-hidden">
         <Image
-          src="/images/pos-hero.jpg"
-          alt="Login Background"
+          src="/images/cashier-retail-hero.jpg"
+          alt="Retail Commerce in Uganda"
           fill
-          className="object-cover"
+          className="object-cover object-center transform scale-105 transition-transform duration-1000"
           priority
         />
-        <div className="absolute inset-0 bg-primary/40 backdrop-blur-[3px] flex flex-col items-center justify-center p-12 text-white">
-          <div className="mb-6 h-16 w-16 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
-            <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/60 flex flex-col justify-between p-12 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-black tracking-wider uppercase">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              SMARTBUZ Commerce
+            </div>
+            <div className="text-[11px] font-mono font-bold text-white/70">
+              KAMPALA • EAST AFRICA
+            </div>
           </div>
-          <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">Run Your Business <br />Smarter, Faster</h2>
-          <p className="text-xl text-center max-w-md opacity-90 font-medium">
-            Manage sales, inventory, customers, and reports — all from one powerful platform built for every business niche.
-          </p>
-        </div>
-        <div className="absolute bottom-8 left-0 right-0 text-center text-white/60 text-sm">
-          Trusted by businesses across East Africa • Powered by SMARTBUZ
+
+          <div className="space-y-4 max-w-lg">
+            <h2 className="text-4xl xl:text-5xl font-black tracking-tight leading-tight text-white drop-shadow-md">
+              Run Your Business <br />
+              <span className="text-emerald-400">Smarter, Faster.</span>
+            </h2>
+            <p className="text-base text-white/90 font-medium leading-relaxed drop-shadow-sm">
+              Point of sale, real-time multi-branch stock tracking, instant Mobile Money payments, and automated URA VAT tax receipts.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 pt-4 border-t border-white/15 text-xs font-bold">
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400 font-black">✓</span> MTN & Airtel MoMo
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400 font-black">✓</span> Multi-Branch Sync
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400 font-black">✓</span> Offline Draft Queue
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400 font-black">✓</span> A5 & Thermal Invoicing
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-white/10 flex items-center justify-between text-xs text-white/70">
+            <span>Official POS for Retail, Wholesale & MLM</span>
+            <span className="font-semibold text-white/90">Trusted in Uganda 🇺🇬</span>
+          </div>
         </div>
       </div>
 
