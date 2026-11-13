@@ -27,6 +27,10 @@ import type * as stocks from "../stocks.js";
 import type * as userTypes from "../userTypes.js";
 import type * as users from "../users.js";
 import type * as utils from "../utils.js";
+import type * as verticals_batches from "../verticals/batches.js";
+import type * as verticals_members from "../verticals/members.js";
+import type * as verticals_operations from "../verticals/operations.js";
+import type * as verticals_scheduling from "../verticals/scheduling.js";
 
 import type {
   ApiFromModules,
@@ -54,6 +58,10 @@ declare const fullApi: ApiFromModules<{
   userTypes: typeof userTypes;
   users: typeof users;
   utils: typeof utils;
+  "verticals/batches": typeof verticals_batches;
+  "verticals/members": typeof verticals_members;
+  "verticals/operations": typeof verticals_operations;
+  "verticals/scheduling": typeof verticals_scheduling;
 }>;
 
 /**

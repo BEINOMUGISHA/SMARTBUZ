@@ -11,8 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, User, Lock, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Loader2, User, Lock, KeyRound, Eye, EyeOff, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BusinessVerticalSettings } from "@/components/business-vertical-settings";
 
 export default function SettingsPage() {
     const { user } = useAuth();
@@ -105,13 +106,18 @@ export default function SettingsPage() {
             </div>
 
             <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 lg:w-[400px] h-11 bg-muted/50 p-1.5 rounded-xl border border-sidebar-border/30 shadow-sm">
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-3 lg:w-[500px] h-11 bg-muted/50 p-1.5 rounded-xl border border-sidebar-border/30 shadow-sm">
                     <TabsTrigger value="profile" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
                         <User className="h-4 w-4 mr-2" /> Profile
                     </TabsTrigger>
                     <TabsTrigger value="security" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
                         <Lock className="h-4 w-4 mr-2" /> Security
                     </TabsTrigger>
+                    {user.roles?.includes("admin") && (
+                        <TabsTrigger value="business" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
+                            <Store className="h-4 w-4 mr-2" /> Business & Tax
+                        </TabsTrigger>
+                    )}
                 </TabsList>
 
                 <TabsContent value="profile" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -258,6 +264,12 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
                 </TabsContent>
+
+                {user.roles?.includes("admin") && (
+                    <TabsContent value="business" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <BusinessVerticalSettings />
+                    </TabsContent>
+                )}
             </Tabs>
         </div>
     );

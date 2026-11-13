@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import Image from "next/image";
+import Link from "next/link";
 import {
     TrendingUp,
     Users,
@@ -16,6 +17,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useAuth } from "@/context/auth-context";
+import { useActiveCategory } from "@/hooks/use-active-category";
+import { CategoryWidgets } from "@/components/category-widgets";
 import { useState, useMemo } from "react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import {
@@ -57,6 +60,8 @@ export default function DashboardPage() {
     const { user } = useAuth();
     const isAdmin = user?.roles.includes("admin");
     const isSales = user?.roles.includes("sales");
+
+    const { category, profile, accent, needsSetup } = useActiveCategory(user?.roles ?? []);
 
     // Date Range State
     const [date, setDate] = useState<{
@@ -109,15 +114,20 @@ export default function DashboardPage() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px] uppercase tracking-widest font-black text-primary border-primary/20 bg-primary/5 px-2 py-0.5">
+                            <Badge variant="outline" className={cn("border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest", accent.text)}>
                                 {isAdmin ? "Global Administrator" : `Sales Agent: ${myShop?.name}`}
                             </Badge>
+                            <Badge variant="outline" className={cn("px-2 py-0.5 text-[10px] font-black uppercase tracking-widest", accent.badge)}>
+                                {category?.name}
+                            </Badge>
                         </div>
-                        <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground">
-                            Business Overview
+                        <h1 className="text-2xl font-black tracking-tight text-foreground md:text-3xl">
+                            {needsSetup ? "Welcome to SMART_BUZ" : `${category?.name ?? "Business"} Overview`}
                         </h1>
-                        <p className="text-muted-foreground text-xs md:text-sm font-medium">
-                            Analytics from {format(date.from, "MMM dd")} — {format(date.to, "MMM dd, yyyy")}
+                        <p className="text-xs font-medium text-muted-foreground md:text-sm">
+                            {needsSetup
+                                ? "Tell us what kind of business you run and we'll tailor the whole system for it."
+                                : `Analytics from ${format(date.from, "MMM dd")} — ${format(date.to, "MMM dd, yyyy")}`}
                         </p>
                     </div>
 
@@ -179,6 +189,32 @@ export default function DashboardPage() {
                     </p>
                 </div>
             </div>
+
+            {/* First-run: prompt the operator to choose their trade */}
+            {needsSetup && (
+                <div className="rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/10 via-background to-background p-8 shadow-sm">
+                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+                            <Store className="h-7 w-7" />
+                        </div>
+                        <div className="flex-1 space-y-1">
+                            <h3 className="text-xl font-black tracking-tight">
+                                Tailor SMART_BUZ to your trade
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                Pick your business type and we&apos;ll set up the right modules,
+                                VAT handling, receipt format and starter stock for it.
+                            </p>
+                        </div>
+                        <Button size="lg" className="shrink-0" asChild>
+                            <Link href="/setup">Choose my business</Link>
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Category-specific operational widgets */}
+            <CategoryWidgets category={category} />
 
             {isAdmin ? <AdminDashboard stats={stats} /> : <SalesDashboard stats={stats} myShop={myShop} />}
         </div>

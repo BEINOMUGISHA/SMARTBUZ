@@ -1,0 +1,499 @@
+"use client";
+
+/**
+ * SMART_BUZ — Business Setup Wizard
+ *
+ * The first-run experience. The operator picks their trade, and SMART_BUZ
+ * configures itself for that vertical: sidebar modules, URA VAT handling,
+ * terminology and (optionally) a starter catalogue of sample products so
+ * the till is usable immediately.
+ */
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { useAuth } from "@/context/auth-context";
+import {
+    BUSINESS_CATEGORIES,
+    CATEGORY_SECTORS,
+    type CategoryId,
+} from "@/lib/business-categories";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import { Check, ChevronRight, Loader2, Store } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import {
+    Store as StoreIcon,
+    ShoppingBasket,
+    Truck,
+    Pill,
+    Stethoscope,
+    UtensilsCrossed,
+    Coffee,
+    Scissors,
+    Sparkles,
+    BedDouble,
+    Hammer,
+    Sprout,
+    Fuel,
+    Smartphone,
+    Tv,
+    Wrench,
+    Recycle,
+    BookOpen,
+    Printer,
+    Pencil,
+    Croissant,
+    Drumstick,
+    Milk,
+    Wheat,
+    Bus,
+    Car,
+    Footprints,
+    Flower2,
+    Dumbbell,
+    Shirt,
+    GraduationCap,
+    Church,
+    HeartHandshake,
+    Building2,
+    ShieldCheck,
+    PartyPopper,
+    Camera,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+/** Icon map — the catalog stores an icon name, we map it to a component. */
+const ICONS: Record<string, LucideIcon> = {
+    Store: StoreIcon,
+    ShoppingBasket,
+    Truck,
+    Pill,
+    Stethoscope,
+    UtensilsCrossed,
+    Coffee,
+    Scissors,
+    Sparkles,
+    BedDouble,
+    Hammer,
+    Sprout,
+    Fuel,
+    Smartphone,
+    Tv,
+    Wrench,
+    Recycle,
+    BookOpen,
+    Printer,
+    Pencil,
+    Croissant,
+    Drumstick,
+    Milk,
+    Wheat,
+    Bus,
+    Car,
+    Footprints,
+    Flower2,
+    Dumbbell,
+    Shirt,
+    GraduationCap,
+    Church,
+    HeartHandshake,
+    Building2,
+    ShieldCheck,
+    PartyPopper,
+    Camera,
+};
+
+export default function SetupPage() {
+    const router = useRouter();
+    const { user } = useAuth();
+    const existingProfile = useQuery(api.businessProfiles.getActive);
+
+    const [step, setStep] = useState<1 | 2 | 3>(1);
+    const [selected, setSelected] = useState<CategoryId | null>(null);
+    const [businessName, setBusinessName] = useState("");
+    const [businessPhone, setBusinessPhone] = useState("");
+    const [businessAddress, setBusinessAddress] = useState("");
+    const [openingFloat, setOpeningFloat] = useState("0");
+    const [seedProducts, setSeedProducts] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    const createProfile = useMutation(api.businessProfiles.create);
+    const setCategory = useMutation(api.businessProfiles.setCategory);
+    const addCategory = useMutation(api.categories.add);
+    const addStock = useMutation(api.stocks.add);
+
+    const category = selected
+        ? BUSINESS_CATEGORIES.find((c) => c.id === selected) ?? null
+        : null;
+
+    const handleCreate = async () => {
+        if (!category || !user) return;
+        setSaving(true);
+        try {
+            if (existingProfile) {
+                await setCategory({
+                    id: existingProfile._id,
+                    categoryId: category.id,
+                    modules: category.modules,
+                    taxEnabled: category.tax.enabled,
+                    taxRate: category.tax.rate,
+                    taxInclusive: category.tax.inclusive,
+                    taxNote: category.tax.note,
+                    updatedBy: user._id,
+                });
+            } else {
+                await createProfile({
+                    businessName: businessName.trim() || category.name,
+                    businessType: category.id,
+                    categoryId: category.id,
+                    industry: category.name,
+                    modules: category.modules,
+                    currency: "UGX",
+                    country: "Uganda",
+                    taxEnabled: category.tax.enabled,
+                    taxRate: category.tax.rate,
+                    taxInclusive: category.tax.inclusive,
+                    taxNote: category.tax.note,
+                    businessAddress: businessAddress.trim() || undefined,
+                    businessPhone: businessPhone.trim() || undefined,
+                    openingFloat: Number(openingFloat) || 0,
+                    createdBy: user._id,
+                });
+            }
+
+            // Optionally seed a starter catalogue so the till works on day one.
+            if (seedProducts && category.sampleProducts.length > 0) {
+                const catIds = new Map<string, string>();
+                let counter = 0;
+                for (const sample of category.sampleProducts) {
+                    let catId = catIds.get(sample.category);
+                    if (!catId) {
+                        catId = await addCategory({
+                            type: sample.category,
+                            userId: user._id,
+                        });
+                        catIds.set(sample.category, catId);
+                    }
+                    counter += 1;
+                    await addStock({
+                        name: sample.name,
+                        productCode: `${category.id.toUpperCase().slice(0, 3)}-${String(
+                            counter
+                        ).padStart(3, "0")}`,
+                        price: sample.price,
+                        purchasePrice: sample.purchasePrice,
+                        qty: 50,
+                        pv: sample.pv ?? 0,
+                        bv: sample.bv ?? 0,
+                        categoryId: catId as any,
+                        supplier: "Opening Stock",
+                    });
+                }
+            }
+
+            toast.success(`${category.name} workspace ready!`);
+            router.push("/");
+        } catch (err: any) {
+            toast.error(err?.message ?? "Could not save your business profile.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 px-4 py-10">
+            <div className="mx-auto max-w-5xl space-y-8">
+                {/* Header */}
+                <div className="space-y-3 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 shadow-lg">
+                        <Store className="h-7 w-7 text-white" />
+                    </div>
+                    <h1 className="text-3xl font-black tracking-tight md:text-4xl">
+                        Set up your business
+                    </h1>
+                    <p className="mx-auto max-w-xl text-sm text-muted-foreground md:text-base">
+                        Choose the trade you are in. SMART_BUZ will tailor your
+                        interface, modules, VAT handling and receipts for it.
+                    </p>
+                </div>
+
+                {/* Step indicator */}
+                <div className="flex items-center justify-center gap-2 text-xs font-bold">
+                    {["Choose your trade", "Business details", "Confirm"].map((label, i) => {
+                        const n = (i + 1) as 1 | 2 | 3;
+                        const active = step === n;
+                        const done = step > n;
+                        return (
+                            <div key={label} className="flex items-center gap-2">
+                                <div
+                                    className={cn(
+                                        "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                                        active && "bg-primary text-primary-foreground",
+                                        done && "bg-emerald-500 text-white",
+                                        !active && !done && "bg-muted text-muted-foreground"
+                                    )}
+                                >
+                                    {done ? <Check className="h-4 w-4" /> : n}
+                                </div>
+                                <span
+                                    className={cn(
+                                        "hidden sm:inline",
+                                        active ? "text-foreground" : "text-muted-foreground"
+                                    )}
+                                >
+                                    {label}
+                                </span>
+                                {i < 2 && (
+                                    <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* STEP 1 — pick a trade */}
+                {step === 1 && (
+                    <div className="space-y-8">
+                        {CATEGORY_SECTORS.map((sector) => (
+                            <div key={sector.id} className="space-y-3">
+                                <div>
+                                    <h2 className="text-lg font-black">{sector.name}</h2>
+                                    <p className="text-xs text-muted-foreground">
+                                        {sector.description}
+                                    </p>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                    {sector.categories.map((id) => {
+                                        const c = BUSINESS_CATEGORIES.find((x) => x.id === id);
+                                        if (!c) return null;
+                                        const Icon = ICONS[c.icon] ?? StoreIcon;
+                                        const isSelected = selected === c.id;
+                                        return (
+                                            <Card
+                                                key={c.id}
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() => setSelected(c.id)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter" || e.key === " ") {
+                                                        e.preventDefault();
+                                                        setSelected(c.id);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                                                    isSelected &&
+                                                        "border-primary shadow-lg ring-2 ring-primary/30"
+                                                )}
+                                            >
+                                                <CardContent className="flex gap-3 p-4">
+                                                    <div
+                                                        className={cn(
+                                                            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+                                                            isSelected
+                                                                ? "bg-primary text-primary-foreground"
+                                                                : "bg-muted text-muted-foreground"
+                                                        )}
+                                                    >
+                                                        <Icon className="h-5 w-5" />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-black leading-tight">
+                                                            {c.name}
+                                                        </p>
+                                                        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                                                            {c.description}
+                                                        </p>
+                                                    </div>
+                                                    {isSelected && (
+                                                        <Check className="h-5 w-5 shrink-0 text-primary" />
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* STEP 2 — business details */}
+                {step === 2 && category && (
+                    <Card className="mx-auto max-w-2xl">
+                        <CardContent className="space-y-6 p-6">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                    {(() => {
+                                        const Icon = ICONS[category.icon] ?? StoreIcon;
+                                        return <Icon className="h-6 w-6" />;
+                                    })()}
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black">{category.name}</h2>
+                                    <p className="text-xs text-muted-foreground">
+                                        {category.description}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="bizName">Business name</Label>
+                                    <Input
+                                        id="bizName"
+                                        value={businessName}
+                                        onChange={(e) => setBusinessName(e.target.value)}
+                                        placeholder={category.name}
+                                    />
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="bizPhone">Phone</Label>
+                                        <Input
+                                            id="bizPhone"
+                                            value={businessPhone}
+                                            onChange={(e) => setBusinessPhone(e.target.value)}
+                                            placeholder="0772 123 456"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="float">Opening cash float (UGX)</Label>
+                                        <Input
+                                            id="float"
+                                            type="number"
+                                            min="0"
+                                            value={openingFloat}
+                                            onChange={(e) => setOpeningFloat(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="bizAddress">Business address</Label>
+                                    <Input
+                                        id="bizAddress"
+                                        value={businessAddress}
+                                        onChange={(e) => setBusinessAddress(e.target.value)}
+                                        placeholder="Kampala, Uganda"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4">
+                                <label className="flex cursor-pointer items-start gap-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={seedProducts}
+                                        onChange={(e) => setSeedProducts(e.target.checked)}
+                                        className="mt-1 h-4 w-4 rounded border-input accent-primary"
+                                    />
+                                    <div>
+                                        <p className="text-sm font-black">
+                                            Add starter {category.terminology.item.toLowerCase()}s
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {category.sampleProducts.length} common{" "}
+                                            {category.terminology.item.toLowerCase()}s for a{" "}
+                                            {category.name.toLowerCase()} so you can start
+                                            selling straight away. You can edit them later.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div className="flex justify-between gap-3">
+                                <Button variant="outline" onClick={() => setStep(1)}>
+                                    Back
+                                </Button>
+                                <Button onClick={() => setStep(3)} disabled={!category}>
+                                    Continue <ChevronRight className="ml-2 h-4 w-4" />
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* STEP 3 — confirm */}
+                {step === 3 && category && (
+                    <Card className="mx-auto max-w-2xl">
+                        <CardContent className="space-y-6 p-6">
+                            <h2 className="text-xl font-black">Confirm your setup</h2>
+
+                            <div className="space-y-3 rounded-xl bg-muted/50 p-4 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Business</span>
+                                    <span className="font-bold">
+                                        {businessName.trim() || category.name}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Trade</span>
+                                    <span className="font-bold">{category.name}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Units</span>
+                                    <span className="font-bold">
+                                        {category.units.default}
+                                        {category.units.allowFractional && " (fractional allowed)"}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">VAT</span>
+                                    <span className="font-bold">
+                                        {category.tax.enabled
+                                            ? `${category.tax.rate}%${category.tax.inclusive ? " (inclusive)" : ""}`
+                                            : "Not applicable"}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Modules</span>
+                                    <span className="font-bold">{category.modules.length} enabled</span>
+                                </div>
+                                {seedProducts && (
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Starter stock</span>
+                                        <span className="font-bold">
+                                            {category.sampleProducts.length} items
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+                                <p className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                                    {category.tax.note}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    SMART_BUZ applies URA&apos;s 18% standard rate. Exempt and
+                                    zero-rated items must be marked per product so your
+                                    VAT split stays accurate on every receipt.
+                                </p>
+                            </div>
+
+                            <div className="flex justify-between gap-3">
+                                <Button variant="outline" onClick={() => setStep(2)}>
+                                    Back
+                                </Button>
+                                <Button onClick={handleCreate} disabled={saving}>
+                                    {saving ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Setting up...
+                                        </>
+                                    ) : (
+                                        "Finish setup"
+                                    )}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
+        </div>
+    );
+}
