@@ -17,12 +17,13 @@ export function PromoCartBanner({ unlockedRewards, nudges }: PromoCartBannerProp
     }
 
     return (
-        <div className="space-y-2.5 my-3 animate-in fade-in duration-300">
+        <div className="space-y-2 animate-in fade-in duration-300">
             {/* 1. Unlocked Rewards (Green Highlight) */}
             {unlockedRewards.map((reward, idx) => (
                 <div
                     key={`${reward.promotionId}-${idx}`}
-                    className="flex items-center justify-between p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-200 text-xs shadow-sm"
+                    style={{ animationDelay: `${idx * 60}ms` }}
+                    className="flex items-center justify-between p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-200 text-xs shadow-sm animate-in fade-in slide-in-from-top-1 duration-300"
                 >
                     <div className="flex items-center gap-2.5">
                         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-emerald-500/30 bg-emerald-500/20 shadow-sm">
@@ -53,7 +54,8 @@ export function PromoCartBanner({ unlockedRewards, nudges }: PromoCartBannerProp
             {nudges.map((nudge, idx) => (
                 <div
                     key={`${nudge.promotionId}-${idx}`}
-                    className="p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs shadow-sm space-y-1.5"
+                    style={{ animationDelay: `${idx * 60}ms` }}
+                    className="p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs shadow-sm space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-300"
                 >
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">

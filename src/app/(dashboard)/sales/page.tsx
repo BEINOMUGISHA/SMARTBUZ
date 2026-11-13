@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id, Doc } from "../../../../convex/_generated/dataModel";
@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Package, User, Loader2, ChevronLeft, ChevronRight, CalendarIcon, Store, Check, ChevronsUpDown, Download, Smartphone } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Package, User, Loader2, ChevronLeft, ChevronRight, CalendarIcon, Store, Check, ChevronsUpDown, Download, Smartphone, PackageOpen, Tag, WifiOff, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
@@ -29,14 +29,18 @@ import { cn, formatError } from "@/lib/utils";
 import { generateRestockPDF } from "@/lib/restock-pdf";
 import { PromotionsReportView } from "./promotions-report-view";
 import { PromoCartBanner } from "@/components/promo-cart-banner";
-import { queueOfflineSale } from "@/lib/offline-sales-manager";
+import { queueOfflineSale, getQueuedSales } from "@/lib/offline-sales-manager";
 import { MobileMoneyModal } from "@/components/mobile-money-modal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AnimatedNumber } from "@/components/animated-number";
 // Types
 type CartItem = {
     stockId: Id<"stocks">;
     name: string;
     productCode: string;
     price: number;
+    /** Master (list) price, kept so a till override can be shown and audited. */
+    listPrice?: number;
     qty: number;
     maxQty: number;
     pv: number;
@@ -241,6 +245,34 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const createSale = useMutation(api.sales.create);
     const activePromotions = useQuery(api.promotions.getActivePromotionsWithProducts);
 
+    // Till price overrides are opt-in per business (Settings -> Till controls).
+    // When off, the cart shows the list price and the server charges it.
+    const overridesEnabled = (activeProfile as any)?.allowPriceOverrides === true;
+    const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+
+    // Sales queued in IndexedDB while offline. The banner in the shell counts
+    // these too, but the till shows its own count so the cashier knows a sale
+    // is not yet in the books.
+    const [queuedCount, setQueuedCount] = useState(0);
+    useEffect(() => {
+        let cancelled = false;
+        const refreshQueued = async () => {
+            try {
+                const queued = await getQueuedSales();
+                if (!cancelled) setQueuedCount(queued.length);
+            } catch {
+                // IndexedDB may be unavailable in private browsing; the banner
+                // is the fallback signal.
+            }
+        };
+        void refreshQueued();
+        const timer = window.setInterval(refreshQueued, 15000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+        };
+    }, [isOffline, isLoading]);
+
     useEffect(() => {
         const saved = localStorage.getItem("pos_sales_rows_per_page");
         if (saved) setRowsPerPage(Number(saved));
@@ -323,10 +355,13 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                         count,
                         triggerLabel: `${item.name} (x${item.qty})`,
                     });
-                }
-                const remaining = promo.requiredQty - (item.qty % promo.requiredQty);
-                if (remaining > 0 && remaining <= 3) {
+                } else {
+                    // Only nudge towards the FIRST tier. Once a tier is won the
+                    // customer must see the reward, not a contradictory
+                    // "add 2 more" line. The old code pushed both, and hid
+                    // nudges entirely for promotions requiring more than 3 units.
                     const currentInTier = item.qty % promo.requiredQty;
+                    const remaining = promo.requiredQty - currentInTier;
                     nudges.push({
                         promotionId: item.stockId,
                         promotionName: promo.promotionName,
@@ -378,10 +413,20 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     }, [cart, activePromotions, totalPV, totalBV]);
 
     // Cart Actions
+    const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+    const flashRow = (stockId: string) => {
+        setHighlightedId(stockId);
+        window.setTimeout(() => {
+            setHighlightedId((current) => (current === stockId ? null : current));
+        }, 900);
+    };
+
     const addToCart = (stock: any) => {
+        const stockId = stock._id || stock.stockId;
+
         setCart(prev => {
-            const existing = prev.find(i => i.stockId === stock._id || i.stockId === stock.stockId);
-            const stockId = stock._id || stock.stockId;
+            const existing = prev.find(i => i.stockId === stockId);
 
             if (existing) {
                 // [CHANGED] Removed stock limit check to allow negative stock selling
@@ -396,11 +441,19 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 name: stock.name,
                 productCode: stock.productCode,
                 price: stock.price,
+                listPrice: stock.price,
                 qty: 1,
                 maxQty: stock.qty,
                 pv: stock.pv,
                 bv: stock.bv
             }];
+        });
+
+        // Feedback: the product row highlights, and the cart badge reacts.
+        flashRow(stockId);
+        toast.success(`${stock.name} added to cart`, {
+            description: "Tap again to add one more",
+            duration: 1400,
         });
     };
 
@@ -432,6 +485,29 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             }
             return item;
         }));
+    };
+
+    /**
+     * Price edits are kept in a draft string so the field can be cleared
+     * while typing (the old implementation snapped back the moment the
+     * field was emptied). The committed value lives in the cart.
+     */
+    const handlePriceDraft = (stockId: Id<"stocks">, raw: string) => {
+        const cleaned = raw.replace(/[^\d]/g, "");
+        setPriceDrafts(prev => ({ ...prev, [stockId]: cleaned }));
+        const parsed = parseInt(cleaned, 10);
+        if (!isNaN(parsed) && parsed >= 0) {
+            updatePrice(stockId, String(parsed));
+        }
+    };
+
+    const commitPriceDraft = (stockId: Id<"stocks">) => {
+        setPriceDrafts(prev => {
+            if (!(stockId in prev)) return prev;
+            const next = { ...prev };
+            delete next[stockId];
+            return next;
+        });
     };
 
     const removeFromCart = (stockId: Id<"stocks">) => {
@@ -540,7 +616,13 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     };
 
     // Checkout Handler
+    const submittingRef = useRef(false);
+
     const handleCheckout = async () => {
+        // Guard against double submission: a double click used to fire two
+        // sales, because the disabled state only caught up on the next render.
+        if (submittingRef.current) return;
+
         const newErrors: Record<string, boolean> = {};
 
         if (cart.length === 0) {
@@ -582,6 +664,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
         try {
             setIsLoading(true);
+            submittingRef.current = true;
 
             const shopPrefix = isShopUser ? (shopData.shop.serialNumber?.split("-")[0] || "SHOP") : "HQ";
             let result: any;
@@ -601,6 +684,17 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     pv: item.pv,
                     bv: item.bv
                 })),
+                // Till price overrides. The server only honours these when the
+                // business has enabled overrides (Settings -> Till controls),
+                // and it records the original price on the sale for audit.
+                priceOverrides: overridesEnabled
+                    ? cart
+                        .filter(item => item.price !== (item.listPrice ?? item.price))
+                        .map(item => ({
+                            stockId: item.stockId,
+                            price: item.price,
+                        }))
+                    : undefined,
                 customerId: selectedCustomerId === "walk-in" ? undefined : selectedCustomerId,
                 isLoan,
                 paymentDueDate: isLoan ? paymentDate : undefined,
@@ -668,6 +762,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 invoiceNumber: (result as any).invoiceNumber || `INV-${Date.now()}`,
                 items: cart.map(item => ({
                     ...item,
+                    // The receipt renderers read `quantity`; the cart stores `qty`.
+                    quantity: item.qty,
                     price: item.price
                 })),
                 total: cartTotal,
@@ -693,7 +789,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             };
 
             setReceiptData(receipt);
-            toast.success("Sale completed successfully!");
+            toast.success("Sale completed successfully", {
+                description: `${receipt.invoiceNumber} · UGX ${cartTotal.toLocaleString()}`,
+                icon: <Check className="h-4 w-4" />,
+            });
 
             // Clear Cart and Local Storage
             setCart([]);
@@ -717,6 +816,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             toast.error(formatError(error));
         } finally {
             setIsLoading(false);
+            submittingRef.current = false;
         }
     };
 
@@ -732,15 +832,33 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             className="pl-9 h-12 text-lg"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
+                            aria-label="Search products by name or product code"
                             autoFocus
                         />
                     </div>
 
                     <div className="flex-1 overflow-auto border rounded-xl bg-card shadow-sm p-4 flex flex-col">
                         {isStocksLoading ? (
-                            <div className="flex items-center justify-center h-40"><Loader2 className="animate-spin" /></div>
+                            <ProductListSkeleton />
                         ) : stocks.length === 0 ? (
-                            <div className="text-center py-10 text-muted-foreground">No products found</div>
+                            <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
+                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+                                    <PackageOpen className="h-7 w-7 text-muted-foreground/60" />
+                                </div>
+                                <div>
+                                    <p className="font-medium">No products found</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {search
+                                            ? `Nothing matches "${search}". Try a different name or product code.`
+                                            : "This branch has no products yet. Add stock before selling."}
+                                    </p>
+                                </div>
+                                {search && (
+                                    <Button variant="outline" size="sm" className="rounded-lg" onClick={() => setSearch("")}>
+                                        Clear search
+                                    </Button>
+                                )}
+                            </div>
                         ) : (
                             <div className="flex-1 overflow-x-auto flex flex-col h-full">
                                 <div className="min-w-[800px] lg:min-w-0 flex-1">
@@ -757,35 +875,44 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                         </TableHeader>
                                         <TableBody>
                                             {paginatedStocks.map((stock: any) => {
-                                                const cartItem = cart.find(i => i.stockId === (stock._id || stock.stockId));
+                                                const stockId = stock._id || stock.stockId;
+                                                const cartItem = cart.find(i => i.stockId === stockId);
                                                 const virtualQty = stock.qty - (cartItem?.qty || 0);
-                                                const promoData = activePromotions?.productPromotions?.[(stock._id || stock.stockId)];
+                                                const promoData = activePromotions?.productPromotions?.[stockId];
+                                                const isHighlighted = highlightedId === stockId;
 
                                                 return (
-                                                    <TableRow key={stock._id || stock.stockId} className={virtualQty === 0 ? "opacity-50" : ""}>
+                                                    <TableRow
+                                                        key={stockId}
+                                                        className={cn(
+                                                            "transition-all duration-500",
+                                                            virtualQty === 0 && "opacity-50",
+                                                            isHighlighted && "bg-emerald-50/70 ring-1 ring-inset ring-emerald-200"
+                                                        )}
+                                                    >
                                                         <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
                                                         <TableCell className="font-medium">
                                                             <div className="flex flex-col">
                                                                 <span>{stock.name}</span>
                                                                 {/* PROMO BADGE */}
                                                                 {(!isHp && promoData) && (
-                                                                    <Badge variant="secondary" className="w-fit mt-1 bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200 text-[10px] px-1 py-0 h-5">
+                                                                    <Badge variant="secondary" className="w-fit mt-1 bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200 text-[10px] px-1 py-0 h-5">
                                                                         PROMO: {promoData.promotionName}
                                                                     </Badge>
                                                                 )}
                                                             </div>
                                                         </TableCell>
-                                                        <TableCell className="text-right font-mono">{stock.price.toLocaleString()}</TableCell>
-                                                        <TableCell className="text-right text-xs text-muted-foreground">
+                                                        <TableCell className="text-right font-mono tabular-nums">{stock.price.toLocaleString()}</TableCell>
+                                                        <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                                                             {stock.pv} / {stock.bv}
                                                         </TableCell>
                                                         <TableCell className="text-center">
                                                             <div className="flex flex-col items-center">
-                                                                <span className={cn("font-bold px-2 py-0.5 rounded-full", virtualQty === 0 ? "bg-destructive/10 text-destructive" : "bg-green-50 text-green-700")}>
+                                                                <span className={cn("font-bold px-2 py-0.5 rounded-full tabular-nums", virtualQty === 0 ? "bg-destructive/10 text-destructive" : "bg-emerald-50 text-emerald-700")}>
                                                                     {virtualQty}
                                                                 </span>
                                                                 {cartItem && (
-                                                                    <span className="text-[10px] font-medium text-primary mt-1">
+                                                                    <span className="text-[10px] font-medium text-primary mt-1 tabular-nums">
                                                                         {cartItem.qty} in cart
                                                                     </span>
                                                                 )}
@@ -796,6 +923,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                                 size="sm"
                                                                 className="h-8 rounded-lg font-bold transition-transform active:scale-95"
                                                                 variant={virtualQty > 0 ? "secondary" : "destructive"}
+                                                                aria-label={`Add ${stock.name} to the cart`}
                                                                 onClick={() => addToCart(stock)}
                                                             >
                                                                 {virtualQty > 0 ? "Add" : "Sell Negative"}
@@ -865,7 +993,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
                 {/* Right Col: Cart & Checkout */}
                 <div className="lg:col-span-5 h-[650px] lg:h-full flex flex-col gap-4 overflow-hidden">
-                    <Card className="flex-1 flex flex-col overflow-hidden border-2 shadow-md">
+                    <Card className="flex-1 flex flex-col overflow-hidden border shadow-sm">
                         <CardHeader className="bg-muted/30 pb-4">
                             <CardTitle className="flex items-center gap-2">
                                 <ShoppingCart className="h-5 w-5" /> Current Order
@@ -874,7 +1002,14 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
                         <div className="px-4 pt-3">
                             <div className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium ${isOffline ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-                                <span>{isOffline ? "Offline mode: sales will save locally" : "Online mode: sales sync instantly"}</span>
+                                <span className="flex items-center gap-1.5">
+                                    {isOffline ? <WifiOff className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+                                    {isOffline
+                                        ? "Offline mode: sales will save locally"
+                                        : queuedCount > 0
+                                            ? `Online: ${queuedCount} sale${queuedCount === 1 ? "" : "s"} waiting to sync`
+                                            : "Online mode: sales sync instantly"}
+                                </span>
                                 {offlineDrafts.length > 0 && (
                                     <Button variant="secondary" size="sm" onClick={() => void syncOfflineDrafts()} className="h-7 text-[10px]">
                                         Sync {offlineDrafts.length}
@@ -929,106 +1064,139 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
                         <CardContent className="flex-1 overflow-y-auto p-0">
                             {cart.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8">
-                                    <ShoppingCart className="h-12 w-12 mb-4 opacity-20" />
-                                    <p>Cart is empty</p>
-                                    <p className="text-xs">Select items from the left to start a sale</p>
+                                <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+                                        <ShoppingCart className="h-7 w-7 opacity-40" />
+                                    </div>
+                                    <p className="font-medium text-foreground">No items in this sale yet</p>
+                                    <p className="text-xs mt-1 max-w-[240px]">
+                                        Search for a product on the left and press Add. Tap Add again
+                                        to increase the quantity.
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto">
                                     <Table>
                                         <TableHeader className="sticky top-0 bg-background z-10">
                                             <TableRow>
-                                                <TableHead className="w-[45%]">Item & Price Override</TableHead>
+                                                <TableHead className="w-[45%]">{overridesEnabled ? "Item & Price" : "Item"}</TableHead>
                                                 <TableHead className="w-[20%] text-center">Qty</TableHead>
                                                 <TableHead className="text-right">Total</TableHead>
-                                                <TableHead className="w-[10%]"></TableHead>
+                                                <TableHead className="w-[10%]"><span className="sr-only">Actions</span></TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {cart.map(item => (
+                                            {cart.map(item => {
+                                                const listPrice = item.listPrice ?? item.price;
+                                                const isOverridden = overridesEnabled && item.price !== listPrice;
+                                                return (
                                                 <React.Fragment key={item.stockId}>
-                                                    <TableRow className="border-b last:border-0 relative">
-                                                        <TableCell className="py-2 w-[45%]">
-                                                            <div className="font-medium text-[11px] lg:text-sm line-clamp-1 mb-1">{item.name}</div>
-                                                            <Input
-                                                                className="h-7 w-20 lg:w-24 text-[10px] lg:text-xs"
-                                                                value={item.price}
-                                                                type="number"
-                                                                onChange={(e) => updatePrice(item.stockId, e.target.value)}
-                                                            />
+                                                    <TableRow className="border-b last:border-0 relative transition-colors">
+                                                        <TableCell className="py-2.5 w-[45%]">
+                                                            <div className="font-medium text-xs lg:text-sm line-clamp-1 mb-1.5">{item.name}</div>
+                                                            {overridesEnabled ? (
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="relative">
+                                                                        <Input
+                                                                            className="h-8 w-24 text-xs tabular-nums"
+                                                                            value={priceDrafts[item.stockId] ?? String(item.price)}
+                                                                            inputMode="numeric"
+                                                                            aria-label={`Price for ${item.name} in shillings`}
+                                                                            onChange={(e) => handlePriceDraft(item.stockId, e.target.value)}
+                                                                            onBlur={() => commitPriceDraft(item.stockId)}
+                                                                        />
+                                                                        {isOverridden && (
+                                                                            <span className="absolute -top-1.5 -right-1 rounded bg-amber-100 px-1 text-[9px] font-bold text-amber-800 border border-amber-200">
+                                                                                OVERRIDE
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {isOverridden && (
+                                                                        <span className="text-[10px] text-muted-foreground line-through tabular-nums">
+                                                                            {listPrice.toLocaleString()}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-xs text-muted-foreground tabular-nums">
+                                                                    {item.price.toLocaleString()}{" "}
+                                                                    <span className="text-[10px] uppercase tracking-wide">UGX</span>
+                                                                </div>
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="p-0 w-[20%]">
                                                             <div className="flex items-center justify-center gap-1">
-                                                                <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, -1)}>
-                                                                    <Minus className="h-3 w-3" />
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
+                                                                    aria-label={`Decrease quantity of ${item.name}`}
+                                                                    onClick={() => updateQty(item.stockId, -1)}
+                                                                >
+                                                                    <Minus className="h-3.5 w-3.5" />
                                                                 </Button>
-                                                                <span className="w-5 text-center text-xs font-medium">{item.qty}</span>
-                                                                <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateQty(item.stockId, 1)}>
-                                                                    <Plus className="h-3 w-3" />
+                                                                <span className="w-6 text-center text-sm font-semibold tabular-nums" aria-live="polite">{item.qty}</span>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
+                                                                    aria-label={`Increase quantity of ${item.name}`}
+                                                                    onClick={() => updateQty(item.stockId, 1)}
+                                                                >
+                                                                    <Plus className="h-3.5 w-3.5" />
                                                                 </Button>
                                                             </div>
                                                         </TableCell>
-                                                        <TableCell className="text-right font-medium text-[11px] flex-1">
-                                                            {(item.price * item.qty).toLocaleString()}
+                                                        <TableCell className="text-right font-medium text-xs lg:text-sm tabular-nums">
+                                                            <AnimatedNumber value={item.price * item.qty} />
                                                         </TableCell>
                                                         <TableCell className="p-2 text-right w-[10%]">
-                                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => removeFromCart(item.stockId)}>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10 active:scale-95 transition-transform"
+                                                                aria-label={`Remove ${item.name} from the cart`}
+                                                                onClick={() => removeFromCart(item.stockId)}
+                                                            >
                                                                 <Trash2 className="h-4 w-4" />
                                                             </Button>
                                                         </TableCell>
                                                     </TableRow>
 
-                                                    {/* PROMOTION TRIGGER FEEDBACK */}
+                                                    {/* PROMOTION TRIGGER FEEDBACK — the banner below owns the
+                                                        "add N more" nudges, so only the win is
+                                                        shown on the line itself. */}
                                                     {(() => {
                                                         const promoData = activePromotions?.productPromotions?.[item.stockId];
                                                         if (isHp || !promoData) return null;
+                                                        if (item.qty < promoData.requiredQty) return null;
 
                                                         return (
                                                             <TableRow className="border-none">
                                                                 <TableCell colSpan={4} className="p-0">
                                                                     <div className="w-full px-2 pb-2">
-                                                                        {item.qty >= promoData.requiredQty ? (
-                                                                            <div className="text-[10px] text-green-600 font-bold bg-green-50 p-1 rounded-sm border border-green-200 flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
-                                                                                🎉 Promotion Triggered: {Math.floor(item.qty / promoData.requiredQty)}x {promoData.prize}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <div className="text-[10px] text-purple-600 bg-purple-50 p-1 rounded-sm border border-purple-100">
-                                                                                Add {promoData.requiredQty - (item.qty % promoData.requiredQty)} more for {promoData.prize}
-                                                                            </div>
-                                                                        )}
+                                                                        <div className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 p-2 rounded-md border border-emerald-200 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1">
+                                                                            <Sparkles className="h-3.5 w-3.5" />
+                                                                            Promotion won: {Math.floor(item.qty / promoData.requiredQty)}x {promoData.prize}
+                                                                        </div>
                                                                     </div>
                                                                 </TableCell>
                                                             </TableRow>
                                                         );
                                                     })()}
                                                 </React.Fragment>
-                                            ))}
+                                            );})}
                                         </TableBody>
                                     </Table>
                                 </div>
                             )}
-                        </CardContent>
-
-                        <div className="bg-muted/50 p-6 space-y-4 border-t">
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Total PV / BV</span>
-                                    <span className="font-mono">{totalPV} / {totalBV}</span>
-                                </div>
-                                <div className="flex justify-between items-baseline border-t pt-2 mt-2">
-                                    <span className="text-lg font-semibold">Total Amount</span>
-                                    <span className="text-2xl font-bold text-primary">UGX {cartTotal.toLocaleString()}</span>
-                                </div>
-                            </div>
-
-                            {/* Checkout Controls */}
-                            <div className="grid gap-3 pt-2">
+                        {/* Checkout Controls */}
+                        <div className="grid gap-3 p-4 border-t bg-muted/30">
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                        <Label className="text-xs">Client Type</Label>
+                                        <Label htmlFor="client-type" className="text-xs">Client Type</Label>
                                         <Select value={clientType} onValueChange={setClientType}>
-                                            <SelectTrigger className="h-8">
+                                            <SelectTrigger id="client-type" className="h-8">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -1056,7 +1224,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 <div className="space-y-3 pt-2 border-t mt-2">
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                            <Label className="text-xs">Payment Method</Label>
+                                            <Label htmlFor="payment-method" className="text-xs">Payment Method</Label>
                                             <Select
                                                 value={paymentMethod}
                                                 onValueChange={(v) => {
@@ -1065,7 +1233,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                     else if (isLoan) setIsLoan(false);
                                                 }}
                                             >
-                                                <SelectTrigger className="h-9">
+                                                <SelectTrigger id="payment-method" className="h-9">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -1080,12 +1248,12 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                         </div>
 
                                         <div className="space-y-1">
-                                            <Label className="text-xs">Delivery Status</Label>
+                                            <Label htmlFor="delivery-status" className="text-xs">Delivery Status</Label>
                                             <Select
                                                 value={deliveryStatus}
                                                 onValueChange={(v) => setDeliveryStatus(v as "Taken" | "Pending")}
                                             >
-                                                <SelectTrigger className="h-9">
+                                                <SelectTrigger id="delivery-status" className="h-9">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -1156,7 +1324,6 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                         </div>
                                     )}
                                 </div>
-                            </div>
 
                             {(clientType === "HP Client" || (clientType === "Non-Member" && selectedCustomerId === "walk-in") || (isLoan && selectedCustomerId === "walk-in")) && (
                                 <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
@@ -1226,15 +1393,33 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 </div>
                             )}
                         </div>
+                    </CardContent>
 
-                        <div className="px-3">
-                            <PromoCartBanner
-                                unlockedRewards={promoEvaluation.unlockedRewards}
-                                nudges={promoEvaluation.nudges}
-                            />
+                    {/* Sticky summary + checkout bar — always visible, never clipped */}
+                    <div className="shrink-0 space-y-2 border-t bg-card p-3">
+                        <PromoCartBanner
+                            unlockedRewards={promoEvaluation.unlockedRewards}
+                            nudges={promoEvaluation.nudges}
+                        />
+
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>Total PV / BV</span>
+                                <span className="font-mono tabular-nums">{totalPV} / {totalBV}</span>
+                            </div>
+                            <div className="flex justify-between items-baseline border-t pt-2 mt-2">
+                                <span className="text-base font-semibold">Total Amount</span>
+                                <span
+                                    className="text-2xl font-bold text-primary tabular-nums"
+                                    aria-live="polite"
+                                    aria-atomic="true"
+                                >
+                                    UGX <AnimatedNumber value={cartTotal} />
+                                </span>
+                            </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 p-3 border-t bg-muted/40">
+                        <div className="grid grid-cols-2 gap-2">
                             <Button
                                 variant="outline"
                                 className="font-bold"
@@ -1245,14 +1430,15 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             </Button>
                             <Button
                                 size="lg"
-                                className={`w-full font-bold text-lg ${isLoan ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"}`}
-                                disabled={cart.length === 0 || !user}
+                                className={`w-full font-bold text-lg transition-transform active:scale-[0.98] ${isLoan ? "bg-orange-600 hover:bg-orange-700" : "bg-emerald-600 hover:bg-emerald-700"}`}
+                                disabled={cart.length === 0 || !user || isLoading}
                                 onClick={handleCheckout}
                             >
                                 {isLoading || !user ? <Loader2 className="animate-spin mr-2" /> : isLoan ? <CreditCard className="mr-2 h-5 w-5" /> : <Banknote className="mr-2 h-5 w-5" />}
-                                {isLoan ? "Record Loan Sale" : "Complete Sale"}
+                                {isLoading ? "Saving sale..." : isLoan ? "Record Loan Sale" : "Complete Sale"}
                             </Button>
                         </div>
+                    </div>
                     </Card>
                 </div>
             </div>
@@ -1513,6 +1699,31 @@ function DistributorSearch({ selectedId, onSelect, customers, error }: Distribut
                 </Command>
             </PopoverContent>
         </Popover>
+    );
+}
+
+/**
+ * Product list placeholder shown while the branch's stock loads.
+ * Mirrors the shape of the real table so the layout does not jump.
+ */
+function ProductListSkeleton() {
+    return (
+        <div className="flex-1 flex flex-col gap-2 p-1" aria-hidden>
+            {Array.from({ length: 8 }).map((_, i) => (
+                <div
+                    key={i}
+                    className="flex items-center gap-4 rounded-xl border border-transparent px-3 py-2.5"
+                    style={{ animationDelay: `${i * 70}ms` }}
+                >
+                    <Skeleton className="h-4 w-16 rounded" />
+                    <Skeleton className="h-4 flex-1 rounded" />
+                    <Skeleton className="h-4 w-20 rounded" />
+                    <Skeleton className="h-4 w-14 rounded" />
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                    <Skeleton className="h-8 w-20 rounded-lg" />
+                </div>
+            ))}
+        </div>
     );
 }
 
