@@ -1,30 +1,27 @@
 /**
- * SMARTBUZ Next.js Middleware
+ * SMART_BUZ Next.js Middleware
  *
- * FIX #3: Server-side enforcement of license and authentication.
+ * Session enforcement only.
  *
- * This middleware runs on the Edge before any page renders.
- * It checks:
- *   1. License cookie (sb_license) — if missing/invalid → redirect to /locked
- *   2. Session cookie (sb_session) — if missing on protected routes → redirect to /auth/login
+ * The license/activation gate was removed on request: there is no license
+ * cookie, no /locked page and no activation screen. Any visitor with a valid
+ * session reaches the application; anyone without one is sent to the login
+ * page.
+ *
+ * The middleware runs on the Edge before any page renders.
  *
  * Auth pages (/auth/*) and public API routes are excluded from session checks.
- * The /locked page and /api/validate-license are excluded from license checks.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/session";
 
-const LICENSE_COOKIE = "sb_license";
-
-// Routes that are always public (no license or session needed)
+// Routes that are always public (no session needed)
 const PUBLIC_PATHS = [
   "/auth/login",
   "/auth/register",
   "/auth/forgot-password",
   "/auth/reset-password",
-  "/locked",
-  "/api/validate-license",
   "/api/auth",
   "/_next",
   "/favicon.ico",
@@ -40,21 +37,6 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p + "?"));
 }
 
-function isValidLicense(req: NextRequest): boolean {
-  const licenseCookie = req.cookies.get(LICENSE_COOKIE)?.value;
-  if (!licenseCookie) return false;
-
-  const rawKeys = process.env.LICENSE_KEYS ?? "";
-  const validKeys = new Set(
-    rawKeys
-      .split(",")
-      .map((k) => k.trim().toUpperCase())
-      .filter(Boolean)
-  );
-
-  return validKeys.size > 0 && validKeys.has(licenseCookie.trim().toUpperCase());
-}
-
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -63,14 +45,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 1. License gate — redirect to /locked if no valid license cookie
-  if (!isValidLicense(req)) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/locked";
-    return NextResponse.redirect(url);
-  }
-
-  // 2. Session gate — redirect to login if not authenticated on dashboard routes
+  // Session gate — redirect to login if not authenticated on dashboard routes
   const session = await getSessionFromRequest(req);
   if (!session) {
     const url = req.nextUrl.clone();

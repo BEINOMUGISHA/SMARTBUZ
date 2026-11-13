@@ -109,13 +109,13 @@ A modified client could record a UGX 500,000 sale as UGX 500. That silently fals
 
 ## 3. High-Severity Faults
 
-### 3.1 The license gate is a global switch, not a business model ⚠️
+### 3.1 The license gate was a global switch, not a business model — REMOVED
 
-`LICENSE_KEYS` is a comma-separated env var checked in `middleware.ts:43`. The cookie stores the **plaintext key**, so anyone who obtains one key unlocks the entire deployment — and there is only one key set for everybody. There is no per-business key, no expiry, no seat count, no plan.
+**Status: removed on request.** The activation gate (`LICENSE_KEYS`, the `sb_license` cookie, the `/locked` page and `/api/validate-license`) has been deleted. The middleware now enforces the session only, and there is no activation screen — any visitor with a valid session reaches the application.
 
-The `/locked` page is a good UX, but as a SaaS commercial model it cannot bill, expire, or isolate tenants.
+For the record, the original finding was that `LICENSE_KEYS` was a comma-separated env var checked in `middleware.ts:43`. The cookie stored the **plaintext key**, so anyone who obtained one key unlocked the entire deployment — and there was only one key set for everybody. There was no per-business key, no expiry, no seat count, no plan.
 
-**Fix:** Replace with a real `subscriptions` table (`orgId`, `plan`, `status`, `expiresAt`, `seats`) and check it per-request server-side.
+**If commercial gating is ever wanted,** it should be built as a real `subscriptions` table (`orgId`, `plan`, `status`, `expiresAt`, `seats`) checked per-request server-side — not restored from the removed global switch. See §5.7.
 
 ### 3.2 Build was broken — deploy blocker ✅ FIXED
 
@@ -268,7 +268,7 @@ The offline draft queue exists (`src/lib/offline-sales-manager.ts`) but the serv
 
 ### 5.7 SaaS platform essentials
 
-- **Subscription & billing** (replacing the global `LICENSE_KEYS`): plans, trials, per-seat pricing, auto-expiry, upgrade flow
+- **Subscription & billing** (the global `LICENSE_KEYS` gate was removed — see §3.1): plans, trials, per-seat pricing, auto-expiry, upgrade flow
 - **Mobile money subscription payments** — customers in Kampala pay for SMART_BUZ with MoMo, not a card
 - **Onboarding wizard** — create business → configure tax → set up shops → invite staff
 - **Invite/email verification** instead of open self-registration with client-chosen roles
@@ -285,7 +285,7 @@ The offline draft queue exists (`src/lib/offline-sales-manager.ts`) but the serv
 1. Add `convex/auth.config.ts`; derive identity server-side in every handler
 2. Replace all `adminUserId`/`userId` argument-trust with `ctx.auth.getUserIdentity()`
 3. Add `orgId` to every table + server-side org filtering (with data migration)
-4. Replace `LICENSE_KEYS` with a `subscriptions` table and per-org checks
+4. ~~Replace `LICENSE_KEYS` with a `subscriptions` table and per-org checks~~ — the global license gate was removed on request; build real per-org subscriptions only if commercial gating is actually needed (§5.7)
 5. Delete `convex/debug.ts` or gate it behind an admin identity check
 
 ### Phase 2 — Make it sellable in Uganda

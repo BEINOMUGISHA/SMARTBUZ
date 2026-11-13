@@ -37,9 +37,9 @@ jobs:
         run: npm run build
         env:
           # Placeholder values: the build must not depend on a live deployment,
-          # a real license key or a real email provider. See src/lib/convex-url.ts
-          # and src/app/api/send-reset-email/route.ts for the failure behaviour.
+          # a real email provider or a real session secret. See
+          # src/lib/convex-url.ts and src/app/api/send-reset-email/route.ts
+          # for the failure behaviour.
           NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
           SESSION_SECRET: ci-placeholder-session-secret-at-least-32-chars
-          LICENSE_KEYS: CI-PLACEHOLDER-LICENSE-KEY
           RESEND_API_KEY: ci-placeholder-key
