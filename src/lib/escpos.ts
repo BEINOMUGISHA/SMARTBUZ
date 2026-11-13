@@ -5,8 +5,10 @@
 
 export interface ThermalReceiptItem {
     name: string;
-    qty: number;
-    price: number;
+    /** Quantity of the line — accepted as `qty` or `quantity`. */
+    qty?: number | string;
+    quantity?: number | string;
+    price?: number | string;
     pv?: number;
     bv?: number;
 }
@@ -36,6 +38,26 @@ export interface ThermalReceiptData {
 // Common ESC/POS Command Byte Sequences
 const ESC = 0x1b;
 const GS = 0x1d;
+
+/** Normalises a quantity, defaulting to 1 so a malformed line never prints "undefined" or "NaN". */
+function normaliseQty(value: unknown): number {
+    const qty = Number(value ?? 1);
+    return Number.isFinite(qty) && qty !== 0 ? qty : 1;
+}
+
+/** Normalises a price, defaulting to 0 so a malformed line never prints "NaN". */
+function normalisePrice(value: unknown): number {
+    const price = Number(value);
+    return Number.isFinite(price) ? price : 0;
+}
+
+/** Normalises a receipt line that may carry `quantity` or `qty`. */
+function normaliseItem(item: ThermalReceiptItem) {
+    const qty = normaliseQty(item.quantity ?? item.qty);
+    const price = normalisePrice(item.price);
+    const total = qty * price;
+    return { qty, price, total: Number.isFinite(total) ? total : 0 };
+}
 
 export class EscPosBuilder {
     private buffer: number[] = [];
@@ -93,14 +115,20 @@ export class EscPosBuilder {
     }
 
     itemRow(name: string, qty: number, price: number, total: number): this {
-        const formattedTotal = total.toLocaleString();
-        const detail = `${qty} x ${price.toLocaleString()}`;
+        const safeQty = normaliseQty(qty);
+        const safePrice = normalisePrice(price);
+        const rawTotal = Number(total);
+        const safeTotal = Number.isFinite(rawTotal) ? rawTotal : safeQty * safePrice;
+        const safeName = name ?? "";
 
-        if (name.length > this.lineWidth - 12) {
-            this.line(name);
+        const formattedTotal = safeTotal.toLocaleString();
+        const detail = `${safeQty} x ${safePrice.toLocaleString()}`;
+
+        if (safeName.length > this.lineWidth - 12) {
+            this.line(safeName);
             return this.row(`  ${detail}`, formattedTotal);
         } else {
-            const left = `${name} (${qty})`;
+            const left = `${safeName} (${safeQty})`;
             return this.row(left, formattedTotal);
         }
     }
@@ -169,7 +197,8 @@ export function buildThermalReceipt(data: ThermalReceiptData, width: "80mm" | "5
 
     // Items
     for (const item of data.items) {
-        b.itemRow(item.name, item.qty, item.price, item.qty * item.price);
+        const { qty, price, total } = normaliseItem(item);
+        b.itemRow(item.name, qty, price, total);
     }
 
     b.divider("-");

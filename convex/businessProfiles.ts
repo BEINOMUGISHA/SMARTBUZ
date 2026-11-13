@@ -141,6 +141,7 @@ export const update = mutation({
     taxInclusive: v.optional(v.boolean()),
     taxNote: v.optional(v.string()),
     tin: v.optional(v.string()),
+    allowPriceOverrides: v.optional(v.boolean()),
     businessAddress: v.optional(v.string()),
     businessPhone: v.optional(v.string()),
     openingFloat: v.optional(v.number()),

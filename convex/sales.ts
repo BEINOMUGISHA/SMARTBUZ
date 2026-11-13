@@ -191,6 +191,13 @@ export const create = mutation({
         transactionType: v.optional(v.string()), // Sale, Swap
         clientOfflineId: v.optional(v.string()), // Offline sync idempotency key
         isOfflineSync: v.optional(v.boolean()),
+        // Optional till-level price overrides. They are only honoured when the
+        // active business profile has `allowPriceOverrides` enabled; otherwise
+        // the master price always wins.
+        priceOverrides: v.optional(v.array(v.object({
+            stockId: v.id("stocks"),
+            price: v.number(),
+        }))),
     },
     handler: async (ctx, args) => {
         // Idempotency check: if this sale was already synced from offline queue, return it
@@ -224,6 +231,36 @@ export const create = mutation({
             pricingDocs.filter((s): s is NonNullable<typeof s> => s !== null).map((s) => [s._id, s])
         );
 
+        // -----------------------------------------------------------------
+        // PRICE OVERRIDES (opt-in per business)
+        // A cashier may lower a line price at the till, but only when the
+        // business has explicitly enabled overrides. When the setting is off,
+        // any override sent by the client is ignored and the master price is
+        // charged — the client still cannot falsify revenue.
+        // -----------------------------------------------------------------
+        const activeProfile = await ctx.db
+            .query("businessProfiles")
+            .withIndex("by_active", (q) => q.eq("isActive", true))
+            .first();
+        const overridesEnabled = activeProfile?.allowPriceOverrides === true;
+
+        const overrideMap = new Map<Id<"stocks">, number>();
+        if (overridesEnabled) {
+            for (const override of args.priceOverrides ?? []) {
+                if (!Number.isFinite(override.price) || override.price < 0) {
+                    throw new Error(`Invalid price override for ${override.stockId}`);
+                }
+                overrideMap.set(override.stockId, override.price);
+            }
+        }
+
+        const appliedOverrides: {
+            stockId: Id<"stocks">;
+            name: string;
+            originalPrice: number;
+            price: number;
+        }[] = [];
+
         let computedTotal = 0;
         const trustedItems = args.items.map((item) => {
             const stock = pricingMap.get(item.stockId);
@@ -234,7 +271,22 @@ export const create = mutation({
                 throw new Error(`Invalid quantity for ${item.name}`);
             }
             // Trust the server-side price, not the client-supplied one.
-            const unitPrice = stock.price;
+            let unitPrice = stock.price;
+            const override = overrideMap.get(item.stockId);
+            if (override !== undefined) {
+                if (override > stock.price) {
+                    throw new Error(
+                        `Price override for ${item.name} is above the list price (${stock.price}).`
+                    );
+                }
+                unitPrice = override;
+                appliedOverrides.push({
+                    stockId: item.stockId,
+                    name: item.name,
+                    originalPrice: stock.price,
+                    price: override,
+                });
+            }
             computedTotal += unitPrice * item.quantity;
             return {
                 ...item,
@@ -331,6 +383,8 @@ export const create = mutation({
             invoiceNumber: await generateInvoiceNumber(ctx, shop ? shop._id : args.shopId),
             clientOfflineId: args.clientOfflineId,
             isOfflineSync: args.isOfflineSync,
+            hasPriceOverride: appliedOverrides.length > 0,
+            priceOverrides: appliedOverrides.length > 0 ? appliedOverrides : undefined,
         });
 
         const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
@@ -448,14 +502,21 @@ export const editSale = mutation({
         );
 
         let editComputedTotal = 0;
+        // Prices already agreed when the sale was recorded (a price override)
+        // survive an edit: the effective price of a line stays what the
+        // customer was charged. New overrides cannot be introduced here.
+        const recordedOverrides = new Map(
+            (existingSale.priceOverrides ?? []).map((o) => [o.stockId, o.price])
+        );
         const editTrustedItems = args.items.map((item) => {
             const stock = editPricingMap.get(item.stockId);
             if (!stock) throw new Error(`Item ${item.name} not found`);
             if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
                 throw new Error(`Invalid quantity for ${item.name}`);
             }
-            editComputedTotal += stock.price * item.quantity;
-            return { ...item, price: stock.price, pv: stock.pv, bv: stock.bv };
+            const unitPrice = recordedOverrides.get(item.stockId) ?? stock.price;
+            editComputedTotal += unitPrice * item.quantity;
+            return { ...item, price: unitPrice, pv: stock.pv, bv: stock.bv };
         });
 
         if (Math.abs(editComputedTotal - args.total) > 0.01) {

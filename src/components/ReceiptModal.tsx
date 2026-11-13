@@ -16,6 +16,22 @@ interface ReceiptProps {
     data: ReceiptData;
 }
 
+interface ReceiptLineItem {
+    name: string;
+    quantity?: number | string;
+    qty?: number | string;
+    price?: number | string;
+}
+
+/** Receipt data may carry `quantity` or `qty`; normalise on read so the ESC/POS
+ *  payload can never contain "undefined" or "NaN". */
+function getLineTotals(item: ReceiptLineItem) {
+    const qty = Number(item.quantity ?? item.qty ?? 1) || 1;
+    const price = Number(item.price) || 0;
+    const total = qty * price;
+    return { qty, price, total: Number.isFinite(total) ? total : 0 };
+}
+
 export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
     const [mounted, setMounted] = useState(false);
     const [receiptFormat, setReceiptFormat] = useState<"thermal" | "a4">("thermal");
@@ -40,11 +56,14 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                 customerName: data.customer?.name,
                 customerPhone: data.customerPhone || data.customer?.phone,
                 distributorId: data.customer?.distributorId,
-                items: data.items.map((i: any) => ({
-                    name: i.name,
-                    qty: i.quantity,
-                    price: i.price,
-                })),
+                items: data.items.map((i: ReceiptLineItem) => {
+                    const { qty, price } = getLineTotals(i);
+                    return {
+                        name: i.name,
+                        qty,
+                        price,
+                    };
+                }),
                 total: data.total,
                 totalPV: data.totalPV,
                 totalBV: data.totalBV,

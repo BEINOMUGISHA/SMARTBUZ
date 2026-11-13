@@ -3,6 +3,22 @@
 import React from "react";
 import { ReceiptData } from "./ReceiptTemplate";
 
+interface ReceiptLineItem {
+    name?: string;
+    quantity?: number | string;
+    qty?: number | string;
+    price?: number | string;
+}
+
+/** Receipt data may carry `quantity` or `qty`; normalise on read so a malformed
+ *  item can never print "undefined" or "NaN" on the slip. */
+function getLineTotals(item: ReceiptLineItem) {
+    const qty = Number(item.quantity ?? item.qty ?? 1) || 1;
+    const price = Number(item.price) || 0;
+    const total = qty * price;
+    return { qty, price, total: Number.isFinite(total) ? total : 0 };
+}
+
 export function ThermalReceipt({ data }: { data: ReceiptData }) {
     return (
         <div id="thermal-receipt" className="w-[80mm] max-w-[80mm] mx-auto p-4 bg-white text-black font-mono text-[11px] leading-tight">
@@ -81,15 +97,18 @@ export function ThermalReceipt({ data }: { data: ReceiptData }) {
                 </div>
 
                 <div className="divide-y divide-dotted divide-gray-300 py-1">
-                    {data.items.map((item, idx) => (
-                        <div key={idx} className="py-1 text-[10px]">
-                            <div className="font-bold truncate">{item.name}</div>
-                            <div className="flex justify-between text-gray-700">
-                                <span>{item.quantity} x {item.price.toLocaleString()}</span>
-                                <span className="font-bold text-black">{(item.quantity * item.price).toLocaleString()}</span>
+                    {data.items.map((item: ReceiptLineItem, idx) => {
+                        const { qty, price, total } = getLineTotals(item);
+                        return (
+                            <div key={idx} className="py-1 text-[10px]">
+                                <div className="font-bold truncate">{item.name}</div>
+                                <div className="flex justify-between text-gray-700">
+                                    <span>{qty} x {price.toLocaleString()}</span>
+                                    <span className="font-bold text-black">{total.toLocaleString()}</span>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
@@ -145,7 +164,7 @@ export function ThermalReceipt({ data }: { data: ReceiptData }) {
                 <p className="font-bold text-black">THANK YOU FOR SHOPPING WITH US!</p>
                 <p>Goods once sold are not returnable</p>
                 <p>Printed on {new Date().toLocaleDateString()}</p>
-                <p className="font-mono text-[8px] text-gray-400">POWERED BY SMARTBUZ POS</p>
+                <p className="font-mono text-[10px] text-gray-600">POWERED BY SMARTBUZ POS</p>
             </div>
         </div>
     );

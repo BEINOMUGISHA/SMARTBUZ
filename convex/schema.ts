@@ -122,6 +122,18 @@ export default defineSchema({
         )),
         clientOfflineId: v.optional(v.string()), // Idempotency key for offline queued sales
         isOfflineSync: v.optional(v.boolean()),
+        // Price override audit trail. `hasPriceOverride` is true when the
+        // business allows till-level price changes; `priceOverrides` records
+        // the master price that was replaced on each affected line.
+        hasPriceOverride: v.optional(v.boolean()),
+        priceOverrides: v.optional(v.array(
+            v.object({
+                stockId: v.id("stocks"),
+                name: v.string(),
+                originalPrice: v.number(),
+                price: v.number(),
+            })
+        )),
     }).index("by_date", ["date"])
         .index("by_shop_date", ["shopId", "date"])
         .index("by_customer_date", ["customerId", "date"])
@@ -196,6 +208,9 @@ export default defineSchema({
         taxNote: v.optional(v.string()),
         // URA Taxpayer Identification Number (printed on fiscal receipts).
         tin: v.optional(v.string()),
+        // Allow cashiers to override a line price at the till.
+        // Off by default: when off, the server always charges the master price.
+        allowPriceOverrides: v.optional(v.boolean()),
         isActive: v.boolean(),
         createdBy: v.optional(v.id("users")),
         updatedAt: v.optional(v.string()),
@@ -224,7 +239,8 @@ export default defineSchema({
         costPrice: v.optional(v.number()),
         supplier: v.optional(v.string()),
         userId: v.id("users"),
-        date: v.string(),
+        date: v.string(),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_stockId", ["stockId"])
         .index("by_expiryDate", ["expiryDate"])
         .index("by_date", ["date"]),
@@ -246,7 +262,8 @@ export default defineSchema({
         notes: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
         createdBy: v.id("users"),
-        createdAt: v.string(),
+        createdAt: v.string(),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_date", ["date"])
         .index("by_status", ["status"])
         .index("by_customer", ["customerId"])
@@ -262,7 +279,8 @@ export default defineSchema({
         rate: v.optional(v.number()), // per night / per session
         currentBookingId: v.optional(v.id("appointments")),
         shopId: v.optional(v.id("shops")),
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_businessType", ["businessType"])
         .index("by_status", ["status"]),
 
@@ -276,7 +294,8 @@ export default defineSchema({
         description: v.optional(v.string()),
         available: v.optional(v.boolean()),
         preparationMinutes: v.optional(v.number()),
-        dietary: v.optional(v.array(v.string())), // vegan, gluten-free, halal
+        dietary: v.optional(v.array(v.string())), // vegan, gluten-free, halal
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_category", ["category"]),
 
     /** Members — SACCO, gym, school, church, NGO, real estate. */
@@ -292,7 +311,8 @@ export default defineSchema({
         status: v.optional(v.string()), // active, dormant, exited
         joinedDate: v.string(),
         notes: v.optional(v.string()),
-        userId: v.optional(v.id("users")),
+        userId: v.optional(v.id("users")),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_memberNumber", ["memberNumber"])
         .index("by_status", ["status"]),
 
@@ -306,7 +326,8 @@ export default defineSchema({
         date: v.string(),
         reference: v.optional(v.string()),
         notes: v.optional(v.string()),
-        userId: v.optional(v.id("users")),
+        userId: v.optional(v.id("users")),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_memberId", ["memberId"])
         .index("by_date", ["date"]),
 
@@ -316,7 +337,8 @@ export default defineSchema({
         customerId: v.id("customers"),
         balance: v.number(),
         creditLimit: v.optional(v.number()),
-        updatedAt: v.string(),
+        updatedAt: v.string(),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_customerId", ["customerId"]),
 
     /** Wallet ledger entries. */
@@ -330,7 +352,8 @@ export default defineSchema({
         reference: v.optional(v.string()),
         saleId: v.optional(v.id("sales")),
         userId: v.id("users"),
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_customerId", ["customerId"])
         .index("by_date", ["date"]),
 
@@ -352,7 +375,8 @@ export default defineSchema({
         receivedDate: v.string(),
         dueDate: v.optional(v.string()),
         deliveredDate: v.optional(v.string()),
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_status", ["status"])
         .index("by_ticketNumber", ["ticketNumber"])
         .index("by_customer", ["customerId"]),
@@ -368,7 +392,8 @@ export default defineSchema({
         rate: v.number(), // percentage
         commission: v.number(),
         paid: v.optional(v.boolean()),
-        paidDate: v.optional(v.string()),
+        paidDate: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_userId", ["userId"])
         .index("by_saleDate", ["saleDate"]),
 
@@ -384,7 +409,8 @@ export default defineSchema({
         purchaseCost: v.optional(v.number()),
         currentValue: v.optional(v.number()),
         notes: v.optional(v.string()),
-        userId: v.optional(v.id("users")),
+        userId: v.optional(v.id("users")),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_assetTag", ["assetTag"])
         .index("by_category", ["category"])
         .index("by_status", ["status"]),
@@ -400,7 +426,8 @@ export default defineSchema({
         paymentTerms: v.optional(v.string()), // "Net 30"
         balance: v.optional(v.number()),
         createdAt: v.string(),
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_name", ["name"]),
 
     /** Purchase orders to suppliers. */
@@ -422,7 +449,8 @@ export default defineSchema({
             quantity: v.number(),
             unitCost: v.number(),
             receivedQty: v.optional(v.number()),
-        })),
+        })),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_poNumber", ["poNumber"])
         .index("by_status", ["status"])
         .index("by_date", ["date"]),
@@ -442,7 +470,8 @@ export default defineSchema({
             name: v.string(),
             quantity: v.number(),
             unitCost: v.number(),
-        })),
+        })),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_receiptNumber", ["receiptNumber"])
         .index("by_date", ["date"]),
 
@@ -461,7 +490,8 @@ export default defineSchema({
         assignedToName: v.optional(v.string()),
         amount: v.optional(v.number()),
         notes: v.optional(v.string()),
-        createdAt: v.string(),
+        createdAt: v.string(),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_status", ["status"])
         .index("by_date", ["createdAt"]),
 
@@ -478,7 +508,8 @@ export default defineSchema({
         customerId: v.optional(v.id("customers")),
         vehicleReg: v.optional(v.string()),
         date: v.string(),
-        saleId: v.optional(v.id("sales")),
+        saleId: v.optional(v.id("sales")),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_date", ["date"])
         .index("by_fuelType", ["fuelType"]),
 
@@ -494,7 +525,8 @@ export default defineSchema({
         route: v.optional(v.string()),
         status: v.optional(v.string()), // active, maintenance, off_road
         nextServiceDate: v.optional(v.string()),
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_registration", ["registration"])
         .index("by_status", ["status"]),
 
@@ -509,7 +541,8 @@ export default defineSchema({
         amountPaid: v.optional(v.number()),
         status: v.optional(v.string()), // active, graduated, withdrawn
         enrolledDate: v.string(),
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_className", ["className"])
         .index("by_studentId", ["studentId"]),
 
@@ -521,7 +554,8 @@ export default defineSchema({
         className: v.optional(v.string()),
         date: v.string(),
         status: v.string(), // present, absent, late, excused
-        recordedBy: v.optional(v.id("users")),
+        recordedBy: v.optional(v.id("users")),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_date", ["date"])
         .index("by_personId", ["personId"]),
 
@@ -539,7 +573,8 @@ export default defineSchema({
         countedCash: v.optional(v.number()),
         variance: v.optional(v.number()),
         status: v.string(), // open, closed
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_status", ["status"])
         .index("by_userId", ["userId"])
         .index("by_openedAt", ["openedAt"]),
@@ -555,7 +590,8 @@ export default defineSchema({
         purpose: v.optional(v.string()),
         date: v.string(),
         userId: v.id("users"),
-        reference: v.optional(v.string()),
+        reference: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_date", ["date"])
         .index("by_type", ["type"]),
 
@@ -577,7 +613,8 @@ export default defineSchema({
             price: v.number(),
             quantity: v.number(),
             notes: v.optional(v.string()),
-        })),
+        })),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_outletId", ["outletId"])
         .index("by_status", ["status"]),
 
@@ -593,7 +630,8 @@ export default defineSchema({
         lastChargedDate: v.optional(v.string()),
         status: v.string(), // active, paused, ended
         serviceId: v.optional(v.id("serviceTickets")),
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_status", ["status"])
         .index("by_nextDueDate", ["nextDueDate"]),
 
@@ -608,7 +646,8 @@ export default defineSchema({
         warrantyExpiry: v.optional(v.string()),
         soldToCustomerId: v.optional(v.id("customers")),
         soldDate: v.optional(v.string()),
-        saleId: v.optional(v.id("sales")),
+        saleId: v.optional(v.id("sales")),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_stockId", ["stockId"])
         .index("by_serialNumber", ["serialNumber"])
         .index("by_status", ["status"]),
@@ -620,7 +659,8 @@ export default defineSchema({
         customerName: v.string(),
         measurements: v.record(v.string(), v.number()),
         notes: v.optional(v.string()),
-        updatedAt: v.string(),
+        updatedAt: v.string(),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_customerId", ["customerId"]),
 
     /** Production batches (bakeries, workshops, agro processing). */
@@ -636,7 +676,8 @@ export default defineSchema({
         costPerUnit: v.optional(v.number()),
         date: v.string(),
         userId: v.id("users"),
-        status: v.optional(v.string()), // active, completed, expired
+        status: v.optional(v.string()), // active, completed, expired
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_date", ["date"])
         .index("by_status", ["status"]),
 
@@ -652,7 +693,8 @@ export default defineSchema({
         rate: v.number(),
         deposit: v.optional(v.number()),
         status: v.string(), // reserved, out, returned, overdue
-        notes: v.optional(v.string()),
+        notes: v.optional(v.string()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_status", ["status"])
         .index("by_customerId", ["customerId"]),
 
@@ -664,7 +706,8 @@ export default defineSchema({
         to: v.optional(v.string()),
         fare: v.number(),
         vehicleType: v.optional(v.string()),
-        active: v.optional(v.boolean()),
+        active: v.optional(v.boolean()),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_routeName", ["routeName"]),
 
     /** Per-category settings the operator can toggle at runtime. */
@@ -673,7 +716,8 @@ export default defineSchema({
         categoryId: v.string(),
         settings: v.record(v.string(), v.any()),
         updatedAt: v.string(),
-        updatedBy: v.optional(v.id("users")),
+        updatedBy: v.optional(v.id("users")),
+
     }).index("by_businessProfileId", ["businessProfileId"]).index("by_categoryId", ["categoryId"]),
 
     banking: defineTable({

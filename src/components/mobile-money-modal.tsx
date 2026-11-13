@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, CheckCircle2, AlertCircle, Smartphone } from "lucide-react";
+import { Loader2, Phone, CheckCircle2, AlertCircle, Smartphone, X } from "lucide-react";
 import { formatUgandaPhone, detectCarrier, initiateMoMoPush } from "@/lib/mobile-money";
 import { toast } from "sonner";
 
@@ -30,6 +30,22 @@ export function MobileMoneyModal({
     const [status, setStatus] = useState<"IDLE" | "PROMPTING" | "WAITING_PIN" | "CONFIRMED">("IDLE");
     const [manualRef, setManualRef] = useState("");
     const [timer, setTimer] = useState(60);
+
+    // Keep the phone in sync with the checkout value (prop changes and re-open)
+    useEffect(() => {
+        if (isOpen) {
+            setPhone(initialPhone ?? "");
+        }
+    }, [isOpen, initialPhone]);
+
+    // Reset transient state when the modal closes so the next payment starts clean
+    useEffect(() => {
+        if (!isOpen) {
+            setStatus("IDLE");
+            setManualRef("");
+            setTimer(60);
+        }
+    }, [isOpen]);
 
     // Auto-detect carrier when phone changes
     useEffect(() => {
@@ -82,20 +98,37 @@ export function MobileMoneyModal({
     };
 
     const handleConfirmPayment = () => {
-        const reference = manualRef.trim() || `${network}-${Date.now().toString(36).toUpperCase()}`;
+        const trimmedRef = manualRef.trim();
+        const reference = trimmedRef || `${network}-${Date.now().toString(36).toUpperCase()}`;
         onPaymentConfirmed(reference);
-        toast.success(`Mobile Money payment of UGX ${amount.toLocaleString()} confirmed!`);
+        toast.success(
+            trimmedRef
+                ? `Mobile Money payment of UGX ${amount.toLocaleString()} confirmed!`
+                : `Mobile Money payment of UGX ${amount.toLocaleString()} recorded with an unverified manual reference.`
+        );
         onClose();
     };
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-[440px]">
+            <DialogContent className="sm:max-w-[440px]" showCloseButton={false}>
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Smartphone className="h-5 w-5 text-primary" />
-                        <span>Mobile Money Payment</span>
-                    </DialogTitle>
+                    <div className="flex items-start justify-between gap-2">
+                        <DialogTitle className="flex items-center gap-2">
+                            <Smartphone className="h-5 w-5 text-primary" />
+                            <span>Mobile Money Payment</span>
+                        </DialogTitle>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={onClose}
+                            aria-label="Close mobile money dialog"
+                            className="text-muted-foreground hover:text-foreground"
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </div>
                     <DialogDescription>
                         Send an instant USSD PIN prompt directly to the customer's phone.
                     </DialogDescription>
@@ -134,10 +167,11 @@ export function MobileMoneyModal({
 
                     {/* Phone Input */}
                     <div className="space-y-1.5">
-                        <Label className="text-xs font-bold">Customer Phone Number</Label>
+                        <Label htmlFor="momo-phone" className="text-xs font-bold">Customer Phone Number</Label>
                         <div className="relative">
                             <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
+                                id="momo-phone"
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
                                 placeholder="0772 123 456"
@@ -147,31 +181,58 @@ export function MobileMoneyModal({
                         </div>
                     </div>
 
-                    {/* Waiting State */}
-                    {status === "WAITING_PIN" && (
-                        <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 text-center space-y-2 animate-in fade-in">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                            <p className="font-bold text-sm">USSD Prompt Dispatched</p>
-                            <p className="text-xs text-muted-foreground">
-                                Customer is entering their secret MoMo PIN on their phone.
-                            </p>
-                            <div className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
-                                Timeout in {timer}s
+                    {/* Status Area */}
+                    <div aria-live="polite" className="space-y-2">
+                        {status === "PROMPTING" && (
+                            <div
+                                key="prompting"
+                                className="p-4 rounded-xl border border-amber-400/30 bg-amber-500/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
+                            >
+                                <Loader2 className="h-8 w-8 animate-spin text-amber-500 mx-auto" />
+                                <p className="font-bold text-sm">Sending USSD Prompt...</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Requesting a PIN prompt from {network} for the customer's phone.
+                                </p>
                             </div>
-                        </div>
-                    )}
+                        )}
+
+                        {status === "WAITING_PIN" && (
+                            <div
+                                key="waiting-pin"
+                                className="p-4 rounded-xl border border-primary/20 bg-primary/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
+                            >
+                                <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                                <p className="font-bold text-sm">USSD Prompt Dispatched</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Customer is entering their secret MoMo PIN on their phone.
+                                </p>
+                                <div className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
+                                    Timeout in {timer}s
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Manual SMS Reference Fallback */}
                     <div className="space-y-1.5 pt-2 border-t">
-                        <Label className="text-[11px] text-muted-foreground font-semibold">
+                        <Label htmlFor="momo-reference" className="text-[11px] text-muted-foreground font-semibold">
                             Manual Verification / SMS Reference (Optional)
                         </Label>
                         <Input
+                            id="momo-reference"
                             placeholder="e.g. 1948203948 (from customer's SMS)"
                             value={manualRef}
                             onChange={(e) => setManualRef(e.target.value)}
                             className="h-8 text-xs font-mono"
                         />
+                        {manualRef.trim().length === 0 && (
+                            <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-start gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                                <span>
+                                    No reference entered — this payment will be recorded as an unverified manual reference.
+                                </span>
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -186,6 +247,7 @@ export function MobileMoneyModal({
                                 size="sm"
                                 onClick={handleSendPrompt}
                                 disabled={!phone || status === "PROMPTING"}
+                                aria-label="Send USSD prompt to customer"
                                 className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-black font-bold"
                             >
                                 {status === "PROMPTING" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Smartphone className="h-3.5 w-3.5" />}

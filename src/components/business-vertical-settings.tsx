@@ -22,7 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Loader2, Store } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Check, Loader2, Percent, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
@@ -39,11 +40,14 @@ export function BusinessVerticalSettings() {
     const [businessName, setBusinessName] = useState("");
     const [businessPhone, setBusinessPhone] = useState("");
     const [businessAddress, setBusinessAddress] = useState("");
+    // null = "follow the server value"; a boolean = optimistic local change.
+    const [allowOverrides, setAllowOverrides] = useState<boolean | null>(null);
 
     if (!user) return null;
 
     const isAdmin = user.roles.includes("admin");
     const currentCategory = profile?.categoryId ?? null;
+    const overridesEnabled = allowOverrides ?? profile?.allowPriceOverrides ?? false;
 
     const handleSwitch = async () => {
         if (!selected || !profile) return;
@@ -92,6 +96,26 @@ export function BusinessVerticalSettings() {
     };
 
     const activeCat = BUSINESS_CATEGORIES.find((c) => c.id === currentCategory);
+
+    const handleToggleOverrides = async (checked: boolean) => {
+        if (!profile) return;
+        setAllowOverrides(checked);
+        try {
+            await updateProfile({
+                id: profile._id,
+                allowPriceOverrides: checked,
+                updatedBy: user._id,
+            });
+            toast.success(
+                checked
+                    ? "Price overrides enabled — cashiers may lower a price at the till"
+                    : "Price overrides disabled — list prices are enforced again"
+            );
+        } catch (err) {
+            setAllowOverrides(null);
+            toast.error(formatError(err));
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -226,6 +250,41 @@ export function BusinessVerticalSettings() {
                                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                 Save details
                             </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Till controls */}
+            {profile && isAdmin && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <Percent className="h-4 w-4 text-primary" />
+                            Till controls
+                        </CardTitle>
+                        <CardDescription>
+                            Decide what a cashier is allowed to change while a sale is open.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-start justify-between gap-4 rounded-xl border bg-muted/30 p-4">
+                            <div className="space-y-1">
+                                <Label htmlFor="s-allowOverrides" className="text-sm">
+                                    Allow price overrides at the till
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    When on, a cashier can lower a line price in the cart and the
+                                    sale records both the original and the agreed price for audit.
+                                    When off, the server always charges the list price.
+                                </p>
+                            </div>
+                            <Switch
+                                id="s-allowOverrides"
+                                checked={overridesEnabled}
+                                onCheckedChange={handleToggleOverrides}
+                                aria-label="Allow price overrides at the till"
+                            />
                         </div>
                     </CardContent>
                 </Card>
