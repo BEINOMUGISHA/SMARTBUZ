@@ -3,8 +3,6 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useMutation } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +14,6 @@ export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
     const [loading, setLoading] = useState(false);
     const [submitted, setSubmitted] = useState(false);
-    const requestReset = useMutation(api.users.requestPasswordReset);
 
 
     // ...
@@ -25,21 +22,21 @@ export default function ForgotPasswordPage() {
         e.preventDefault();
         setLoading(true);
         try {
-            // Step 1: Generate and store the reset code in Convex
-            const result = await requestReset({ email });
+            // Step 1: Ask the server to generate + email the reset code.
+            // The code itself never travels through the browser — the server
+            // generates it, emails it, and only the user who owns the inbox
+            // can complete the reset.
+            const emailRes = await fetch("/api/send-reset-email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: email.trim().toLowerCase() }),
+            });
 
-            // Step 2: FIX #5 - Deliver code via real email (Resend), not console.log
-            if (result?.code) {
-                const emailRes = await fetch("/api/send-reset-email", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ email, code: result.code }),
-                });
-                if (!emailRes.ok) {
-                    toast.error("Account found, but email delivery failed. Contact support.");
-                    setLoading(false);
-                    return;
-                }
+            if (!emailRes.ok) {
+                const err = await emailRes.json().catch(() => ({}));
+                toast.error(err?.error || "Could not send the reset email. Please try again.");
+                setLoading(false);
+                return;
             }
 
             setSubmitted(true);

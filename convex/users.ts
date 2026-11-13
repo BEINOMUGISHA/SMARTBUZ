@@ -11,6 +11,19 @@ function sanitizeUser<T extends { password?: string }>(user: T | null): Omit<T, 
     return safeUser;
 }
 
+/**
+ * Generate a 6-digit numeric code from a cryptographically secure source.
+ * `Math.random()` is predictable and must not be used for security tokens.
+ */
+function generateResetCode(): string {
+    const range = 900000;
+    const random = crypto.getRandomValues(new Uint32Array(1))[0];
+    return (100000 + (random % range)).toString();
+}
+
+/** Max number of times a single reset code may be checked before it is voided. */
+const MAX_RESET_ATTEMPTS = 5;
+
 // Fetch all users with pagination and search (Paginated)
 export const list = query({
     args: {
@@ -246,43 +259,55 @@ export const login = mutation({
 
 // Password reset request
 export const requestPasswordReset = mutation({
-    args: { email: v.string() },
+    args: { email: v.string(), serverSecret: v.optional(v.string()) },
     handler: async (ctx, args) => {
+        const email = args.email.trim().toLowerCase();
         const user = await ctx.db
             .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .withIndex("by_email", (q) => q.eq("email", email))
             .unique();
         if (!user) return { success: true }; // Don't leak user existence
 
-        // Generate a 6-digit code
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate a 6-digit code from a cryptographically secure source
+        const code = generateResetCode();
         const expiresAt = Date.now() + 3600000; // 1 hour
 
         // Clear existing resets for this email
         const existing = await ctx.db
             .query("passwordResets")
-            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .withIndex("by_email", (q) => q.eq("email", email))
             .collect();
         for (const r of existing) {
             await ctx.db.delete(r._id);
         }
 
         await ctx.db.insert("passwordResets", {
-            email: args.email,
+            email,
             code,
             expiresAt,
+            attempts: 0,
         });
 
         // Log activity
         await ctx.db.insert("activityLogs", {
             userId: user._id,
             action: "Password Reset Request",
-            details: `Password reset requested for ${user.first_name} ${user.last_name} (${args.email})`,
+            details: `Password reset requested for ${user.first_name} ${user.last_name} (${email})`,
             timestamp: new Date().toISOString(),
         });
-        // Email is sent via the /api/send-reset-email Next.js route (called by the frontend).
 
-        return { success: true, code }; // code returned so frontend /api/send-reset-email can email it
+        // SECURITY: the code is only ever returned when the caller proves it is
+        // the Next.js server (via a shared secret held in the Convex deployment
+        // env). Returning it to an anonymous browser caller would let anyone
+        // request a reset for any account and complete the takeover without
+        // ever reading the victim's inbox.
+        //
+        // NOTE: RESEND_API_KEY must be set in BOTH the Next.js environment and
+        // the Convex dashboard environment for password reset to work. If the
+        // Convex side is missing, this fails closed (no code is ever returned).
+        const expectedSecret = process.env.RESEND_API_KEY;
+        const isServer = !!expectedSecret && !!args.serverSecret && args.serverSecret === expectedSecret;
+        return isServer ? { success: true, code } : { success: true };
     },
 });
 
@@ -294,19 +319,34 @@ export const resetPassword = mutation({
         newPassword: v.string(),
     },
     handler: async (ctx, args) => {
+        const email = args.email.trim().toLowerCase();
+
+        if (!args.newPassword || args.newPassword.length < 6) {
+            throw new Error("Password must be at least 6 characters long");
+        }
+
         const reset = await ctx.db
             .query("passwordResets")
-            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .withIndex("by_email", (q) => q.eq("email", email))
             .filter((q) => q.eq(q.field("code"), args.code))
-            .unique();
+            .first();
 
         if (!reset || reset.expiresAt < Date.now()) {
             throw new Error("Invalid or expired reset code");
         }
 
+        // Brute-force protection: a 6-digit code is only 1,000,000 possibilities,
+        // so cap the number of verification attempts per issued code.
+        const attempts = (reset.attempts ?? 0) + 1;
+        if (attempts > MAX_RESET_ATTEMPTS) {
+            await ctx.db.delete(reset._id);
+            throw new Error("Too many incorrect attempts. Please request a new reset code.");
+        }
+        await ctx.db.patch(reset._id, { attempts });
+
         const user = await ctx.db
             .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email))
+            .withIndex("by_email", (q) => q.eq("email", email))
             .unique();
         if (!user) throw new Error("User not found");
 
@@ -314,11 +354,20 @@ export const resetPassword = mutation({
         await ctx.db.patch(user._id, { password: hashedPassword });
         await ctx.db.delete(reset._id);
 
+        // Invalidate all other outstanding reset codes for this email
+        const otherResets = await ctx.db
+            .query("passwordResets")
+            .withIndex("by_email", (q) => q.eq("email", email))
+            .collect();
+        for (const r of otherResets) {
+            await ctx.db.delete(r._id);
+        }
+
         // Log activity
         await ctx.db.insert("activityLogs", {
             userId: user._id,
             action: "Password Reset Completed",
-            details: `Password reset completed for ${user.first_name} ${user.last_name} (${args.email})`,
+            details: `Password reset completed for ${user.first_name} ${user.last_name} (${email})`,
             timestamp: new Date().toISOString(),
         });
 

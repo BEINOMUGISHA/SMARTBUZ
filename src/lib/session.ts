@@ -8,7 +8,6 @@
 
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
 
 const SESSION_COOKIE = "sb_session";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
@@ -23,35 +22,92 @@ function getSecret(): string {
   return secret;
 }
 
+/**
+ * Base64url encode a UTF-8 string.
+ * Uses btoa (available in Edge runtime) instead of Buffer (Node-only).
+ */
+function encodeBase64Url(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Base64url decode back to a UTF-8 string. */
+function decodeBase64Url(input: string): string {
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/");
+  const withPadding = padded + "=".repeat((4 - (padded.length % 4)) % 4);
+  const binary = atob(withPadding);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * HMAC-SHA256 using the Web Crypto API.
+ * Web Crypto is available in both the Edge runtime (middleware) and Node 18+,
+ * unlike `node:crypto`, which is unsupported on Edge.
+ */
+async function hmacSha256Base64Url(secret: string, data: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, enc.encode(data));
+  const bytes = new Uint8Array(signature);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Constant-time string comparison to prevent timing attacks. */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 /** Create a signed session token string */
-export function signSession(payload: { userId: string; email: string }): string {
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = createHmac("sha256", getSecret()).update(data).digest("base64url");
+export async function signSession(payload: { userId: string; email: string }): Promise<string> {
+  const data = encodeBase64Url(JSON.stringify(payload));
+  const sig = await hmacSha256Base64Url(getSecret(), data);
   return `${data}.${sig}`;
 }
 
 /** Verify and decode a session token. Returns null if invalid / tampered. */
-export function verifySession(token: string): { userId: string; email: string } | null {
+export async function verifySession(
+  token: string
+): Promise<{ userId: string; email: string } | null> {
   try {
     const [data, sig] = token.split(".");
     if (!data || !sig) return null;
-    const expected = createHmac("sha256", getSecret()).update(data).digest("base64url");
-    // Constant-time comparison to prevent timing attacks
-    if (sig.length !== expected.length) return null;
-    let diff = 0;
-    for (let i = 0; i < sig.length; i++) {
-      diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
-    }
-    if (diff !== 0) return null;
-    return JSON.parse(Buffer.from(data, "base64url").toString());
+    const expected = await hmacSha256Base64Url(getSecret(), data);
+    if (!timingSafeEqual(sig, expected)) return null;
+    return JSON.parse(decodeBase64Url(data));
   } catch {
     return null;
   }
 }
 
 /** Set the session cookie on a NextResponse */
-export function setSessionCookie(res: NextResponse, payload: { userId: string; email: string }): void {
-  const token = signSession(payload);
+export async function setSessionCookie(
+  res: NextResponse,
+  payload: { userId: string; email: string }
+): Promise<void> {
+  const token = await signSession(payload);
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -73,7 +129,9 @@ export function clearSessionCookie(res: NextResponse): void {
 }
 
 /** Read and verify the session from incoming request cookies */
-export function getSessionFromRequest(req: NextRequest): { userId: string; email: string } | null {
+export async function getSessionFromRequest(
+  req: NextRequest
+): Promise<{ userId: string; email: string } | null> {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return verifySession(token);

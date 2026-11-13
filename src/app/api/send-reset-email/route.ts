@@ -14,18 +14,62 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { CONVEX_URL, IS_CONVEX_URL_CONFIGURED } from "@/lib/convex-url";
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, code } = await request.json();
+    const { email } = await request.json();
 
-    if (!email || !code) {
+    if (!email || typeof email !== "string") {
       return NextResponse.json(
-        { success: false, error: "Email and code are required" },
+        { success: false, error: "Email is required" },
         { status: 400 }
       );
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!IS_CONVEX_URL_CONFIGURED) {
+      console.error("SMARTBUZ: NEXT_PUBLIC_CONVEX_URL is not set. Cannot send reset email.");
+      return NextResponse.json(
+        { success: false, error: "Server is not configured. Contact support." },
+        { status: 503 }
+      );
+    }
+
+    // Instantiate Resend lazily so a missing API key cannot break the production
+    // build (module-scope `new Resend(undefined)` throws during page data collection).
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error("SMARTBUZ: RESEND_API_KEY is not set. Cannot send reset email.");
+      return NextResponse.json(
+        { success: false, error: "Email delivery is not configured on this server." },
+        { status: 503 }
+      );
+    }
+    const resend = new Resend(apiKey);
+
+    // Step 1: generate the reset code server-side.
+    // `serverSecret` proves this call comes from our own server, so the
+    // Convex mutation only reveals the code to us — never to a browser.
+    const convexRes = await fetch(`${CONVEX_URL}/api/mutation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "users:requestPasswordReset",
+        args: { email: normalizedEmail, serverSecret: apiKey },
+        format: "json",
+      }),
+    });
+
+    const convexData = await convexRes.json().catch(() => null);
+    const code = convexData?.value?.code;
+
+    // No code means no account with that email (or delivery is unavailable).
+    // We still return success so the endpoint cannot be used to enumerate
+    // registered email addresses.
+    if (!code) {
+      return NextResponse.json({ success: true, messageId: null });
     }
 
     const fromEmail = process.env.RESEND_FROM_EMAIL || "noreply@smartbuz.app";

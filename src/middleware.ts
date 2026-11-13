@@ -55,7 +55,7 @@ function isValidLicense(req: NextRequest): boolean {
   return validKeys.size > 0 && validKeys.has(licenseCookie.trim().toUpperCase());
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Always allow public/static paths
@@ -71,7 +71,7 @@ export function middleware(req: NextRequest) {
   }
 
   // 2. Session gate — redirect to login if not authenticated on dashboard routes
-  const session = getSessionFromRequest(req);
+  const session = await getSessionFromRequest(req);
   if (!session) {
     const url = req.nextUrl.clone();
     url.pathname = "/auth/login";

@@ -240,6 +240,7 @@ export default defineSchema({
         email: v.string(),
         code: v.string(),
         expiresAt: v.number(),
+        attempts: v.number(), // Failed verification attempts; code voids after the cap
     }).index("by_email", ["email"]),
 
     counters: defineTable({

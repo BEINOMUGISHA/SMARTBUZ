@@ -8,8 +8,24 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { setSessionCookie, clearSessionCookie, getSessionFromRequest } from "@/lib/session";
+import { CONVEX_URL, IS_CONVEX_URL_CONFIGURED } from "@/lib/convex-url";
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL!;
+/**
+ * Simple in-memory login throttling.
+ * Blocks credential-stuffing / brute-force attempts against a single account.
+ */
+const MAX_LOGIN_ATTEMPTS = 8;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const loginAttempts = new Map<string, { count: number; firstAt: number }>();
+
+function recordFailedLogin(email: string, now: number) {
+  const existing = loginAttempts.get(email);
+  if (!existing || now - existing.firstAt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(email, { count: 1, firstAt: now });
+  } else {
+    existing.count += 1;
+  }
+}
 
 /** POST /api/auth/login */
 export async function POST(request: NextRequest) {
@@ -33,13 +49,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!IS_CONVEX_URL_CONFIGURED) {
+      console.error("SMARTBUZ: NEXT_PUBLIC_CONVEX_URL is not set. Cannot authenticate.");
+      return NextResponse.json(
+        { success: false, error: "Server is not configured. Contact support." },
+        { status: 503 }
+      );
+    }
+
+    // In-memory rate limit: blunt but effective against credential stuffing.
+    // Note: this is per server instance, so on serverless it is best-effort.
+    const now = Date.now();
+    const attempts = loginAttempts.get(normalizedEmail);
+    if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS && now - attempts.firstAt < LOGIN_WINDOW_MS) {
+      const waitSeconds = Math.ceil((LOGIN_WINDOW_MS - (now - attempts.firstAt)) / 1000);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many failed login attempts. Please try again in ${waitSeconds} seconds.`,
+        },
+        { status: 429 }
+      );
+    }
+
     // Call Convex HTTP API to validate credentials
     const convexRes = await fetch(`${CONVEX_URL}/api/mutation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         path: "users:login",
-        args: { email: email.trim().toLowerCase(), password },
+        args: { email: normalizedEmail, password },
         format: "json",
       }),
     });
@@ -47,6 +88,7 @@ export async function POST(request: NextRequest) {
     if (!convexRes.ok) {
       const text = await convexRes.text();
       console.error("Convex login error:", text);
+      recordFailedLogin(normalizedEmail, now);
       return NextResponse.json(
         { success: false, error: "Invalid email or password" },
         { status: 401 }
@@ -57,16 +99,20 @@ export async function POST(request: NextRequest) {
 
     // Convex mutations return { status: "success", value: ... }
     if (data.status !== "success" || !data.value) {
+      recordFailedLogin(normalizedEmail, now);
       return NextResponse.json(
         { success: false, error: "Invalid email or password" },
         { status: 401 }
       );
     }
 
+    // Successful login — clear the counter for this email
+    loginAttempts.delete(normalizedEmail);
+
     const user = data.value;
 
     const res = NextResponse.json({ success: true, user });
-    setSessionCookie(res, { userId: user._id, email: user.email });
+    await setSessionCookie(res, { userId: user._id, email: user.email });
     return res;
   } catch (err: any) {
     console.error("Auth login error:", err);
@@ -79,7 +125,7 @@ export async function POST(request: NextRequest) {
 
 /** GET /api/auth/me */
 export async function GET(request: NextRequest) {
-  const session = getSessionFromRequest(request);
+  const session = await getSessionFromRequest(request);
   if (!session) {
     return NextResponse.json({ user: null }, { status: 401 });
   }
