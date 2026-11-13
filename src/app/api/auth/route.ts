@@ -116,8 +116,20 @@ export async function POST(request: NextRequest) {
     return res;
   } catch (err: any) {
     console.error("Auth login error:", err);
+
+    // A missing/short SESSION_SECRET throws while signing the cookie. Say so
+    // plainly — a generic "Authentication failed" sends people hunting for a
+    // password problem that does not exist.
+    const isSecretMisconfigured =
+        typeof err?.message === "string" && err.message.includes("SESSION_SECRET");
+
     return NextResponse.json(
-      { success: false, error: "Authentication failed" },
+      {
+        success: false,
+        error: isSecretMisconfigured
+          ? "Server configuration error: SESSION_SECRET is missing or too short (needs 32+ characters). See .env.example."
+          : "Authentication failed",
+      },
       { status: 500 }
     );
   }

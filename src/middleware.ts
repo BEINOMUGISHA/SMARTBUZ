@@ -11,6 +11,11 @@
  * The middleware runs on the Edge before any page renders.
  *
  * Auth pages (/auth/*) and public API routes are excluded from session checks.
+ *
+ * NOTE: the Edge bundle inlines env at compile time, so SESSION_SECRET is
+ * captured when this file is compiled. Restart the dev server (or touch this
+ * file) after changing it in .env.local — otherwise the middleware verifies
+ * cookies against the previous secret and silently rejects every session.
  */
 
 import { NextRequest, NextResponse } from "next/server";
