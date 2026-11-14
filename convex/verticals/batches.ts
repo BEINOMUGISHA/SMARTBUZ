@@ -24,10 +24,12 @@ export async function getActiveBusinessId(ctx: any): Promise<Id<"businessProfile
     const profiles = await ctx.db
         .query("businessProfiles")
         .filter((q: any) => q.eq(q.field("isActive"), true))
+        // Deterministic: matches businessProfiles.getActive (newest wins).
+        .order("desc")
         .collect();
     const active = profiles[0];
     if (active) return active._id;
-    const any = await ctx.db.query("businessProfiles").first();
+    const any = await ctx.db.query("businessProfiles").order("desc").first();
     return any?._id;
 }
 

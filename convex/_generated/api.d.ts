@@ -31,6 +31,7 @@ import type * as verticals_batches from "../verticals/batches.js";
 import type * as verticals_members from "../verticals/members.js";
 import type * as verticals_operations from "../verticals/operations.js";
 import type * as verticals_scheduling from "../verticals/scheduling.js";
+import type * as verticals_tax from "../verticals/tax.js";
 
 import type {
   ApiFromModules,
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   "verticals/members": typeof verticals_members;
   "verticals/operations": typeof verticals_operations;
   "verticals/scheduling": typeof verticals_scheduling;
+  "verticals/tax": typeof verticals_tax;
 }>;
 
 /**
