@@ -321,6 +321,8 @@ The offline draft queue exists (`src/lib/offline-sales-manager.ts`) but the serv
 | Single-active-business invariant | `convex/businessProfiles.ts`, `convex/verticals/batches.ts` | "Which business am I in?" is now deterministic; previously `profiles[0]` of an unordered filter decided it |
 | Tenant scoping on all vertical tables | `convex/schema.ts` (29 new tables) | Every vertical record carries `businessProfileId` + a `by_businessProfileId` index |
 | Missing stock-ledger entries on goods receipt | `convex/verticals/operations.ts` (`receiveGoods`) | Goods receipt now writes the `stockLedger` row that §3.5 flagged as missing |
+| Service worker no longer installed in development | `src/components/service-worker-registration.tsx` | A cached dev bundle could be replayed against freshly rendered HTML, producing hydration mismatches and defeating hot reload |
+| Service worker never caches API responses | `public/sw.js` | `/api/auth` (the "who am I" endpoint) and other API GETs were being written into Cache Storage and replayed |
 
 **Verification:** `npx tsc --noEmit` exits 0; `npm run build` exits 0 with no Edge-runtime or Resend errors (verified by re-running the build and grepping for both failure signatures).
 

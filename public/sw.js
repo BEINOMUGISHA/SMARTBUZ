@@ -12,9 +12,12 @@
  *     that was just deployed, and an authenticated shell should never be
  *     replayed from a stale cache. Static assets stay cache-first with a
  *     background refresh.
+ *  3. API responses are never cached. /api/auth answers "who am I", and a
+ *     cached copy of that is session data sitting in Cache Storage where it
+ *     can outlive the session it belongs to.
  */
 
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `smartbuz-${CACHE_VERSION}`;
 
 /** Only real, cacheable assets are precached. "/" is deliberately absent. */
@@ -82,6 +85,17 @@ self.addEventListener("fetch", (event) => {
     // Cross-origin requests (the Convex deployment, CDNs) are never served
     // from our cache.
     if (url.origin !== self.location.origin) return;
+
+    // API responses are never cached or replayed. /api/auth answers "who am
+    // I"; a cached copy of that is session data left sitting in Cache
+    // Storage, and a cached report could be shown after the data changed.
+    if (url.pathname.startsWith("/api/")) return;
+
+    // The worker script itself is never cached. The spec already routes the
+    // script fetch around the worker, but being explicit means a stale
+    // sw.js can never be replayed to a browser and leave an old worker
+    // installed forever.
+    if (url.pathname === "/sw.js") return;
 
     // Navigations: network-first, but the browser must stay in charge of
     // redirects.
