@@ -317,6 +317,10 @@ The offline draft queue exists (`src/lib/offline-sales-manager.ts`) but the serv
 | CSPRNG reset codes + 5-attempt brute-force cap | `convex/users.ts` | Reset codes no longer predictable or guessable at scale |
 | Login rate limiting | `src/app/api/auth/route.ts` | Blocks credential stuffing |
 | `attempts` field on `passwordResets` | `convex/schema.ts` | Supports brute-force guard |
+| Server-authoritative URA VAT | `convex/verticals/tax.ts` (new), `convex/businessProfiles.ts` | A tampered client can no longer set 0% VAT on a restaurant and under-state VAT on fiscal receipts |
+| Single-active-business invariant | `convex/businessProfiles.ts`, `convex/verticals/batches.ts` | "Which business am I in?" is now deterministic; previously `profiles[0]` of an unordered filter decided it |
+| Tenant scoping on all vertical tables | `convex/schema.ts` (29 new tables) | Every vertical record carries `businessProfileId` + a `by_businessProfileId` index |
+| Missing stock-ledger entries on goods receipt | `convex/verticals/operations.ts` (`receiveGoods`) | Goods receipt now writes the `stockLedger` row that §3.5 flagged as missing |
 
 **Verification:** `npx tsc --noEmit` exits 0; `npm run build` exits 0 with no Edge-runtime or Resend errors (verified by re-running the build and grepping for both failure signatures).
 
@@ -325,3 +329,85 @@ The offline draft queue exists (`src/lib/offline-sales-manager.ts`) but the serv
 Password reset now requires `RESEND_API_KEY` in **two** places: the Next.js environment **and** the Convex dashboard environment. The Convex mutation fails closed if the Convex-side secret is missing — no code is ever returned to an anonymous caller. Without the Convex-side variable, password reset silently cannot deliver codes.
 
 > **Note:** These are contained, low-risk fixes. They do **not** address Phase 1 items 1–3 (real backend auth and multi-tenancy), which require a schema migration and a careful, staged rollout.
+
+---
+
+## 8. Multi-Vertical Adaptation for the Ugandan Market
+
+This section documents the second workstream: turning SMART_BUZ from a single POS into a **data-driven platform that serves every significant Ugandan business category**, each with its own professional interface and its own feature set.
+
+### 8.1 The core idea — a catalogue, not 42 separate apps
+
+Adding a vertical is now an **append to a catalogue**, not a new codebase. `src/lib/business-categories.ts` (≈65 KB) defines **42 verticals across 7 sectors**:
+
+| Sector | Verticals |
+|---|---|
+| Trade | retail, supermarket, wholesale, agro, farming, dairy, butchery, baker, bookshop, printing, stationery, shoes, beauty |
+| Food | restaurant, cafe, hotel |
+| Health | pharmacy, clinic, veterinary |
+| Services | barber, salon, fitness, laundry, tailor, carpentry, welding, construction, hardware, cleaning, photography, event, mobile, electronics, salvage, fuel, transport |
+| Finance | sacco, realestate, security |
+| Community | education, church, ngo |
+
+Each catalogue entry declares its **modules** (which feature pages appear), **features** (capability flags), **tax** (URA VAT configuration), **units** (how this trade measures things — crates, kg, service sessions, litres) and **terminology** (what it calls its customers, staff and products).
+
+Everything else is derived from that single source:
+
+| Consumer | File |
+|---|---|
+| Sidebar navigation & role filtering | `src/lib/category-nav.ts` |
+| Active-vertical hook (nav, accent, feature flags, setup state) | `src/hooks/use-active-category.ts` |
+| Dashboard widgets per vertical | `src/components/category-widgets.tsx` |
+| VAT engine | `src/lib/vat.ts` |
+| Onboarding wizard | `src/app/setup/page.tsx` |
+| Vertical switcher & business profile | `src/components/business-vertical-settings.tsx` |
+
+### 8.2 Backend modules (78 new Convex functions)
+
+Four new modules under `convex/verticals/`, all tenant-scoped via `businessProfileId` and a shared `getActiveBusinessId(ctx)` resolver:
+
+- **`batches.ts`** — batch/expiry tracking with **FEFO** consumption, expiry summaries, serial & IMEI registration (pharmacy, agro, electronics)
+- **`scheduling.ts`** — appointments with a double-booking guard, service outlets (tables/rooms/chairs), table orders, menu management, schedule summaries
+- **`members.ts`** — members with auto-generated `M-#####` numbers, a transaction ledger with over-draw protection, customer wallets, staff commissions, donations (SACCO, church, NGO, gym)
+- **`operations.ts`** — suppliers, purchase orders, goods receipt (raises stock **and** writes the missing `stockLedger` row), deliveries, assets, fuel dispensing, vehicles, route fares, till sessions with cash variance, service tickets, rentals, attendance, enrolments, production batches, recurring charges
+
+29 new tables were added to `convex/schema.ts`, every one carrying `businessProfileId` with a `by_businessProfileId` index.
+
+### 8.3 Interface pages (17 new pages)
+
+`batches`, `appointments`, `members`, `tables`, `menu`, `service-tickets`, `suppliers`, `purchase-orders`, `fuel`, `assets`, `classes`, `attendance`, `deliveries`, `till`, `rentals`, `production`, `rooms`, `prescriptions` — all built on a shared vertical UI kit (`src/components/vertical/ui-kit.tsx`) so every trade gets the same consistent, professional surface with its own terminology.
+
+All **29** navigation routes in the registry resolve to a real page, and all **33** modules referenced by the catalogue have a registry entry — verified programmatically, not by eye.
+
+### 8.4 URA VAT — server-authoritative
+
+The frontend catalogue carries the tax settings so receipts render VAT-aware immediately, but **the server owns the rate that is actually stored**. `convex/verticals/tax.ts` keeps the policy server-side and `businessProfiles.setCategory` / `create` / `update` derive the tax configuration from the category, ignoring what the client asked for.
+
+This was a real hole found during verification: before the fix, a tampered client could post `taxRate: 0` for a restaurant and the receipts would under-state VAT. The fix is proven by a live test — see §8.5.
+
+| Vertical group | Rate | Receipt wording |
+|---|---|---|
+| Most trade, food, services, retail | **18%** | "VAT inclusive @ 18% — Price shown includes VAT" |
+| agro, farming, dairy | **0%** | "VAT zero-rated (exempt goods) @ 0%" |
+| clinic, veterinary, sacco, education, church, ngo | **0%** | "VAT exempt — &lt;reason&gt; (URA)" |
+| bookshop | **0%** | "Zero-rated educational materials @ 0%" |
+
+Unknown categories fall back to the client value, **clamped so a rate above the URA standard rate can never be declared**.
+
+### 8.5 Verification
+
+A live end-to-end suite (`scripts/vertical-e2e.mjs`) runs against the deployed backend. **25 / 25 passing** on the dev deployment, covering: business-profile creation, vertical resolution, member numbering, over-draw protection, menu creation and business scoping, availability toggling, the table floor (open → add → close with the running total), the double-booking guard, suppliers, purchase orders, **goods receipt raising stock 10 → 30 and writing the stock-ledger row**, till session open/duplicate-rejection/variance, service tickets, donations, batch expiry summaries, schedule summaries, and **VAT tampering rejection in both directions**.
+
+A contract checker (`scripts/check-vertical-contracts.mjs`) parses every Convex argument validator and diffs it against every frontend mutation call site: **37 call sites checked, 0 mismatches**. This is what caught the field-name drift in the vertical pages.
+
+### 8.6 Deployment state
+
+| Deployment | Name | State |
+|---|---|---|
+| Dev | `affable-panda-681` | Current — all 42 verticals, 78 vertical functions, security fixes, **empty of test data** |
+| Prod | `shocking-mule-553` | **0 functions deployed — never touched** |
+
+The production deployment still has nothing deployed to it. Deploying to prod is an externally visible action and needs explicit sign-off.
+
+> **Still outstanding (Phase 1, needs a data migration):** the legacy tables (`sales`, `stocks`, `customers`, `expenses`, `loans`, `shops`) are still not tenant-scoped, and the Convex backend still trusts client-supplied identity arguments. The **new vertical layer is tenant-ready**; the legacy layer is not. Until the legacy tables are migrated and `ctx.auth.getUserIdentity()` replaces the trust-the-client pattern, this is not yet safe to sell as multi-tenant SaaS — the same conclusion §1 reached, narrowed in scope but not eliminated.
+
