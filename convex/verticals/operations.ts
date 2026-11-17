@@ -3,7 +3,6 @@
  *
  * The procurement, logistics and asset workflows that separate a real
  * operating business from a bare till:
- *   - suppliers with payment terms, purchase orders, goods received notes
  *   - deliveries / dispatch runs
  *   - asset register (vehicles, pumps, equipment)
  *   - fuel dispensing log with attendant reconciliation
@@ -11,30 +10,61 @@
  *   - till / cash-shift sessions for daily cash reconciliation
  *   - service tickets (repair, laundry, cleaning jobs)
  *   - rental/hire records
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * Suppliers and purchasing moved out
+ * ────────────────────────────────────────────────────────────────────────
+ *
+ * The supplier book and the whole purchasing cycle used to live here as
+ * thin implementations with no permission checks. They now live in
+ * `convex/suppliers.ts` and `convex/purchasing.ts`, where they are
+ * properly guarded, tenant-scoped and audited.
+ *
+ * The functions below remain as **delegating wrappers** with their
+ * original names and arguments, so every existing caller keeps working
+ * while gaining the real implementation.
  */
 
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
-import { getActiveBusinessId } from "./batches";
+import { ConvexError } from "convex/values";
+import { logActivity, requirePermission, requireTenant } from "../tenancy";
+import {
+  listSuppliersHandler,
+  upsertSupplierHandler,
+} from "../suppliers";
+import {
+  createPurchaseOrderHandler,
+  listGoodsReceiptsHandler,
+  listPurchaseOrdersHandler,
+  receiveGoodsHandler,
+  updatePurchaseOrderStatusHandler,
+} from "../purchasing";
 
 /* ───────────────────────── suppliers ───────────────────────── */
 
+/**
+ * The supplier book.
+ *
+ * @deprecated Use `api.suppliers.listAll` instead. Kept so existing
+ * callers keep working; it delegates to the real implementation.
+ */
 export const listSuppliers = query({
-    args: { search: v.optional(v.string()) },
+    args: { search: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        let rows = await ctx.db.query("suppliers").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
-        if (args.search) {
-            const s = args.search.toLowerCase();
-            rows = rows.filter((r) => r.name.toLowerCase().includes(s));
-        }
-        rows.sort((a, b) => a.name.localeCompare(b.name));
-        return rows;
+        return listSuppliersHandler(ctx, {
+            searchTerm: args.search,
+            businessId: args.businessId,
+        });
     },
 });
 
+/**
+ * Register or update a supplier.
+ *
+ * @deprecated Use `api.suppliers.upsert` instead.
+ */
 export const upsertSupplier = mutation({
     args: {
         id: v.optional(v.id("suppliers")),
@@ -45,50 +75,35 @@ export const upsertSupplier = mutation({
         address: v.optional(v.string()),
         paymentTerms: v.optional(v.string()),
         notes: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        const payload = {
-            businessProfileId: businessId,
-            name: args.name,
-            contact: args.contact,
-            phone: args.phone,
-            email: args.email,
-            address: args.address,
-            paymentTerms: args.paymentTerms,
-            notes: args.notes,
-        };
-
-        if (args.id) {
-            await ctx.db.patch(args.id, payload);
-            return args.id;
-        }
-        const id = await ctx.db.insert("suppliers", { ...payload, createdAt: new Date().toISOString() });
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Create Supplier",
-            details: `Added supplier ${args.name}`,
-            timestamp: new Date().toISOString(),
-        });
-        return id;
+        const { userId, ...rest } = args;
+        return upsertSupplierHandler(ctx, rest);
     },
 });
 
 /* ───────────────────────── purchase orders ───────────────────────── */
 
+/**
+ * The purchase order book.
+ *
+ * @deprecated Use `api.purchasing.listPurchaseOrders` instead.
+ */
 export const listPurchaseOrders = query({
-    args: { status: v.optional(v.string()) },
+    args: { status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        let rows = await ctx.db.query("purchaseOrders").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
-        if (args.status) rows = rows.filter((r) => r.status === args.status);
-        rows.sort((a, b) => b.date.localeCompare(a.date));
-        return rows;
+        // The legacy contract was a plain array; the new implementation
+        // also reports a status summary.
+        const result = await listPurchaseOrdersHandler(ctx, args);
+        return result.page;
     },
 });
 
+/**
+ * Raise a purchase order.
+ *
+ * @deprecated Use `api.purchasing.createPurchaseOrder` instead.
+ */
 export const createPurchaseOrder = mutation({
     args: {
         supplierId: v.optional(v.id("suppliers")),
@@ -102,157 +117,74 @@ export const createPurchaseOrder = mutation({
             unitCost: v.number(),
         })),
         userId: v.id("users"),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        if (args.items.length === 0) throw new Error("A purchase order needs at least one line item");
-
-        const total = args.items.reduce((s, i) => s + i.quantity * i.unitCost, 0);
-
-        // Sequential PO number per business.
-        const existing = await ctx.db.query("purchaseOrders").collect();
-        const scoped = businessId
-            ? existing.filter((p) => !p.businessProfileId || p.businessProfileId === businessId)
-            : existing;
-        const next = scoped.length + 1;
-        const poNumber = `PO-${String(next).padStart(4, "0")}`;
-
-        const id = await ctx.db.insert("purchaseOrders", {
-            businessProfileId: businessId,
-            poNumber,
-            supplierId: args.supplierId,
-            supplierName: args.supplierName,
-            status: "draft",
-            date: new Date().toISOString(),
-            expectedDate: args.expectedDate,
-            total,
-            notes: args.notes,
-            userId: args.userId,
-            items: args.items.map((i) => ({ ...i, receivedQty: 0 })),
-        });
-
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Create Purchase Order",
-            details: `${poNumber} to ${args.supplierName} — UGX ${total.toLocaleString()}`,
-            timestamp: new Date().toISOString(),
-        });
-
-        return { id, poNumber };
+        const { userId, ...rest } = args;
+        return createPurchaseOrderHandler(ctx, rest);
     },
 });
 
+/**
+ * Change a purchase order's status.
+ *
+ * @deprecated Use `api.purchasing.updatePurchaseOrderStatus` instead.
+ */
 export const updatePurchaseOrderStatus = mutation({
-    args: { id: v.id("purchaseOrders"), status: v.string() },
+    args: { id: v.id("purchaseOrders"), status: v.string(), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        await ctx.db.patch(args.id, { status: args.status });
-        return args.id;
+        return updatePurchaseOrderStatusHandler(ctx, args);
     },
 });
 
 /**
  * Receive goods against a purchase order.
- * This increases stock, records a goods-received note and writes to the
- * stock ledger — the missing audit trail called out in the audit.
+ *
+ * @deprecated Use `api.purchasing.receiveGoods` instead. The new
+ * implementation supports partial receipts, branch and warehouse
+ * targeting, and preserves the purchase cost of every receipt.
  */
 export const receiveGoods = mutation({
     args: {
         poId: v.id("purchaseOrders"),
         items: v.array(v.object({
-            stockId: v.optional(v.id("stocks")),
+            stockId: v.id("stocks"),
             name: v.string(),
             quantity: v.number(),
             unitCost: v.number(),
         })),
         userId: v.id("users"),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        const po = await ctx.db.get(args.poId);
-        if (!po) throw new Error("Purchase order not found");
-        if (po.status === "received") throw new Error("This purchase order has already been received");
-
-        const now = new Date().toISOString();
-        const total = args.items.reduce((s, i) => s + i.quantity * i.unitCost, 0);
-
-        for (const item of args.items) {
-            if (!item.stockId) continue;
-            const stock = await ctx.db.get(item.stockId);
-            if (!stock) continue;
-
-            await ctx.db.patch(item.stockId, { qty: stock.qty + item.quantity });
-
-            await ctx.db.insert("stockLedger", {
-                stockId: item.stockId,
-                shopId: undefined,
-                deltaQty: item.quantity,
-                eventType: "RESTOCK",
-                referenceId: po.poNumber,
-                userId: args.userId,
-                timestamp: now,
-                notes: `Goods received against ${po.poNumber}`,
-            });
-
-            await ctx.db.insert("stockEntries", {
-                stockId: item.stockId,
-                quantity: item.quantity,
-                userId: args.userId,
-                date: now,
-                price: stock.price,
-                purchasePrice: item.unitCost,
-                pv: stock.pv,
-                bv: stock.bv,
-                halfPrice: stock.halfPrice ?? false,
-                type: "restock",
-                supplier: po.supplierName,
-            });
-        }
-
-        const receiptNumber = `GRN-${String((await ctx.db.query("goodsReceipts").collect()).length + 1).padStart(4, "0")}`;
-        await ctx.db.insert("goodsReceipts", {
-            businessProfileId: businessId,
-            poId: args.poId,
-            receiptNumber,
-            supplierId: po.supplierId,
-            supplierName: po.supplierName,
-            date: now,
-            total,
-            userId: args.userId,
-            items: args.items,
-        });
-
-        await ctx.db.patch(args.poId, { status: "received", receivedDate: now });
-
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Goods Received",
-            details: `${receiptNumber} against ${po.poNumber} — UGX ${total.toLocaleString()}`,
-            timestamp: now,
-        });
-
-        return { receiptNumber };
+        const { userId, ...rest } = args;
+        return receiveGoodsHandler(ctx, rest);
     },
 });
 
+/**
+ * The goods received notes.
+ *
+ * @deprecated Use `api.purchasing.listGoodsReceipts` instead.
+ */
 export const listGoodsReceipts = query({
-    args: { limit: v.optional(v.number()) },
+    args: { limit: v.optional(v.number()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        let rows = await ctx.db.query("goodsReceipts").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
-        rows.sort((a, b) => b.date.localeCompare(a.date));
-        return args.limit ? rows.slice(0, args.limit) : rows;
+        // The legacy contract was a plain array.
+        const result = await listGoodsReceiptsHandler(ctx, args);
+        return result.page;
     },
 });
 
 /* ───────────────────────── deliveries ───────────────────────── */
 
 export const listDeliveries = query({
-    args: { status: v.optional(v.string()) },
+    args: { status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("deliveries").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         return rows;
@@ -269,15 +201,15 @@ export const createDelivery = mutation({
         assignedToName: v.optional(v.string()),
         amount: v.optional(v.number()),
         notes: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const count = (await ctx.db.query("deliveries").collect()).length + 1;
         const reference = `DEL-${String(count).padStart(4, "0")}`;
 
         const id = await ctx.db.insert("deliveries", {
-            businessProfileId: businessId,
+            businessId,
             reference,
             customerId: args.customerId,
             customerName: args.customerName,
@@ -300,9 +232,10 @@ export const updateDeliveryStatus = mutation({
         status: v.string(),
         dispatchDate: v.optional(v.string()),
         deliveryDate: v.optional(v.string()),
-        notes: v.optional(v.string()),
-    },
+        notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const patch: Record<string, unknown> = { status: args.status, notes: args.notes };
         if (args.status === "dispatched") patch.dispatchDate = args.dispatchDate || new Date().toISOString();
         if (args.status === "delivered") patch.deliveryDate = args.deliveryDate || new Date().toISOString();
@@ -314,11 +247,12 @@ export const updateDeliveryStatus = mutation({
 /* ───────────────────────── assets ───────────────────────── */
 
 export const listAssets = query({
-    args: { category: v.optional(v.string()), status: v.optional(v.string()) },
+    args: { category: v.optional(v.string()), status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("assets").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.category) rows = rows.filter((r) => r.category === args.category);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => a.assetTag.localeCompare(b.assetTag));
@@ -338,12 +272,12 @@ export const upsertAsset = mutation({
         purchaseCost: v.optional(v.number()),
         currentValue: v.optional(v.number()),
         notes: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const payload = {
-            businessProfileId: businessId,
+            businessId,
             assetTag: args.assetTag,
             name: args.name,
             category: args.category,
@@ -375,15 +309,15 @@ export const recordFuelDispense = mutation({
         customerId: v.optional(v.id("customers")),
         vehicleReg: v.optional(v.string()),
         saleId: v.optional(v.id("sales")),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         if (args.litres <= 0) throw new Error("Litres must be greater than zero");
 
         const total = Math.round(args.litres * args.pricePerLitre);
         const id = await ctx.db.insert("fuelDispenses", {
-            businessProfileId: businessId,
+            businessId,
             pumpName: args.pumpName,
             fuelType: args.fuelType,
             litres: args.litres,
@@ -401,11 +335,12 @@ export const recordFuelDispense = mutation({
 });
 
 export const getFuelSummary = query({
-    args: { startDate: v.optional(v.string()), endDate: v.optional(v.string()) },
+    args: { startDate: v.optional(v.string()), endDate: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("fuelDispenses").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.startDate) rows = rows.filter((r) => r.date >= args.startDate!);
         if (args.endDate) rows = rows.filter((r) => r.date <= args.endDate!);
 
@@ -440,11 +375,12 @@ export const getFuelSummary = query({
 /* ───────────────────────── vehicles ───────────────────────── */
 
 export const listVehicles = query({
-    args: { status: v.optional(v.string()) },
+    args: { status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("vehicles").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => a.registration.localeCompare(b.registration));
         return rows;
@@ -463,12 +399,12 @@ export const upsertVehicle = mutation({
         route: v.optional(v.string()),
         status: v.optional(v.string()),
         nextServiceDate: v.optional(v.string()),
-        notes: v.optional(v.string()),
-    },
+        notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const payload = {
-            businessProfileId: businessId,
+            businessId,
             registration: args.registration,
             make: args.make,
             model: args.model,
@@ -496,12 +432,12 @@ export const upsertRouteFare = mutation({
         to: v.optional(v.string()),
         fare: v.number(),
         vehicleType: v.optional(v.string()),
-        active: v.optional(v.boolean()),
-    },
+        active: v.optional(v.boolean()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const payload = {
-            businessProfileId: businessId,
+            businessId,
             routeName: args.routeName,
             from: args.from,
             to: args.to,
@@ -518,11 +454,12 @@ export const upsertRouteFare = mutation({
 });
 
 export const listRouteFares = query({
-    args: {},
-    handler: async (ctx) => {
-        const businessId = await getActiveBusinessId(ctx);
+    args: { businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("routeFares").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         rows.sort((a, b) => a.routeName.localeCompare(b.routeName));
         return rows;
     },
@@ -536,10 +473,10 @@ export const openTillSession = mutation({
         userName: v.string(),
         shopId: v.optional(v.id("shops")),
         openingFloat: v.number(),
-        notes: v.optional(v.string()),
-    },
+        notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
 
         // Only one open session per user per shop.
         const open = await ctx.db
@@ -554,9 +491,9 @@ export const openTillSession = mutation({
         const sessionNumber = `TILL-${String(count).padStart(4, "0")}`;
 
         const id = await ctx.db.insert("tillSessions", {
-            businessProfileId: businessId,
+            businessId,
             sessionNumber,
-            userId: args.userId,
+            userId: tenant.user._id,
             userName: args.userName,
             shopId: args.shopId,
             openedAt: new Date().toISOString(),
@@ -573,11 +510,15 @@ export const closeTillSession = mutation({
         id: v.id("tillSessions"),
         expectedCash: v.number(),
         countedCash: v.number(),
-        notes: v.optional(v.string()),
-    },
+        notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const session = await ctx.db.get(args.id);
         if (!session) throw new Error("Till session not found");
+        if (session.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
         if (session.status === "closed") throw new Error("This till session is already closed");
 
         const variance = args.countedCash - args.expectedCash;
@@ -594,11 +535,12 @@ export const closeTillSession = mutation({
 });
 
 export const listTillSessions = query({
-    args: { status: v.optional(v.string()), limit: v.optional(v.number()) },
+    args: { status: v.optional(v.string()), limit: v.optional(v.number()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("tillSessions").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => b.openedAt.localeCompare(a.openedAt));
         return args.limit ? rows.slice(0, args.limit) : rows;
@@ -608,11 +550,12 @@ export const listTillSessions = query({
 /* ───────────────────────── service tickets ───────────────────────── */
 
 export const listServiceTickets = query({
-    args: { status: v.optional(v.string()), limit: v.optional(v.number()) },
+    args: { status: v.optional(v.string()), limit: v.optional(v.number()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("serviceTickets").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => b.receivedDate.localeCompare(a.receivedDate));
         return args.limit ? rows.slice(0, args.limit) : rows;
@@ -631,15 +574,15 @@ export const createServiceTicket = mutation({
         assignedTo: v.optional(v.id("users")),
         assignedToName: v.optional(v.string()),
         dueDate: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const count = (await ctx.db.query("serviceTickets").collect()).length + 1;
         const ticketNumber = `JOB-${String(count).padStart(4, "0")}`;
 
         const id = await ctx.db.insert("serviceTickets", {
-            businessProfileId: businessId,
+            businessId,
             ticketNumber,
             customerId: args.customerId,
             customerName: args.customerName,
@@ -656,7 +599,8 @@ export const createServiceTicket = mutation({
         });
 
         await ctx.db.insert("activityLogs", {
-            userId: args.userId,
+            businessId,
+            userId: tenant.user._id,
             action: "Create Service Ticket",
             details: `${ticketNumber} — ${args.serviceType} for ${args.customerName}`,
             timestamp: new Date().toISOString(),
@@ -672,9 +616,10 @@ export const updateServiceTicket = mutation({
         status: v.optional(v.string()),
         finalCost: v.optional(v.number()),
         deliveredDate: v.optional(v.string()),
-        notes: v.optional(v.string()),
-    },
+        notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const patch: Record<string, unknown> = {};
         if (args.status) patch.status = args.status;
         if (args.finalCost !== undefined) patch.finalCost = args.finalCost;
@@ -688,11 +633,12 @@ export const updateServiceTicket = mutation({
 /* ───────────────────────── rentals ───────────────────────── */
 
 export const listRentals = query({
-    args: { status: v.optional(v.string()) },
+    args: { status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("rentals").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => b.startDate.localeCompare(a.startDate));
         return rows;
@@ -710,12 +656,12 @@ export const createRental = mutation({
         rate: v.number(),
         deposit: v.optional(v.number()),
         notes: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const id = await ctx.db.insert("rentals", {
-            businessProfileId: businessId,
+            businessId,
             assetId: args.assetId,
             assetName: args.assetName,
             customerId: args.customerId,
@@ -736,10 +682,15 @@ export const createRental = mutation({
 });
 
 export const returnRental = mutation({
-    args: { id: v.id("rentals"), condition: v.optional(v.string()) },
+    args: { id: v.id("rentals"), condition: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const rental = await ctx.db.get(args.id);
         if (!rental) throw new Error("Rental not found");
+        if (rental.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
         await ctx.db.patch(args.id, { status: "returned" });
         if (rental.assetId) {
             await ctx.db.patch(rental.assetId, { status: "in_use" });
@@ -757,10 +708,10 @@ export const recordAttendance = mutation({
         className: v.optional(v.string()),
         date: v.string(),
         status: v.string(),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
 
         // One record per person per day — update if it already exists.
         const existing = await ctx.db
@@ -780,7 +731,7 @@ export const recordAttendance = mutation({
         }
 
         const id = await ctx.db.insert("attendance", {
-            businessProfileId: businessId,
+            businessId,
             personId: args.personId,
             personName: args.personName,
             className: args.className,
@@ -793,11 +744,12 @@ export const recordAttendance = mutation({
 });
 
 export const listAttendance = query({
-    args: { date: v.optional(v.string()), className: v.optional(v.string()) },
+    args: { date: v.optional(v.string()), className: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("attendance").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.date) rows = rows.filter((r) => r.date === args.date);
         if (args.className) rows = rows.filter((r) => r.className === args.className);
         rows.sort((a, b) => a.personName.localeCompare(b.personName));
@@ -814,11 +766,12 @@ export const listAttendance = query({
 });
 
 export const listEnrolments = query({
-    args: { className: v.optional(v.string()) },
+    args: { className: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("classEnrolments").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.className) rows = rows.filter((r) => r.className === args.className);
         rows.sort((a, b) => a.studentName.localeCompare(b.studentName));
         return rows;
@@ -832,12 +785,12 @@ export const createEnrolment = mutation({
         studentName: v.string(),
         term: v.optional(v.string()),
         amountDue: v.optional(v.number()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const id = await ctx.db.insert("classEnrolments", {
-            businessProfileId: businessId,
+            businessId,
             className: args.className,
             studentId: args.studentId,
             studentName: args.studentName,
@@ -854,11 +807,12 @@ export const createEnrolment = mutation({
 /* ───────────────────────── production batches ───────────────────────── */
 
 export const listProductionBatches = query({
-    args: { status: v.optional(v.string()) },
+    args: { status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("productionBatches").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => b.date.localeCompare(a.date));
         return rows;
@@ -874,12 +828,12 @@ export const createProductionBatch = mutation({
         batchNumber: v.optional(v.string()),
         expiryDate: v.optional(v.string()),
         costPerUnit: v.optional(v.number()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const id = await ctx.db.insert("productionBatches", {
-            businessProfileId: businessId,
+            businessId,
             productName: args.productName,
             category: args.category,
             quantityProduced: args.quantityProduced,
@@ -889,7 +843,7 @@ export const createProductionBatch = mutation({
             expiryDate: args.expiryDate,
             costPerUnit: args.costPerUnit,
             date: new Date().toISOString(),
-            userId: args.userId,
+            userId: tenant.user._id,
             status: "active",
         });
         return id;
@@ -899,11 +853,12 @@ export const createProductionBatch = mutation({
 /* ───────────────────────── recurring charges ───────────────────────── */
 
 export const listRecurringCharges = query({
-    args: { status: v.optional(v.string()) },
+    args: { status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("recurringCharges").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
         return rows;
@@ -919,12 +874,12 @@ export const upsertRecurringCharge = mutation({
         amount: v.number(),
         frequency: v.string(),
         nextDueDate: v.string(),
-        notes: v.optional(v.string()),
-    },
+        notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const payload = {
-            businessProfileId: businessId,
+            businessId,
             customerId: args.customerId,
             customerName: args.customerName,
             description: args.description,

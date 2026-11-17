@@ -1,36 +1,60 @@
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
 import { query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
+import { requirePermission, requireTenant } from "./tenancy";
 
+/**
+ * SMARTBUZ — dashboard statistics.
+ *
+ * Every figure is computed from the caller's business only.
+ */
 export const getStats = query({
     args: {
         startDate: v.optional(v.string()), // ISO String
         endDate: v.optional(v.string()),   // ISO String
         shopId: v.optional(v.id("shops")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "finance.reports.view");
+        const businessId = tenant.businessId;
+
+        // A shop that belongs to another business is simply not a valid filter.
+        if (args.shopId) {
+            const shop = await ctx.db.get(args.shopId);
+            if (!shop || shop.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that shop belongs to another business.");
+            }
+        }
+
         // [OPTIMIZED] Use proper indexed queries instead of .collect()
         let salesQuery;
         if (args.shopId) {
             if (args.startDate && args.endDate) {
-                salesQuery = ctx.db.query("sales").withIndex("by_shop_date", q =>
-                    q.eq("shopId", args.shopId!).gte("date", args.startDate!).lte("date", args.endDate!)
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q =>
+                    q.eq("businessId", businessId).eq("shopId", args.shopId!).gte("date", args.startDate!).lte("date", args.endDate!)
                 );
             } else {
-                salesQuery = ctx.db.query("sales").withIndex("by_shop_date", q => q.eq("shopId", args.shopId!));
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q =>
+                    q.eq("businessId", businessId).eq("shopId", args.shopId!)
+                );
             }
         } else {
             if (args.startDate && args.endDate) {
-                salesQuery = ctx.db.query("sales").withIndex("by_date", q =>
-                    q.gte("date", args.startDate!).lte("date", args.endDate!)
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q =>
+                    q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate!)
                 );
             } else {
-                salesQuery = ctx.db.query("sales");
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId", q =>
+                    q.eq("businessId", businessId)
+                );
             }
         }
 
         const filteredSales = await salesQuery.order("desc").collect();
-        
+
         // Calculate total customers - if shopId is provided, count customers who have made purchases at that shop
         let totalCustomers;
         if (args.shopId) {
@@ -38,8 +62,11 @@ export const getStats = query({
             const customerIds = new Set(filteredSales.map(s => s.customerId).filter((id): id is Id<"customers"> => !!id));
             totalCustomers = customerIds.size;
         } else {
-            // For admin view, count all customers globally
-            totalCustomers = (await ctx.db.query("customers").collect()).length;
+            // For the business view, count the customers of this business only
+            totalCustomers = (await ctx.db
+                .query("customers")
+                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+                .collect()).length;
         }
 
         // 2. Calculate Revenue
@@ -51,7 +78,11 @@ export const getStats = query({
             const shop = await ctx.db.get(args.shopId);
             lowStockCount = shop?.issuedStocks.filter(s => s.qty < 5).length || 0;
         } else {
-            lowStockCount = (await ctx.db.query("stocks").withIndex("by_qty", q => q.lt("qty", 10)).collect()).length;
+            const lowStock = await ctx.db
+                .query("stocks")
+                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+                .collect();
+            lowStockCount = lowStock.filter(s => s.qty < 10).length;
         }
 
         // 4. Recent Sales [BATCH OPTIMIZED]
@@ -91,11 +122,19 @@ export const getStats = query({
 });
 
 export const getGlobalLowStock = query({
-    args: {},
-    handler: async (ctx) => {
-        return await ctx.db.query("stocks")
-            .withIndex("by_qty", q => q.lt("qty", 15))
-            .order("asc")
-            .take(10);
+    args: { businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
+        const stocks = await ctx.db
+            .query("stocks")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .collect();
+
+        return stocks
+            .filter((s) => s.qty < 15)
+            .sort((a, b) => a.qty - b.qty)
+            .slice(0, 10);
     }
 });

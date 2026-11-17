@@ -158,7 +158,7 @@ function SalesHeader() {
 }
 
 function SalesInterface({ isHp }: { isHp: boolean }) {
-    const { user } = useAuth();
+    const { user, activeBusiness } = useAuth();
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [cart, setCart] = useState<CartItem[]>([]);
@@ -221,7 +221,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const totalStocksCount = shopData?.totalCount || 0;
 
     /* ── Business vertical + URA VAT configuration ── */
-    const { category: activeCategory } = useActiveCategory(user?.roles ?? []);
+    const { category: activeCategory } = useActiveCategory(activeBusiness?.role);
     const categoryTerminology = activeCategory?.terminology ?? {
         item: "Product",
         outlet: "Branch",
@@ -231,8 +231,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const status = "Loaded";
     const isStocksLoading = shopData === undefined;
 
-    const customers = useQuery(api.customers.listAll);
-    const activeProfile = useQuery(api.businessProfiles.getActive);
+    const customers = useQuery(api.customers.listAll, {});
+    const activeProfile = useQuery(api.businesses.getActive, {});
     const vatProfile = activeProfile
         ? {
               taxEnabled: activeProfile.taxEnabled ?? false,
@@ -243,7 +243,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
           }
         : null;
     const createSale = useMutation(api.sales.create);
-    const activePromotions = useQuery(api.promotions.getActivePromotionsWithProducts);
+    const activePromotions = useQuery(api.promotions.getActivePromotionsWithProducts, {});
 
     // Till price overrides are opt-in per business (Settings -> Till controls).
     // When off, the cart shows the list price and the server charges it.
@@ -735,7 +735,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             );
 
             const receipt = {
-                businessName: activeProfile?.businessName || (isShopUser ? shopData.shop.name : "SMARTBUZ POS"),
+                businessName: activeProfile?.name || (isShopUser ? shopData.shop.name : "SMARTBUZ POS"),
                 businessAddress: activeProfile?.businessAddress || (isShopUser ? shopData.shop.location : "Headquarters"),
                 businessPhone: activeProfile?.businessPhone || (isShopUser ? shopData.shop.contact : undefined),
                 customer: selectedCustomer ? {
@@ -1729,7 +1729,7 @@ function ProductListSkeleton() {
 
 function SwapView() {
     const { user } = useAuth();
-    const activeProfile = useQuery(api.businessProfiles.getActive);
+    const activeProfile = useQuery(api.businesses.getActive, {});
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [returnedItems, setReturnedItems] = useState<CartItem[]>([]);
@@ -1786,7 +1786,7 @@ function SwapView() {
             const totalBVVal = takenItems.reduce((sum, item) => sum + (item.bv * item.qty), 0);
 
             const receipt = {
-                businessName: activeProfile?.businessName || (shopData?.shop?.name || "SMARTBUZ POS"),
+                businessName: activeProfile?.name || (shopData?.shop?.name || "SMARTBUZ POS"),
                 businessAddress: activeProfile?.businessAddress || (shopData?.shop?.location || "Headquarters"),
                 businessPhone: activeProfile?.businessPhone || (shopData?.shop?.contact || undefined),
                 customer: { name: "Swap Customer", phone: customerPhone, email: "" },

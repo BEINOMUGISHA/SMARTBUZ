@@ -6,32 +6,19 @@
  *   - expiry alerts for stock nearing or past expiry
  *   - serial / IMEI tracking for phones, appliances and salvage goods
  *
- * Every query and mutation is scoped to the active business profile so one
- * tenant can never read another's batch or serial data.
+ * Every query and mutation is scoped to the caller's business, so one
+ * tenant can never read another's batch or serial data. The tenant comes
+ * from the caller's membership (`requireTenant`), never from a business id
+ * the browser supplies.
  */
 
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { logActivity, requirePermission, requireTenant } from "../tenancy";
 
 /* ───────────────────────── helpers ───────────────────────── */
-
-/**
- * Resolve the active business profile id.
- * Falls back to the first profile so legacy single-tenant installs keep working.
- */
-export async function getActiveBusinessId(ctx: any): Promise<Id<"businessProfiles"> | undefined> {
-    const profiles = await ctx.db
-        .query("businessProfiles")
-        .filter((q: any) => q.eq(q.field("isActive"), true))
-        // Deterministic: matches businessProfiles.getActive (newest wins).
-        .order("desc")
-        .collect();
-    const active = profiles[0];
-    if (active) return active._id;
-    const any = await ctx.db.query("businessProfiles").order("desc").first();
-    return any?._id;
-}
 
 /** Days until expiry. Negative means already expired. */
 function daysUntil(expiryDate: string, now = Date.now()): number {
@@ -48,20 +35,28 @@ export const listBatches = query({
         onlyExpiring: v.optional(v.boolean()),
         expiringWithinDays: v.optional(v.number()),
         limit: v.optional(v.number()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        let rows;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
         if (args.stockId) {
-            rows = await ctx.db
-                .query("productBatches")
-                .withIndex("by_stockId", (q) => q.eq("stockId", args.stockId!))
-                .collect();
-        } else {
-            rows = await ctx.db.query("productBatches").collect();
+            const stock = await ctx.db.get(args.stockId);
+            if (!stock || stock.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that product belongs to another business.");
+            }
         }
 
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        let rows = await ctx.db
+            .query("productBatches")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
+
+        if (args.stockId) {
+            rows = rows.filter((r) => r.stockId === args.stockId);
+        }
 
         const within = args.expiringWithinDays ?? 30;
         let enriched = rows.map((b) => {
@@ -95,23 +90,30 @@ export const addBatch = mutation({
         qtyReceived: v.number(),
         costPrice: v.optional(v.number()),
         supplier: v.optional(v.string()),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
         date: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        if (args.qtyReceived <= 0) throw new Error("Quantity received must be greater than zero");
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.adjust");
+        const businessId = tenant.businessId;
+        const userId = tenant.user._id;
 
-        const businessId = await getActiveBusinessId(ctx);
+        if (args.qtyReceived <= 0) throw new Error("Quantity received must be greater than zero");
 
         // Increase the parent stock quantity and record the movement.
         const stock = await ctx.db.get(args.stockId);
         if (!stock) throw new Error("Stock not found");
+        if (stock.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
 
         await ctx.db.patch(args.stockId, { qty: stock.qty + args.qtyReceived });
 
         const date = args.date || new Date().toISOString();
         const batchId = await ctx.db.insert("productBatches", {
-            businessProfileId: businessId,
+            businessId,
             stockId: args.stockId,
             batchNumber: args.batchNumber,
             expiryDate: args.expiryDate,
@@ -119,25 +121,27 @@ export const addBatch = mutation({
             qtyRemaining: args.qtyReceived,
             costPrice: args.costPrice ?? stock.purchasePrice,
             supplier: args.supplier ?? stock.supplier,
-            userId: args.userId,
+            userId,
             date,
         });
 
         await ctx.db.insert("stockLedger", {
+            businessId,
             stockId: args.stockId,
             shopId: undefined,
             deltaQty: args.qtyReceived,
             eventType: "RESTOCK",
             referenceId: batchId,
-            userId: args.userId,
+            userId,
             timestamp: date,
             notes: `Batch ${args.batchNumber} received${args.expiryDate ? ` expiring ${args.expiryDate}` : ""}`,
         });
 
         await ctx.db.insert("stockEntries", {
+            businessId,
             stockId: args.stockId,
             quantity: args.qtyReceived,
-            userId: args.userId,
+            userId,
             date,
             price: stock.price,
             purchasePrice: args.costPrice ?? stock.purchasePrice,
@@ -148,12 +152,13 @@ export const addBatch = mutation({
             supplier: args.supplier ?? stock.supplier,
         });
 
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Add Batch",
-            details: `Batch ${args.batchNumber} for ${stock.name}: ${args.qtyReceived} units${args.expiryDate ? `, expiry ${args.expiryDate}` : ""}`,
-            timestamp: date,
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            userId,
+            "Add Batch",
+            `Batch ${args.batchNumber} for ${stock.name}: ${args.qtyReceived} units${args.expiryDate ? `, expiry ${args.expiryDate}` : ""}`
+        );
 
         return batchId;
     },
@@ -168,16 +173,26 @@ export const consumeBatch = mutation({
     args: {
         stockId: v.id("stocks"),
         quantity: v.number(),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
         reference: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.adjust");
+        const businessId = tenant.businessId;
+
+        const stock = await ctx.db.get(args.stockId);
+        if (!stock) throw new Error("Stock not found");
+        if (stock.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
+
         let batches = await ctx.db
             .query("productBatches")
-            .withIndex("by_stockId", (q) => q.eq("stockId", args.stockId))
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
             .collect();
-        if (businessId) batches = batches.filter((b) => !b.businessProfileId || b.businessProfileId === businessId);
+        batches = batches.filter((b) => b.stockId === args.stockId);
 
         const usable = batches
             .filter((b) => b.qtyRemaining > 0)
@@ -203,12 +218,13 @@ export const consumeBatch = mutation({
             throw new Error(`Not enough unexpired batch stock. Short by ${remaining} units.`);
         }
 
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Consume Batch",
-            details: `Consumed ${args.quantity} units via batches: ${used.map((u) => `${u.batchNumber}(${u.qty})`).join(", ")}${args.reference ? ` ref ${args.reference}` : ""}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Consume Batch",
+            `Consumed ${args.quantity} units via batches: ${used.map((u) => `${u.batchNumber}(${u.qty})`).join(", ")}${args.reference ? ` ref ${args.reference}` : ""}`
+        );
 
         return used;
     },
@@ -216,11 +232,16 @@ export const consumeBatch = mutation({
 
 /** Expiry summary for the dashboard widget. */
 export const getExpirySummary = query({
-    args: { withinDays: v.optional(v.number()) },
+    args: { withinDays: v.optional(v.number()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        let rows = await ctx.db.query("productBatches").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
+        let rows = await ctx.db
+            .query("productBatches")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
 
         const within = args.withinDays ?? 30;
         let expired = 0, expiring = 0, expiringValue = 0;
@@ -258,13 +279,25 @@ export const listSerials = query({
         status: v.optional(v.string()),
         search: v.optional(v.string()),
         limit: v.optional(v.number()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
-        let rows = await ctx.db.query("productSerials").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
 
-        if (args.stockId) rows = rows.filter((r) => r.stockId === args.stockId);
+        let rows = await ctx.db
+            .query("productSerials")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
+
+        if (args.stockId) {
+            const stock = await ctx.db.get(args.stockId);
+            if (!stock || stock.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that product belongs to another business.");
+            }
+            rows = rows.filter((r) => r.stockId === args.stockId);
+        }
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         if (args.search) {
             const s = args.search.toLowerCase();
@@ -287,33 +320,44 @@ export const addSerial = mutation({
         imei: v.optional(v.string()),
         condition: v.optional(v.string()),
         warrantyExpiry: v.optional(v.string()),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.create");
+        const businessId = tenant.businessId;
+
+        const stock = await ctx.db.get(args.stockId);
+        if (!stock) throw new Error("Stock not found");
+        if (stock.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
 
         const existing = await ctx.db
             .query("productSerials")
-            .withIndex("by_serialNumber", (q) => q.eq("serialNumber", args.serialNumber))
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .filter((q) => q.eq(q.field("serialNumber"), args.serialNumber))
             .first();
         if (existing) throw new Error(`Serial ${args.serialNumber} is already registered`);
 
         const id = await ctx.db.insert("productSerials", {
-            businessProfileId: businessId,
+            businessId,
             stockId: args.stockId,
             serialNumber: args.serialNumber,
             imei: args.imei,
             status: "in_stock",
-            condition: args.condition,
+            condition: args.condition ?? "new",
             warrantyExpiry: args.warrantyExpiry,
         });
 
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Register Serial",
-            details: `Registered serial ${args.serialNumber}${args.imei ? ` (IMEI ${args.imei})` : ""}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Register Serial",
+            `Registered serial ${args.serialNumber}${args.imei ? ` (IMEI ${args.imei})` : ""}`
+        );
 
         return id;
     },
@@ -325,12 +369,31 @@ export const markSerialSold = mutation({
         serialNumber: v.string(),
         saleId: v.optional(v.id("sales")),
         customerId: v.optional(v.id("customers")),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.create");
+        const businessId = tenant.businessId;
+
+        if (args.saleId) {
+            const sale = await ctx.db.get(args.saleId);
+            if (!sale || sale.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that sale belongs to another business.");
+            }
+        }
+        if (args.customerId) {
+            const customer = await ctx.db.get(args.customerId);
+            if (!customer || customer.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that customer belongs to another business.");
+            }
+        }
+
         const serial = await ctx.db
             .query("productSerials")
-            .withIndex("by_serialNumber", (q) => q.eq("serialNumber", args.serialNumber))
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .filter((q) => q.eq(q.field("serialNumber"), args.serialNumber))
             .first();
         if (!serial) throw new Error("Serial not found");
         if (serial.status === "sold") throw new Error("Serial is already marked as sold");
@@ -342,12 +405,13 @@ export const markSerialSold = mutation({
             saleId: args.saleId,
         });
 
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Serial Sold",
-            details: `Serial ${args.serialNumber} sold`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Serial Sold",
+            `Serial ${args.serialNumber} sold`
+        );
 
         return serial._id;
     },

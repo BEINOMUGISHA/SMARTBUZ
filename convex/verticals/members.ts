@@ -13,7 +13,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
-import { getActiveBusinessId } from "./batches";
+import { ConvexError } from "convex/values";
+import { logActivity, requirePermission, requireTenant } from "../tenancy";
 
 /* ───────────────────────── members ───────────────────────── */
 
@@ -22,12 +23,12 @@ export const listMembers = query({
         search: v.optional(v.string()),
         status: v.optional(v.string()),
         memberType: v.optional(v.string()),
-        limit: v.optional(v.number()),
-    },
+        limit: v.optional(v.number()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("members").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
 
         if (args.search) {
             const s = args.search.toLowerCase();
@@ -55,18 +56,16 @@ export const createMember = mutation({
         memberType: v.optional(v.string()),
         openingBalance: v.optional(v.number()),
         shares: v.optional(v.number()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
 
         // Auto-generate a member number when one is not supplied.
         let memberNumber = args.memberNumber;
         if (!memberNumber) {
             const existing = await ctx.db.query("members").collect();
-            const scoped = businessId
-                ? existing.filter((m) => !m.businessProfileId || m.businessProfileId === businessId)
-                : existing;
+            const scoped = existing.filter((m) => m.businessId === businessId);
             const nums = scoped
                 .map((m) => parseInt(m.memberNumber.replace(/\D/g, ""), 10))
                 .filter((n) => !Number.isNaN(n));
@@ -81,7 +80,7 @@ export const createMember = mutation({
         }
 
         const id = await ctx.db.insert("members", {
-            businessProfileId: businessId,
+            businessId,
             memberNumber,
             name: args.name,
             phone: args.phone,
@@ -91,24 +90,25 @@ export const createMember = mutation({
             shares: args.shares ?? 0,
             status: "active",
             joinedDate: new Date().toISOString(),
-            userId: args.userId,
+            userId: tenant.user._id,
         });
 
         if ((args.openingBalance ?? 0) > 0) {
             await ctx.db.insert("memberTransactions", {
-                businessProfileId: businessId,
+                businessId,
                 memberId: id,
                 type: "deposit",
                 amount: args.openingBalance!,
                 balanceAfter: args.openingBalance!,
                 date: new Date().toISOString(),
                 notes: "Opening balance",
-                userId: args.userId,
+                userId: tenant.user._id,
             });
         }
 
         await ctx.db.insert("activityLogs", {
-            userId: args.userId,
+            businessId,
+            userId: tenant.user._id,
             action: "Create Member",
             details: `Created member ${memberNumber} — ${args.name}`,
             timestamp: new Date().toISOString(),
@@ -131,12 +131,15 @@ export const recordMemberTransaction = mutation({
         date: v.optional(v.string()),
         reference: v.optional(v.string()),
         notes: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const member = await ctx.db.get(args.memberId);
         if (!member) throw new Error("Member not found");
+        if (member.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
 
         if (args.amount <= 0) throw new Error("Amount must be greater than zero");
 
@@ -157,7 +160,7 @@ export const recordMemberTransaction = mutation({
         });
 
         const txId = await ctx.db.insert("memberTransactions", {
-            businessProfileId: businessId,
+            businessId,
             memberId: args.memberId,
             type: args.type,
             amount: args.amount,
@@ -165,11 +168,12 @@ export const recordMemberTransaction = mutation({
             date: args.date || new Date().toISOString(),
             reference: args.reference,
             notes: args.notes,
-            userId: args.userId,
+            userId: tenant.user._id,
         });
 
         await ctx.db.insert("activityLogs", {
-            userId: args.userId,
+            businessId,
+            userId: tenant.user._id,
             action: "Member Transaction",
             details: `${args.type} of ${args.amount} for ${member.name}. New balance: ${newBalance}`,
             timestamp: new Date().toISOString(),
@@ -182,26 +186,27 @@ export const recordMemberTransaction = mutation({
 export const listMemberTransactions = query({
     args: {
         memberId: v.id("members"),
-        limit: v.optional(v.number()),
-    },
+        limit: v.optional(v.number()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db
             .query("memberTransactions")
             .withIndex("by_memberId", (q) => q.eq("memberId", args.memberId))
             .collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         rows.sort((a, b) => b.date.localeCompare(a.date));
         return args.limit ? rows.slice(0, args.limit) : rows;
     },
 });
 
 export const getMembersSummary = query({
-    args: {},
-    handler: async (ctx) => {
-        const businessId = await getActiveBusinessId(ctx);
+    args: { businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let members = await ctx.db.query("members").collect();
-        if (businessId) members = members.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        members = members.filter((r) => r.businessId === businessId);
 
         const active = members.filter((m) => (m.status ?? "active") === "active");
         const totalBalance = members.reduce((s, m) => s + (m.balance ?? 0), 0);
@@ -221,8 +226,10 @@ export const getMembersSummary = query({
 /* ───────────────────────── customer wallets (layaway / credit) ───────────────────────── */
 
 export const getWallet = query({
-    args: { customerId: v.id("customers") },
+    args: { customerId: v.id("customers"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const wallet = await ctx.db
             .query("customerWallets")
             .withIndex("by_customerId", (q) => q.eq("customerId", args.customerId))
@@ -238,10 +245,10 @@ export const walletTransaction = mutation({
         amount: v.number(),
         saleId: v.optional(v.id("sales")),
         notes: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         if (args.amount <= 0) throw new Error("Amount must be greater than zero");
 
         const wallet = await ctx.db
@@ -261,7 +268,7 @@ export const walletTransaction = mutation({
             await ctx.db.patch(wallet._id, { balance: newBalance, updatedAt: new Date().toISOString() });
         } else {
             await ctx.db.insert("customerWallets", {
-                businessProfileId: businessId,
+                businessId,
                 customerId: args.customerId,
                 balance: newBalance,
                 updatedAt: new Date().toISOString(),
@@ -269,14 +276,14 @@ export const walletTransaction = mutation({
         }
 
         const id = await ctx.db.insert("walletTransactions", {
-            businessProfileId: businessId,
+            businessId,
             customerId: args.customerId,
             type: args.type,
             amount: args.amount,
             balanceAfter: newBalance,
             date: new Date().toISOString(),
             saleId: args.saleId,
-            userId: args.userId,
+            userId: tenant.user._id,
             notes: args.notes,
         });
 
@@ -285,14 +292,15 @@ export const walletTransaction = mutation({
 });
 
 export const listWalletTransactions = query({
-    args: { customerId: v.id("customers"), limit: v.optional(v.number()) },
+    args: { customerId: v.id("customers"), limit: v.optional(v.number()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db
             .query("walletTransactions")
             .withIndex("by_customerId", (q) => q.eq("customerId", args.customerId))
             .collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         rows.sort((a, b) => b.date.localeCompare(a.date));
         return args.limit ? rows.slice(0, args.limit) : rows;
     },
@@ -312,16 +320,16 @@ export const recordCommission = mutation({
         saleDate: v.optional(v.string()),
         grossAmount: v.number(),
         rate: v.number(),
-        paid: v.optional(v.boolean()),
-    },
+        paid: v.optional(v.boolean()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         if (args.rate < 0 || args.rate > 100) throw new Error("Commission rate must be between 0 and 100");
 
         const commission = Math.round((args.grossAmount * args.rate) / 100);
         const id = await ctx.db.insert("staffCommissions", {
-            businessProfileId: businessId,
-            userId: args.userId,
+            businessId,
+            userId: tenant.user._id,
             staffName: args.staffName,
             saleId: args.saleId,
             saleDate: args.saleDate || new Date().toISOString(),
@@ -335,11 +343,12 @@ export const recordCommission = mutation({
 });
 
 export const listCommissions = query({
-    args: { userId: v.optional(v.id("users")), startDate: v.optional(v.string()), endDate: v.optional(v.string()) },
+    args: { userId: v.optional(v.id("users")), startDate: v.optional(v.string()), endDate: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("staffCommissions").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.userId) rows = rows.filter((r) => r.userId === args.userId);
         if (args.startDate) rows = rows.filter((r) => r.saleDate >= args.startDate!);
         if (args.endDate) rows = rows.filter((r) => r.saleDate <= args.endDate!);
@@ -364,8 +373,10 @@ export const listCommissions = query({
 });
 
 export const markCommissionPaid = mutation({
-    args: { id: v.id("staffCommissions"), paidDate: v.optional(v.string()) },
+    args: { id: v.id("staffCommissions"), paidDate: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         await ctx.db.patch(args.id, { paid: true, paidDate: args.paidDate || new Date().toISOString() });
         return args.id;
     },
@@ -382,14 +393,14 @@ export const recordDonation = mutation({
         amount: v.number(),
         purpose: v.optional(v.string()),
         reference: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         if (args.amount <= 0) throw new Error("Amount must be greater than zero");
 
         const id = await ctx.db.insert("donations", {
-            businessProfileId: businessId,
+            businessId,
             donorName: args.donorName,
             donorPhone: args.donorPhone,
             memberId: args.memberId,
@@ -398,7 +409,7 @@ export const recordDonation = mutation({
             purpose: args.purpose,
             reference: args.reference,
             date: new Date().toISOString(),
-            userId: args.userId,
+            userId: tenant.user._id,
         });
 
         // A donation from a known member also credits their account.
@@ -408,20 +419,21 @@ export const recordDonation = mutation({
                 const newBalance = member.balance + args.amount;
                 await ctx.db.patch(args.memberId, { balance: newBalance });
                 await ctx.db.insert("memberTransactions", {
-                    businessProfileId: businessId,
+                    businessId,
                     memberId: args.memberId,
                     type: "deposit",
                     amount: args.amount,
                     balanceAfter: newBalance,
                     date: new Date().toISOString(),
                     notes: args.purpose ?? args.type,
-                    userId: args.userId,
+                    userId: tenant.user._id,
                 });
             }
         }
 
         await ctx.db.insert("activityLogs", {
-            userId: args.userId,
+            businessId,
+            userId: tenant.user._id,
             action: "Record Donation",
             details: `${args.type} of UGX ${args.amount.toLocaleString()} from ${args.donorName}`,
             timestamp: new Date().toISOString(),
@@ -432,11 +444,12 @@ export const recordDonation = mutation({
 });
 
 export const getDonationsSummary = query({
-    args: { startDate: v.optional(v.string()), endDate: v.optional(v.string()) },
+    args: { startDate: v.optional(v.string()), endDate: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("donations").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.startDate) rows = rows.filter((r) => r.date >= args.startDate!);
         if (args.endDate) rows = rows.filter((r) => r.date <= args.endDate!);
 

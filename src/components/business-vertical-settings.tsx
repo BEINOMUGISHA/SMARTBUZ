@@ -29,10 +29,10 @@ import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 
 export function BusinessVerticalSettings() {
-    const { user } = useAuth();
-    const profile = useQuery(api.businessProfiles.getActive);
-    const setCategory = useMutation(api.businessProfiles.setCategory);
-    const updateProfile = useMutation(api.businessProfiles.update);
+    const { user, activeBusiness } = useAuth();
+    const profile = useQuery(api.businesses.getActive, {});
+    const setCategory = useMutation(api.businesses.setCategory);
+    const updateProfile = useMutation(api.businesses.updateSettings);
 
     const [selected, setSelected] = useState<CategoryId | null>(null);
     const [saving, setSaving] = useState(false);
@@ -45,7 +45,11 @@ export function BusinessVerticalSettings() {
 
     if (!user) return null;
 
-    const isAdmin = user.roles.includes("admin");
+    // The business role on the caller's membership decides this, not the
+    // legacy global roles array. The backend enforces it regardless.
+    const isAdmin =
+        activeBusiness?.role === "business_owner" ||
+        activeBusiness?.role === "business_admin";
     const currentCategory = profile?.categoryId ?? null;
     const overridesEnabled = allowOverrides ?? profile?.allowPriceOverrides ?? false;
 
@@ -57,14 +61,9 @@ export function BusinessVerticalSettings() {
         setSaving(true);
         try {
             await setCategory({
-                id: profile._id,
+                businessId: profile._id,
                 categoryId: cat.id,
                 modules: cat.modules,
-                taxEnabled: cat.tax.enabled,
-                taxRate: cat.tax.rate,
-                taxInclusive: cat.tax.inclusive,
-                taxNote: cat.tax.note,
-                updatedBy: user._id,
             });
             toast.success(`Switched to ${cat.name}. Your sidebar and receipts have been updated.`);
             setSelected(null);
@@ -80,12 +79,11 @@ export function BusinessVerticalSettings() {
         setSaving(true);
         try {
             await updateProfile({
-                id: profile._id,
-                businessName: businessName.trim() || undefined,
+                businessId: profile._id,
+                name: businessName.trim() || undefined,
                 businessPhone: businessPhone.trim() || undefined,
                 businessAddress: businessAddress.trim() || undefined,
                 tin: tin.trim() || undefined,
-                updatedBy: user._id,
             });
             toast.success("Business details saved");
         } catch (err) {
@@ -102,9 +100,8 @@ export function BusinessVerticalSettings() {
         setAllowOverrides(checked);
         try {
             await updateProfile({
-                id: profile._id,
+                businessId: profile._id,
                 allowPriceOverrides: checked,
-                updatedBy: user._id,
             });
             toast.success(
                 checked
@@ -212,9 +209,9 @@ export function BusinessVerticalSettings() {
                                 <Label htmlFor="s-bizName">Business name</Label>
                                 <Input
                                     id="s-bizName"
-                                    defaultValue={profile.businessName}
+                                    defaultValue={profile.name}
                                     onChange={(e) => setBusinessName(e.target.value)}
-                                    placeholder={profile.businessName}
+                                    placeholder={profile.name}
                                 />
                             </div>
                             <div className="space-y-2">

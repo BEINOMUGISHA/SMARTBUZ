@@ -1,18 +1,59 @@
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
+import type { Id } from "./_generated/dataModel";
+import { logActivity, requirePermission, requireTenant } from "./tenancy";
+
+/**
+ * SMART_BUZ — promotions and prize redemptions.
+ *
+ * A promotion belongs to a business: two businesses may both run a
+ * "Buy 6 get 1 free" offer without interfering with each other.
+ */
+
+/** The counter the caller runs in this business, if any. */
+async function callerShopId(
+    ctx: any,
+    userId: Id<"users">,
+    businessId: Id<"businesses">
+): Promise<Id<"shops"> | undefined> {
+    const shop = await ctx.db
+        .query("shops")
+        .withIndex("by_user", (q: any) => q.eq("userId", userId))
+        .filter((q: any) => q.eq(q.field("businessId"), businessId))
+        .first();
+    return shop?._id;
+}
 
 export const list = query({
-    args: { paginationOpts: paginationOptsValidator },
+    args: {
+        paginationOpts: paginationOptsValidator,
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
-        return await ctx.db.query("promotions").order("desc").paginate(args.paginationOpts);
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
+        return await ctx.db
+            .query("promotions")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .order("desc")
+            .paginate(args.paginationOpts);
     },
 });
 
 export const listAll = query({
-    args: {},
-    handler: async (ctx) => {
-        return await ctx.db.query("promotions").order("desc").collect();
+    args: { businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
+        return await ctx.db
+            .query("promotions")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .order("desc")
+            .collect();
     },
 });
 
@@ -21,10 +62,17 @@ export const getPaginated = query({
         limit: v.number(),
         offset: v.number(),
         searchTerm: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let q = ctx.db.query("promotions");
-        let results = await q.order("desc").collect();
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
+        let results = await ctx.db
+            .query("promotions")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .order("desc")
+            .collect();
 
         if (args.searchTerm) {
             const search = args.searchTerm.toLowerCase();
@@ -45,19 +93,27 @@ export const add = mutation({
         isActive: v.boolean(),
         triggerType: v.optional(v.string()),
         threshold: v.optional(v.number()),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const { userId, ...promoArgs } = args;
-        const promoId = await ctx.db.insert("promotions", promoArgs);
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.create");
+
+        const { userId, businessId, ...promoArgs } = args;
+        const promoId = await ctx.db.insert("promotions", {
+            ...promoArgs,
+            businessId: tenant.businessId,
+        });
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId,
-            action: "Add Promotion",
-            details: `Created new promotion: ${args.name} - Prize: ${args.prize}, Type: ${args.triggerType || 'N/A'}${args.threshold ? `, Threshold: ${args.threshold}` : ''}, Status: ${args.isActive ? 'Active' : 'Inactive'}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Add Promotion",
+            `Created new promotion: ${args.name} - Prize: ${args.prize}, Type: ${args.triggerType || 'N/A'}${args.threshold ? `, Threshold: ${args.threshold}` : ''}, Status: ${args.isActive ? 'Active' : 'Inactive'}`
+        );
 
         return promoId;
     },
@@ -71,12 +127,19 @@ export const update = mutation({
         isActive: v.optional(v.boolean()),
         triggerType: v.optional(v.string()),
         threshold: v.optional(v.number()),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const { id, userId, ...rest } = args;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.update");
+
+        const { id, userId, businessId, ...rest } = args;
         const promotion = await ctx.db.get(id);
         if (!promotion) throw new Error("Promotion not found");
+        if (promotion.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that promotion belongs to another business.");
+        }
 
         const patchData: any = { ...rest };
 
@@ -89,25 +152,37 @@ export const update = mutation({
 
         // Log activity
         const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
-        await ctx.db.insert("activityLogs", {
-            userId,
-            action: "Update Promotion",
-            details: `Updated promotion ${promotion.name} - Changes: ${changes}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Update Promotion",
+            `Updated promotion ${promotion.name} - Changes: ${changes}`
+        );
     },
 });
 
 export const remove = mutation({
-    args: { id: v.id("promotions"), userId: v.id("users") },
+    args: {
+        id: v.id("promotions"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.update");
+
         const promotion = await ctx.db.get(args.id);
         if (!promotion) throw new Error("Promotion not found");
+        if (promotion.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that promotion belongs to another business.");
+        }
 
         // Also remove linked products
         const products = await ctx.db
             .query("promotionProducts")
-            .withIndex("by_promotion", (q) => q.eq("promotionId", args.id))
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .filter((q) => q.eq(q.field("promotionId"), args.id))
             .collect();
         for (const p of products) {
             await ctx.db.delete(p._id);
@@ -115,22 +190,35 @@ export const remove = mutation({
         await ctx.db.delete(args.id);
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Delete Promotion",
-            details: `Deleted promotion: ${promotion.name} - Prize: ${promotion.prize} (${products.length} linked products removed)`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Delete Promotion",
+            `Deleted promotion: ${promotion.name} - Prize: ${promotion.prize} (${products.length} linked products removed)`
+        );
     },
 });
 
 // Promotion Products Management
 export const getPromotionProducts = query({
-    args: { promotionId: v.id("promotions") },
+    args: {
+        promotionId: v.id("promotions"),
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
+        const promotion = await ctx.db.get(args.promotionId);
+        if (!promotion || promotion.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that promotion belongs to another business.");
+        }
+
         const products = await ctx.db
             .query("promotionProducts")
-            .withIndex("by_promotion", (q) => q.eq("promotionId", args.promotionId))
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .filter((q) => q.eq(q.field("promotionId"), args.promotionId))
             .collect();
 
         const results = await Promise.all(
@@ -153,17 +241,32 @@ export const addProduct = mutation({
         promotionId: v.id("promotions"),
         stockId: v.id("stocks"),
         requiredQuantity: v.number(),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.update");
+
         const promotion = await ctx.db.get(args.promotionId);
+        if (!promotion || promotion.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that promotion belongs to another business.");
+        }
         const stock = await ctx.db.get(args.stockId);
+        if (!stock || stock.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
 
         // Check for existing product in this promotion
         const existing = await ctx.db
             .query("promotionProducts")
-            .withIndex("by_promotion", (q) => q.eq("promotionId", args.promotionId))
-            .filter((q) => q.eq(q.field("stockId"), args.stockId))
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .filter((q) =>
+                q.and(
+                    q.eq(q.field("promotionId"), args.promotionId),
+                    q.eq(q.field("stockId"), args.stockId)
+                )
+            )
             .first();
 
         let productId;
@@ -175,6 +278,7 @@ export const addProduct = mutation({
             productId = existing._id;
         } else {
             productId = await ctx.db.insert("promotionProducts", {
+                businessId: tenant.businessId,
                 promotionId: args.promotionId,
                 stockId: args.stockId,
                 requiredQuantity: args.requiredQuantity,
@@ -182,22 +286,35 @@ export const addProduct = mutation({
         }
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: existing ? "Update Promotion Product" : "Add Product to Promotion",
-            details: `${existing ? 'Updated' : 'Added'} product ${stock?.name || 'Unknown'} (${args.requiredQuantity} units) to promotion ${promotion?.name || 'Unknown'}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            existing ? "Update Promotion Product" : "Add Product to Promotion",
+            `${existing ? 'Updated' : 'Added'} product ${stock?.name || 'Unknown'} (${args.requiredQuantity} units) to promotion ${promotion?.name || 'Unknown'}`
+        );
 
         return productId;
     },
 });
 
 export const removeProduct = mutation({
-    args: { id: v.id("promotionProducts"), userId: v.id("users") },
+    args: {
+        id: v.id("promotionProducts"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.update");
+
         const product = await ctx.db.get(args.id);
         if (!product) throw new Error("Promotion product not found");
+        if (product.businessId !== tenant.businessId) {
+            throw new ConvexError(
+                "Forbidden: that promotion product belongs to another business."
+            );
+        }
 
         const stock = await ctx.db.get(product.stockId);
         const promotion = await ctx.db.get(product.promotionId);
@@ -205,12 +322,13 @@ export const removeProduct = mutation({
         await ctx.db.delete(args.id);
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Remove Product from Promotion",
-            details: `Removed product ${stock?.name || 'Unknown'} from promotion ${promotion?.name || 'Unknown'}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Remove Product from Promotion",
+            `Removed product ${stock?.name || 'Unknown'} from promotion ${promotion?.name || 'Unknown'}`
+        );
     },
 });
 
@@ -218,37 +336,48 @@ export const updateProductQuantity = mutation({
     args: {
         id: v.id("promotionProducts"),
         quantity: v.number(),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.update");
+
         const product = await ctx.db.get(args.id);
         if (!product) throw new Error("Promotion product not found");
+        if (product.businessId !== tenant.businessId) {
+            throw new ConvexError(
+                "Forbidden: that promotion product belongs to another business."
+            );
+        }
 
         const stock = await ctx.db.get(product.stockId);
         const promotion = await ctx.db.get(product.promotionId);
 
         if (args.quantity <= 0) {
             await ctx.db.delete(args.id);
-            
+
             // Log activity
-            await ctx.db.insert("activityLogs", {
-                userId: args.userId,
-                action: "Remove Product from Promotion",
-                details: `Removed product ${stock?.name || 'Unknown'} from promotion ${promotion?.name || 'Unknown'} (quantity set to 0)`,
-                timestamp: new Date().toISOString(),
-            });
+            await logActivity(
+                ctx,
+                tenant.businessId,
+                tenant.user._id,
+                "Remove Product from Promotion",
+                `Removed product ${stock?.name || 'Unknown'} from promotion ${promotion?.name || 'Unknown'} (quantity set to 0)`
+            );
             return;
         }
-        
+
         await ctx.db.patch(args.id, { requiredQuantity: args.quantity });
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Update Promotion Product Quantity",
-            details: `Updated quantity for ${stock?.name || 'Unknown'} in promotion ${promotion?.name || 'Unknown'}: ${product.requiredQuantity} -> ${args.quantity}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Update Promotion Product Quantity",
+            `Updated quantity for ${stock?.name || 'Unknown'} in promotion ${promotion?.name || 'Unknown'}: ${product.requiredQuantity} -> ${args.quantity}`
+        );
     },
 });
 
@@ -257,24 +386,22 @@ export const listRedemptions = query({
         paginationOpts: paginationOptsValidator,
         from: v.optional(v.string()),
         to: v.optional(v.string()),
-        email: v.optional(v.string()),
+        email: v.optional(v.string()), // @deprecated — the caller is derived from the session
         shopId: v.optional(v.id("shops")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let targetShopId = args.shopId;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.view");
 
-        if (!targetShopId && args.email) {
-            const user = await ctx.db
-                .query("users")
-                .withIndex("by_email", (q) => q.eq("email", args.email!))
-                .first();
-            if (user) {
-                const shop = await ctx.db
-                    .query("shops")
-                    .withIndex("by_user", (q) => q.eq("userId", user._id))
-                    .first();
-                if (shop) targetShopId = shop._id;
+        let targetShopId = args.shopId;
+        if (targetShopId) {
+            const shop = await ctx.db.get(targetShopId);
+            if (!shop || shop.businessId !== tenant.businessId) {
+                throw new ConvexError("Forbidden: that shop belongs to another business.");
             }
+        } else {
+            targetShopId = await callerShopId(ctx, tenant.user._id, tenant.businessId);
         }
 
         let q: any;
@@ -287,8 +414,10 @@ export const listRedemptions = query({
                 q = ctx.db.query("promotionRedemptions").withIndex("by_shop_date", (q) => q.eq("shopId", targetShopId!));
             }
         } else {
-            // HQ/Admin view
-            const baseQuery = ctx.db.query("promotionRedemptions");
+            // HQ/Admin view — still only this business's redemptions.
+            const baseQuery = ctx.db
+                .query("promotionRedemptions")
+                .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId));
             if (args.from && args.to) {
                 q = baseQuery.filter(q => q.and(q.gte(q.field("date"), args.from!), q.lte(q.field("date"), args.to!)));
             } else {
@@ -317,26 +446,24 @@ export const listRedemptions = query({
 
 export const redemptionsStats = query({
     args: {
-        email: v.optional(v.string()),
+        email: v.optional(v.string()), // @deprecated — the caller is derived from the session
         from: v.optional(v.string()),
         to: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let targetShopId = args.shopId;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.view");
 
-        if (!targetShopId && args.email) {
-            const user = await ctx.db
-                .query("users")
-                .withIndex("by_email", (q) => q.eq("email", args.email!))
-                .first();
-            if (user) {
-                const shop = await ctx.db
-                    .query("shops")
-                    .withIndex("by_user", (q) => q.eq("userId", user._id))
-                    .first();
-                if (shop) targetShopId = shop._id;
+        let targetShopId = args.shopId;
+        if (targetShopId) {
+            const shop = await ctx.db.get(targetShopId);
+            if (!shop || shop.businessId !== tenant.businessId) {
+                throw new ConvexError("Forbidden: that shop belongs to another business.");
             }
+        } else {
+            targetShopId = await callerShopId(ctx, tenant.user._id, tenant.businessId);
         }
 
         let q: any;
@@ -349,7 +476,9 @@ export const redemptionsStats = query({
                 q = ctx.db.query("promotionRedemptions").withIndex("by_shop_date", (q) => q.eq("shopId", targetShopId!));
             }
         } else {
-            const baseQuery = ctx.db.query("promotionRedemptions");
+            const baseQuery = ctx.db
+                .query("promotionRedemptions")
+                .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId));
             if (args.from && args.to) {
                 q = baseQuery.filter(q => q.and(q.gte(q.field("date"), args.from!), q.lte(q.field("date"), args.to!)));
             } else {
@@ -372,10 +501,14 @@ export const redemptionsStats = query({
 });
 
 export const getActivePromotionsWithProducts = query({
-    args: {},
-    handler: async (ctx) => {
+    args: { businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
         const activePromotions = await ctx.db
             .query("promotions")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
             .filter((q) => q.eq(q.field("isActive"), true))
             .collect();
 
@@ -384,7 +517,10 @@ export const getActivePromotionsWithProducts = query({
 
         if (activePromotions.length === 0) return { productPromotions: promoMap, globalPromotions: [] };
 
-        const allPromotionProducts = await ctx.db.query("promotionProducts").collect();
+        const allPromotionProducts = await ctx.db
+            .query("promotionProducts")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .collect();
 
         for (const pp of allPromotionProducts) {
             // Find which promotion this product belongs to

@@ -67,7 +67,7 @@ const DELIVERY_STATUSES = ["Taken", "Pending"];
 export function EditSaleSheet({ sale, open, onOpenChange, onSaved }: EditSaleSheetProps) {
     const { user } = useAuth();
     const editSaleMutation = useMutation(api.sales.editSale);
-    const customers = useQuery(api.customers.listAll);
+    const customers = useQuery(api.customers.listAll, {});
     const shopData = useQuery(api.stocks.getShopStock, {
         email: user?.email || undefined,
         limit: 500,

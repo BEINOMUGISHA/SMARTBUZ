@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "test:acceptance": "node scripts/run-tests.mjs acceptance",
+    "test:permissions": "node scripts/run-tests.mjs permissions"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

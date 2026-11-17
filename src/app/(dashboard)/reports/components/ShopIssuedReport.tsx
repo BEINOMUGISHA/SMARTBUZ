@@ -23,7 +23,7 @@ export function ShopIssuedReport() {
     const [issuedType, setIssuedType] = useState<"all" | "regular" | "hp">("all");
     const [issuedSearch, setIssuedSearch] = useState("");
 
-    const shops = useQuery(api.shops.listAll);
+    const shops = useQuery(api.shops.listAll, {});
 
     const issueRecords = useQuery(api.stocks.getShopIssueRecords, {
         shopId: issuedShop === "all" ? undefined : (issuedShop as Id<"shops">),

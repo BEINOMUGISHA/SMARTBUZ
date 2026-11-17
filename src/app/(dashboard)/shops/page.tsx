@@ -68,7 +68,7 @@ export default function ShopsPage() {
 
 function ShopStockViewer() {
     const { user } = useAuth();
-    const shops = useQuery(api.shops.listAll);
+    const shops = useQuery(api.shops.listAll, {});
     const [selectedShopId, setSelectedShopId] = useState<Id<"shops"> | "">("");
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -539,7 +539,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
         searchTerm: debouncedSearch || undefined
     }) || 0;
 
-    const shops = useQuery(api.shops.listAll);
+    const shops = useQuery(api.shops.listAll, {});
     const batchTransfer = useMutation(api.shops.batchTransferStock);
 
     const totalPages = Math.ceil(totalItems / rowsPerPage);

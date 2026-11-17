@@ -3,21 +3,31 @@
 /**
  * SMART_BUZ — Purchase Orders
  *
- * Order from suppliers, then receive the goods. Receiving a PO increases
- * stock, writes to the stock ledger and produces a goods-received note —
- * the audit trail the ledger was missing before.
+ * Order from suppliers, then receive the goods.
+ *
+ * Receiving is deliberately **partial-friendly**: goods arrive in parts, so
+ * each line carries its own quantity and the order stays open until every
+ * line is complete. The order then says `partially received`, which is the
+ * truth — pretending a half-delivered order is finished is how a business
+ * ends up ordering the same goods twice.
+ *
+ * Every receipt increases stock, writes to the stock ledger and records what
+ * the goods actually cost, so the purchase price of a product is never lost
+ * when the price changes.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import { useAuth } from "@/context/auth-context";
 import {
     VerticalPageHeader,
     StatusBadge,
     LoadingState,
     EmptyState,
-    FormDialog,
+    SearchBox,
+    StatStrip,
     CreateButton,
     RecordList,
     ugx,
@@ -29,12 +39,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ClipboardList, Plus, Trash2, PackageCheck, Loader2 } from "lucide-react";
+import {
+    ClipboardList,
+    Plus,
+    Trash2,
+    PackageCheck,
+    Loader2,
+    Building2,
+    Warehouse,
+} from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 
 interface PoLine {
+    stockId: Id<"stocks"> | "";
     name: string;
+    productCode?: string;
     quantity: string;
     unitCost: string;
 }
@@ -43,69 +63,129 @@ const PO_STATUSES = [
     { value: "all", label: "All" },
     { value: "draft", label: "Draft" },
     { value: "ordered", label: "Ordered" },
+    { value: "partially_received", label: "Part received" },
     { value: "received", label: "Received" },
     { value: "cancelled", label: "Cancelled" },
 ];
 
 export default function PurchaseOrdersPage() {
-    const { user } = useAuth();
+    const { user, can } = useAuth();
     const [status, setStatus] = useState("all");
+    const [search, setSearch] = useState("");
     const [createOpen, setCreateOpen] = useState(false);
     const [receiveFor, setReceiveFor] = useState<any>(null);
-    const [lines, setLines] = useState<PoLine[]>([{ name: "", quantity: "1", unitCost: "0" }]);
-    const [supplierName, setSupplierName] = useState("");
-    const [expectedDate, setExpectedDate] = useState("");
-    const [notes, setNotes] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
-    const pos = useQuery(api.verticals.operations.listPurchaseOrders, {
+    // New order form.
+    const [lines, setLines] = useState<PoLine[]>([
+        { stockId: "", name: "", quantity: "1", unitCost: "0" },
+    ]);
+    const [supplierId, setSupplierId] = useState("");
+    const [branchId, setBranchId] = useState<Id<"branches"> | "">("");
+    const [warehouseId, setWarehouseId] = useState<Id<"warehouses"> | "">("");
+    const [expectedDate, setExpectedDate] = useState("");
+    const [notes, setNotes] = useState("");
+
+    // Receipt form — one quantity per line.
+    const [receiveQtys, setReceiveQtys] = useState<Record<number, string>>({});
+    const [receiveNotes, setReceiveNotes] = useState("");
+
+    const pos = useQuery(api.purchasing.listPurchaseOrders, {
         status: status === "all" ? undefined : status,
+        searchTerm: search || undefined,
     });
-    const suppliers = useQuery(api.verticals.operations.listSuppliers, {});
+    const suppliers = useQuery(api.suppliers.listAll, {});
+    const stocks = useQuery(api.stocks.listAll, {});
+    const branches = useQuery(api.branches.list, {});
+    const warehouses = useQuery(api.warehouses.list, {});
+    const receipts = useQuery(api.purchasing.listGoodsReceipts, { limit: 50 });
 
-    const createPo = useMutation(api.verticals.operations.createPurchaseOrder);
-    const updateStatus = useMutation(api.verticals.operations.updatePurchaseOrderStatus);
-    const receiveGoods = useMutation(api.verticals.operations.receiveGoods);
+    const createPo = useMutation(api.purchasing.createPurchaseOrder);
+    const updateStatus = useMutation(api.purchasing.updatePurchaseOrderStatus);
+    const receiveGoods = useMutation(api.purchasing.receiveGoods);
 
-    const poTotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unitCost) || 0), 0);
+    const orders = pos?.page ?? [];
+
+    const branchName = (id: string): string => {
+        const b = (branches ?? []).find((x: any) => x._id === id);
+        return b?.name ?? "Branch";
+    };
+
+    const warehouseName = (id: string): string => {
+        const w = (warehouses ?? []).find((x: any) => x._id === id);
+        return w?.name ?? "Warehouse";
+    };
+
+    const stats = useMemo(() => {
+        const s = pos?.statuses;
+        const committed = (pos?.page ?? []).reduce(
+            (sum: number, po: any) => sum + (po.total ?? 0),
+            0
+        );
+        return [
+            { label: "Draft", value: String(s?.draft ?? 0) },
+            { label: "Ordered", value: String(s?.ordered ?? 0) },
+            {
+                label: "Part received",
+                value: String(s?.partiallyReceived ?? 0),
+                tone: "warn" as const,
+            },
+            { label: "Committed value", value: ugx(committed) },
+        ];
+    }, [pos]);
+
+    const poTotal = lines.reduce(
+        (s, l) => s + (Number(l.quantity) || 0) * (Number(l.unitCost) || 0),
+        0
+    );
 
     const resetForm = () => {
-        setLines([{ name: "", quantity: "1", unitCost: "0" }]);
-        setSupplierName("");
+        setLines([{ stockId: "", name: "", quantity: "1", unitCost: "0" }]);
+        setSupplierId("");
+        setBranchId("");
+        setWarehouseId("");
         setExpectedDate("");
         setNotes("");
     };
 
     const handleCreate = async () => {
         if (!user) return;
-        if (!supplierName.trim()) {
-            toast.error("Select or type a supplier first.");
+
+        const supplier = (suppliers ?? []).find((s: any) => s._id === supplierId);
+        if (!supplier) {
+            toast.error("Pick a supplier for this order.");
             return;
         }
-        const valid = lines.filter((l) => l.name.trim() && Number(l.quantity) > 0);
+
+        const valid = lines.filter(
+            (l) => l.stockId && Number(l.quantity) > 0
+        );
         if (valid.length === 0) {
-            toast.error("Add at least one line item with a name and quantity.");
+            toast.error("Add at least one product with a quantity.");
             return;
         }
 
         setSubmitting(true);
         try {
-            const supplier = (suppliers ?? []).find(
-                (s: any) => s.name.toLowerCase() === supplierName.trim().toLowerCase()
-            );
-            await createPo({
-                supplierId: supplier?._id,
-                supplierName: supplierName.trim(),
+            const result = await createPo({
+                supplierId: supplier._id,
+                supplierName: supplier.name,
                 expectedDate: expectedDate || undefined,
                 notes: notes || undefined,
-                items: valid.map((l) => ({
-                    name: l.name.trim(),
-                    quantity: Number(l.quantity),
-                    unitCost: Number(l.unitCost) || 0,
-                })),
-                userId: user._id,
+                branchId: branchId || undefined,
+                warehouseId: warehouseId || undefined,
+                items: valid.map((l) => {
+                    const stock = (stocks ?? []).find((s: any) => s._id === l.stockId);
+                    return {
+                        stockId: l.stockId as Id<"stocks">,
+                        name: l.name || stock?.name || "Item",
+                        productCode: stock?.productCode,
+                        quantity: Number(l.quantity),
+                        unitCost: Number(l.unitCost) || 0,
+                    };
+                }),
             });
-            toast.success("Purchase order created");
+            toast.success(`Purchase order ${result.poNumber} created`);
             setCreateOpen(false);
             resetForm();
         } catch (err) {
@@ -115,21 +195,60 @@ export default function PurchaseOrdersPage() {
         }
     };
 
+    const openReceive = (po: any) => {
+        setReceiveFor(po);
+        setReceiveNotes("");
+        // Default to everything still outstanding on each line.
+        const defaults: Record<number, string> = {};
+        po.items.forEach((item: any, index: number) => {
+            const outstanding = (item.quantity ?? 0) - (item.receivedQty ?? 0);
+            defaults[index] = String(Math.max(0, outstanding));
+        });
+        setReceiveQtys(defaults);
+    };
+
     const handleReceive = async () => {
         if (!user || !receiveFor) return;
+
+        const items = receiveFor.items
+            .map((item: any, index: number) => ({
+                stockId: item.stockId,
+                name: item.name,
+                productCode: item.productCode,
+                quantity: Number(receiveQtys[index] ?? 0),
+                unitCost: item.unitCost,
+                poItemIndex: index,
+            }))
+            .filter((i: any) => i.quantity > 0);
+
+        if (items.length === 0) {
+            toast.error("Enter at least one quantity to receive.");
+            return;
+        }
+
         setSubmitting(true);
         try {
             const res: any = await receiveGoods({
                 poId: receiveFor._id,
-                items: receiveFor.items.map((i: any) => ({
-                    stockId: i.stockId,
-                    name: i.name,
-                    quantity: i.receivedQty ?? i.quantity,
-                    unitCost: i.unitCost,
-                })),
-                userId: user._id,
+                items,
+                // The goods land where the order said they would land.
+                branchId: (receiveFor.branchId ?? (branchId || undefined)) as
+                    | Id<"branches">
+                    | undefined,
+                warehouseId: (receiveFor.warehouseId ??
+                    (warehouseId || undefined)) as
+                    | Id<"warehouses">
+                    | undefined,
+                notes: receiveNotes || undefined,
             });
-            toast.success(`Goods received — ${res.receiptNumber}. Stock updated.`);
+            toast.success(
+                `Goods received — ${res.receiptNumber}. ${
+                    res.fullyReceived
+                        ? "Order fully received."
+                        : "Order is partly received; the rest is still outstanding."
+                }`,
+                { description: "Stock updated." }
+            );
             setReceiveFor(null);
         } catch (err) {
             toast.error(formatError(err));
@@ -139,10 +258,18 @@ export default function PurchaseOrdersPage() {
     };
 
     const markOrdered = async (id: string) => {
-        if (!user) return;
         try {
             await updateStatus({ id: id as any, status: "ordered" });
             toast.success("Marked as ordered");
+        } catch (err) {
+            toast.error(formatError(err));
+        }
+    };
+
+    const cancelOrder = async (id: string) => {
+        try {
+            await updateStatus({ id: id as any, status: "cancelled" });
+            toast.success("Purchase order cancelled");
         } catch (err) {
             toast.error(formatError(err));
         }
@@ -155,15 +282,19 @@ export default function PurchaseOrdersPage() {
                 title="Purchase Orders"
                 description="Order from suppliers and receive stock with a proper audit trail."
                 actions={
-                    <CreateButton
-                        onClick={() => {
-                            resetForm();
-                            setCreateOpen(true);
-                        }}
-                        label="New purchase order"
-                    />
+                    can("purchasing.manage") ? (
+                        <CreateButton
+                            onClick={() => {
+                                resetForm();
+                                setCreateOpen(true);
+                            }}
+                            label="New purchase order"
+                        />
+                    ) : undefined
                 }
             />
+
+            <StatStrip stats={stats} />
 
             <Tabs value={status} onValueChange={setStatus}>
                 <TabsList className="flex h-11 w-full flex-wrap gap-1 rounded-xl border bg-muted/50 p-1.5">
@@ -178,17 +309,23 @@ export default function PurchaseOrdersPage() {
                     ))}
                 </TabsList>
 
-                <TabsContent value={status} className="mt-4">
+                <TabsContent value={status} className="mt-4 space-y-4">
+                    <SearchBox
+                        value={search}
+                        onChange={setSearch}
+                        placeholder="Search by PO number, supplier or note…"
+                    />
+
                     {!pos ? (
                         <LoadingState />
-                    ) : pos.length === 0 ? (
+                    ) : orders.length === 0 ? (
                         <EmptyState
                             title="No purchase orders"
                             hint="Create a purchase order to plan your buying. When the goods arrive, receive them to increase stock automatically."
                         />
                     ) : (
                         <RecordList
-                            records={pos}
+                            records={orders}
                             renderItem={(po: any) => (
                                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                     <div className="min-w-0 flex-1">
@@ -197,6 +334,16 @@ export default function PurchaseOrdersPage() {
                                                 {po.poNumber}
                                             </p>
                                             <StatusBadge status={po.status} />
+                                            {po.branchId && (
+                                                <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold">
+                                                    {branchName(po.branchId)}
+                                                </span>
+                                            )}
+                                            {po.warehouseId && (
+                                                <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold">
+                                                    {warehouseName(po.warehouseId)}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="mt-1 font-black">{po.supplierName}</p>
                                         <p className="text-xs text-muted-foreground">
@@ -212,6 +359,9 @@ export default function PurchaseOrdersPage() {
                                                     className="text-[11px] text-muted-foreground"
                                                 >
                                                     {i.quantity} × {i.name} @ {ugx(i.unitCost)}
+                                                    {i.receivedQty
+                                                        ? ` — ${i.receivedQty} received`
+                                                        : ""}
                                                 </li>
                                             ))}
                                             {po.items.length > 3 && (
@@ -225,23 +375,45 @@ export default function PurchaseOrdersPage() {
                                         <p className="text-lg font-black tabular-nums">
                                             {ugx(po.total)}
                                         </p>
-                                        {po.status === "draft" && (
-                                            <Button size="sm" onClick={() => markOrdered(po._id)}>
-                                                Mark ordered
-                                            </Button>
+                                        {can("purchasing.manage") && po.status === "draft" && (
+                                            <div className="flex gap-2">
+                                                <Button size="sm" onClick={() => markOrdered(po._id)}>
+                                                    Mark ordered
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => cancelOrder(po._id)}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </div>
                                         )}
-                                        {po.status === "ordered" && (
-                                            <Button
-                                                size="sm"
-                                                onClick={() => setReceiveFor(po)}
-                                            >
-                                                <PackageCheck className="mr-1.5 h-3.5 w-3.5" />
-                                                Receive goods
-                                            </Button>
-                                        )}
+                                        {can("purchasing.manage") &&
+                                            (po.status === "ordered" ||
+                                                po.status === "partially_received") && (
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => openReceive(po)}
+                                                >
+                                                    <PackageCheck className="mr-1.5 h-3.5 w-3.5" />
+                                                    Receive goods
+                                                </Button>
+                                            )}
                                         {po.status === "received" && (
-                                            <Badge variant="outline" className="text-[10px] text-emerald-600">
+                                            <Badge
+                                                variant="outline"
+                                                className="text-[10px] text-emerald-600"
+                                            >
                                                 Received {shortDate(po.receivedDate)}
+                                            </Badge>
+                                        )}
+                                        {po.status === "partially_received" && (
+                                            <Badge
+                                                variant="outline"
+                                                className="text-[10px] text-amber-600"
+                                            >
+                                                Part received — {po.items.length} line(s) open
                                             </Badge>
                                         )}
                                     </div>
@@ -252,7 +424,40 @@ export default function PurchaseOrdersPage() {
                 </TabsContent>
             </Tabs>
 
-            {/* Create PO */}
+            {/* ───────────────────── goods received ───────────────────── */}
+            {receipts && receipts.page.length > 0 && (
+                <div className="space-y-2">
+                    <h3 className="text-sm font-black uppercase tracking-wide text-muted-foreground">
+                        Recent goods received
+                    </h3>
+                    <RecordList
+                        records={receipts.page.slice(0, 10)}
+                        renderItem={(r: any) => (
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <p className="font-mono text-xs font-bold">
+                                            {r.receiptNumber}
+                                        </p>
+                                        <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                                            RECEIVED
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        {r.supplierName} · {r.items.length} line(s) ·{" "}
+                                        {shortDate(r.date)}
+                                    </p>
+                                </div>
+                                <p className="shrink-0 text-sm font-black tabular-nums">
+                                    {ugx(r.total)}
+                                </p>
+                            </div>
+                        )}
+                    />
+                </div>
+            )}
+
+            {/* ───────────────────── create purchase order ───────────────────── */}
             {createOpen && (
                 <Card className="border-primary/30">
                     <CardContent className="space-y-4 p-5">
@@ -261,18 +466,19 @@ export default function PurchaseOrdersPage() {
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-2">
                                 <Label htmlFor="po-supplier">Supplier</Label>
-                                <Input
+                                <select
                                     id="po-supplier"
-                                    list="supplier-options"
-                                    value={supplierName}
-                                    onChange={(e) => setSupplierName(e.target.value)}
-                                    placeholder="Type or pick a supplier"
-                                />
-                                <datalist id="supplier-options">
+                                    value={supplierId}
+                                    onChange={(e) => setSupplierId(e.target.value)}
+                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                >
+                                    <option value="">Select a supplier…</option>
                                     {(suppliers ?? []).map((s: any) => (
-                                        <option key={s._id} value={s.name} />
+                                        <option key={s._id} value={s._id}>
+                                            {s.name}
+                                        </option>
                                     ))}
-                                </datalist>
+                                </select>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="po-expected">Expected date</Label>
@@ -285,21 +491,83 @@ export default function PurchaseOrdersPage() {
                             </div>
                         </div>
 
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="po-branch">
+                                    <span className="flex items-center gap-1.5">
+                                        <Building2 className="h-3.5 w-3.5" /> Branch
+                                    </span>
+                                </Label>
+                                <select
+                                    id="po-branch"
+                                    value={branchId}
+                                    onChange={(e) => setBranchId(e.target.value as Id<"branches">)}
+                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                >
+                                    <option value="">All branches</option>
+                                    {(branches ?? []).map((b: any) => (
+                                        <option key={b._id} value={b._id}>
+                                            {b.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="po-warehouse">
+                                    <span className="flex items-center gap-1.5">
+                                        <Warehouse className="h-3.5 w-3.5" /> Warehouse
+                                    </span>
+                                </Label>
+                                <select
+                                    id="po-warehouse"
+                                    value={warehouseId}
+                                    onChange={(e) => setWarehouseId(e.target.value as Id<"warehouses">)}
+                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                >
+                                    <option value="">No specific warehouse</option>
+                                    {(warehouses ?? []).map((w: any) => (
+                                        <option key={w._id} value={w._id}>
+                                            {w.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
                         <div className="space-y-2">
                             <Label>Line items</Label>
                             <div className="space-y-2">
                                 {lines.map((l, i) => (
-                                    <div key={i} className="flex gap-2">
-                                        <Input
-                                            value={l.name}
+                                    <div key={i} className="grid gap-2 sm:grid-cols-[1fr_6rem_8rem_2.5rem]">
+                                        <select
+                                            value={l.stockId}
                                             onChange={(e) => {
                                                 const next = [...lines];
-                                                next[i] = { ...l, name: e.target.value };
+                                                const stock = (stocks ?? []).find(
+                                                    (s: any) => s._id === e.target.value
+                                                );
+                                                next[i] = {
+                                                    ...l,
+                                                    stockId: e.target.value as Id<"stocks">,
+                                                    name: stock?.name ?? "",
+                                                    productCode: stock?.productCode,
+                                                    unitCost:
+                                                        l.unitCost === "0" && stock?.purchasePrice
+                                                            ? String(stock.purchasePrice)
+                                                            : l.unitCost,
+                                                };
                                                 setLines(next);
                                             }}
-                                            placeholder="Item name"
-                                            className="flex-1"
-                                        />
+                                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                            <option value="">Select a product…</option>
+                                            {(stocks ?? []).map((s: any) => (
+                                                <option key={s._id} value={s._id}>
+                                                    {s.name}
+                                                    {s.productCode ? ` (${s.productCode})` : ""}
+                                                </option>
+                                            ))}
+                                        </select>
                                         <Input
                                             type="number"
                                             min="1"
@@ -309,8 +577,8 @@ export default function PurchaseOrdersPage() {
                                                 next[i] = { ...l, quantity: e.target.value };
                                                 setLines(next);
                                             }}
-                                            className="w-24"
                                             placeholder="Qty"
+                                            aria-label="Quantity"
                                         />
                                         <Input
                                             type="number"
@@ -321,14 +589,15 @@ export default function PurchaseOrdersPage() {
                                                 next[i] = { ...l, unitCost: e.target.value };
                                                 setLines(next);
                                             }}
-                                            className="w-32"
                                             placeholder="Unit cost"
+                                            aria-label="Unit cost"
                                         />
                                         <Button
                                             variant="ghost"
                                             size="icon"
                                             disabled={lines.length === 1}
                                             onClick={() => setLines(lines.filter((_, x) => x !== i))}
+                                            aria-label="Remove line"
                                         >
                                             <Trash2 className="h-4 w-4 text-destructive" />
                                         </Button>
@@ -339,7 +608,10 @@ export default function PurchaseOrdersPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() =>
-                                    setLines([...lines, { name: "", quantity: "1", unitCost: "0" }])
+                                    setLines([
+                                        ...lines,
+                                        { stockId: "", name: "", quantity: "1", unitCost: "0" },
+                                    ])
                                 }
                             >
                                 <Plus className="mr-1.5 h-3.5 w-3.5" /> Add line
@@ -366,7 +638,9 @@ export default function PurchaseOrdersPage() {
                                 Cancel
                             </Button>
                             <Button onClick={handleCreate} disabled={submitting}>
-                                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {submitting && (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                )}
                                 Create purchase order
                             </Button>
                         </div>
@@ -374,30 +648,74 @@ export default function PurchaseOrdersPage() {
                 </Card>
             )}
 
-            {/* Receive goods confirm */}
+            {/* ───────────────────── receive goods ───────────────────── */}
             {receiveFor && (
                 <Card className="border-emerald-500/40 bg-emerald-500/5">
                     <CardContent className="space-y-4 p-5">
                         <div>
-                            <h3 className="text-base font-black">Receive goods — {receiveFor.poNumber}</h3>
+                            <h3 className="text-base font-black">
+                                Receive goods — {receiveFor.poNumber}
+                            </h3>
                             <p className="text-xs text-muted-foreground">
-                                This adds {receiveFor.items.length} line(s) to stock, writes to the
-                                stock ledger and creates a goods-received note.
+                                Enter what actually turned up. Anything left keeps the order open.
                             </p>
                         </div>
-                        <ul className="space-y-1">
-                            {receiveFor.items.map((i: any, idx: number) => (
-                                <li
-                                    key={idx}
-                                    className="flex justify-between rounded-lg bg-muted/40 px-3 py-1.5 text-xs"
-                                >
-                                    <span className="font-semibold">
-                                        {i.quantity} × {i.name}
-                                    </span>
-                                    <span className="tabular-nums">{ugx(i.unitCost)} each</span>
-                                </li>
-                            ))}
+
+                        <ul className="space-y-2">
+                            {receiveFor.items.map((item: any, index: number) => {
+                                const outstanding =
+                                    (item.quantity ?? 0) - (item.receivedQty ?? 0);
+                                return (
+                                    <li
+                                        key={index}
+                                        className="flex flex-col gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between"
+                                    >
+                                        <div className="min-w-0">
+                                            <p className="font-semibold">
+                                                {item.quantity} × {item.name}
+                                            </p>
+                                            <p className="text-muted-foreground">
+                                                {item.receivedQty ?? 0} received ·{" "}
+                                                {outstanding} outstanding ·{" "}
+                                                {ugx(item.unitCost)} each
+                                            </p>
+                                            {!item.stockId && (
+                                                <p className="text-destructive">
+                                                    This line is not linked to a product, so it
+                                                    cannot be received.
+                                                </p>
+                                            )}
+                                        </div>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            max={outstanding}
+                                            disabled={!item.stockId || outstanding <= 0}
+                                            value={receiveQtys[index] ?? ""}
+                                            onChange={(e) =>
+                                                setReceiveQtys({
+                                                    ...receiveQtys,
+                                                    [index]: e.target.value,
+                                                })
+                                            }
+                                            className="w-28"
+                                            aria-label={`Quantity received for ${item.name}`}
+                                        />
+                                    </li>
+                                );
+                            })}
                         </ul>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="grn-notes">Note</Label>
+                            <Input
+                                id="grn-notes"
+                                value={receiveNotes}
+                                onChange={(e) => setReceiveNotes(e.target.value)}
+                                placeholder="Optional note on this receipt"
+                            />
+                        </div>
+
                         <div className="flex justify-end gap-2">
                             <Button variant="outline" onClick={() => setReceiveFor(null)}>
                                 Cancel

@@ -18,6 +18,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  /**
+   * Set when the account exists but its email address has not been proven.
+   * The person can ask for another code from here.
+   */
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resending, setResending] = useState(false);
   const { login } = useAuth();
 
 
@@ -25,13 +31,43 @@ export default function LoginPage() {
 
   // ...
 
+  /**
+   * Ask the server to email another verification code.
+   *
+   * The code never reaches the browser — it is only ever sent to the inbox.
+   */
+  const handleResendVerification = async () => {
+    if (!email.trim()) {
+      toast.error("Enter the email address you registered with.");
+      return;
+    }
+    setResending(true);
+    try {
+      const response = await fetch("/api/auth/send-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      if (!response.ok) throw new Error("Could not send the verification code.");
+      toast.success("If that address needs verifying, a new code is on its way.");
+    } catch {
+      toast.error("Could not send the verification code. Please try again.");
+    } finally {
+      setResending(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     const result = await login(email, password);
     setLoading(false);
     if (!result.success) {
-      toast.error(formatError(result.error || "Login failed"));
+      const message = result.error || "Login failed";
+      toast.error(formatError(message));
+      if (/verify your email/i.test(message)) {
+        setNeedsVerification(true);
+      }
     } else {
       toast.success("Login successful");
     }
@@ -185,6 +221,27 @@ export default function LoginPage() {
                 <span className="relative z-10">{loading ? "Authenticating..." : "Sign In"}</span>
                 <div className="absolute inset-0 bg-white/10 group-hover:translate-x-full transition-transform duration-500 skew-x-12" />
               </Button>
+
+              {needsVerification && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                    Your email address has not been verified yet.
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Open the link we emailed you, or ask for a new code.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    disabled={resending}
+                    onClick={handleResendVerification}
+                  >
+                    {resending ? "Sending..." : "Send a new code"}
+                  </Button>
+                </div>
+              )}
             </form>
 
             <div className="space-y-3 pt-2 text-center">

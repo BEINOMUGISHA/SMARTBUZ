@@ -1,8 +1,15 @@
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
+import { requirePermission, requireTenant } from "./tenancy";
 
-
+/**
+ * SMARTBUZ — activity log (audit trail).
+ *
+ * The log is tenant-scoped: an operator of Business A may read the audit
+ * trail of Business A and never of Business B.
+ */
 export const list = query({
     args: {
         paginationOpts: paginationOptsValidator,
@@ -10,10 +17,15 @@ export const list = query({
         action: v.optional(v.string()),
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "finance.reports.view");
+
         let logs = await ctx.db
             .query("activityLogs")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
             .order("desc")
             .collect();
 
@@ -56,10 +68,15 @@ export const add = mutation({
         userId: v.id("users"),
         action: v.string(),
         details: v.string(),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
         return await ctx.db.insert("activityLogs", {
-            userId: args.userId,
+            businessId: tenant.businessId,
+            // The actor is the authenticated caller; `args.userId` is kept for
+            // compatibility with older call sites but is never trusted.
+            userId: tenant.user._id,
             action: args.action,
             details: args.details,
             timestamp: new Date().toISOString(),

@@ -1,3 +1,98 @@
+# SMART_BUZ
+
+Point of sale and business management for multi-branch retail and service
+businesses. Next.js 16 (App Router, Turbopack) on the front end, Convex on
+the back end.
+
+## Multi-tenancy (Phase 1)
+
+Every business is a tenant. A user may belong to several businesses and works
+in one of them at a time; the server decides which, from a signed access
+token — never from an argument the browser sends.
+
+| Concept | Table | Notes |
+| --- | --- | --- |
+| The tenant | `businesses` | Name, vertical, currency, timezone, tax settings, plan |
+| Membership | `memberships` | A user in a business, with a role: business_owner, business_admin, branch_manager, supervisor, cashier, inventory_manager, accountant, salesperson, auditor |
+| People | `employees` | Staff records inside a business |
+| Sales points | `branches`, `shops` | `branches` is the first-class model; `shops` are the legacy counters linked to a branch |
+| Storage | `warehouses` | Where stock lives, per business |
+
+Every tenant-owned table carries `businessId` and is indexed by it, so a
+query can never scan across businesses.
+
+Documentation:
+
+- [`convex/TENANCY-GUIDE.md`](convex/TENANCY-GUIDE.md) — the model, the
+  roles and permissions, and how to write a tenant-safe function.
+- [`docs/MULTITENANCY-MIGRATION.md`](docs/MULTITENANCY-MIGRATION.md) — how to
+  move a single-tenant deployment across without losing a record.
+
+### Verifying it
+
+```bash
+node scripts/verify-identity.mjs        # the backend really authenticates callers
+node scripts/tenant-isolation-e2e.mjs   # business A cannot see business B
+node scripts/verify-migration.mjs --email <operator> --password '<password>'
+powershell -File scripts/app-smoke-test.ps1   # the app itself still works
+```
+
+## Authentication and access control (Phase 2)
+
+Eleven roles — two platform, nine business — over eighteen permissions, all
+enforced on the backend.
+
+| Concept | Where it lives | Notes |
+| --- | --- | --- |
+| The catalogue | `convex/rbac.ts` | Roles, permissions and the grant matrix. Pure, so the UI and the backend cannot drift apart |
+| The guards | `convex/tenancy.ts` | `requirePermission`, `requireBranchAccess`, `requirePlatformRole` |
+| Platform admin | `convex/platform.ts` | Tenants, plans, subscriptions, other administrators |
+| Security trail | `convex/audit.ts` | Append-only, tenant-scoped |
+| Sessions | `sessions` table | Every sign-in is revocable; a revoked token stops working at once |
+| Verification | `emailVerifications` table | A new account cannot sign in until its address is proven |
+| Custom grants | `customRolePermissions`, `memberPermissionOverrides` | Per business, never able to exceed the granter's own authority |
+
+Documentation:
+
+- [`docs/AUTH-RBAC.md`](docs/AUTH-RBAC.md) — the roles, the permission
+  matrix, how enforcement works, and how to extend it.
+
+### Verifying it
+
+```bash
+npm test                  # the permission matrix, the guards and the acceptance criteria
+npm run test:acceptance   # just the three acceptance criteria
+```
+
+The tests run against the real backend modules with an in-memory Convex
+context — no deployment needed.
+
+### First platform administrator
+
+Platform administration needs a platform role, so the very first one is
+bootstrapped. It works only while the platform has no administrator at all:
+
+```bash
+SMARTBUZ_SERVER_SECRET=... node scripts/bootstrap-platform-admin.mjs --email you@example.com
+```
+
+See [`docs/AUTH-RBAC.md`](docs/AUTH-RBAC.md) for the rest.
+
+### Local setup
+
+```bash
+npm install
+node scripts/generate-auth-keys.mjs   # prints the JWKS + SMARTBUZ_JWT_PRIVATE_KEY
+npx convex dev                        # deploy the functions
+npm run dev                           # start the app
+```
+
+`SMARTBUZ_JWT_PRIVATE_KEY` and `SESSION_SECRET` go in `.env.local`; see
+`.env.example`. The backend publishes its own public key at
+`<deployment>.convex.site/auth/jwks`.
+
+---
+
 npx tsc --noEmit --project tsconfig.json
 
 

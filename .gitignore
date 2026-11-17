@@ -13,6 +13,7 @@
 
 # testing
 /coverage
+/.test-build/
 
 # next.js
 /.next/
@@ -44,3 +45,8 @@ gg
 h
 next-env.d.ts
 # deploy3
+
+# local tooling artefacts
+.next-dev.log
+scripts/fixtures/export/
+scripts/fixtures/*.zip

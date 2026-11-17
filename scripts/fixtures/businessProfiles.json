@@ -1,0 +1,27 @@
+[
+  {
+    "businessName": "Legacy Mart mwi45oeh",
+    "businessType": "retail",
+    "categoryId": "retail",
+    "industry": "Retail",
+    "modules": [
+      "sales",
+      "stock"
+    ],
+    "currency": "UGX",
+    "country": "Uganda",
+    "taxEnabled": true,
+    "taxRate": 18,
+    "taxInclusive": false,
+    "taxNote": "VAT 18%",
+    "tin": "TIN-LEGACY-001",
+    "allowPriceOverrides": true,
+    "isActive": true,
+    "createdBy": "m973fqkfa875q3fy6yps4jvfz98j8p87",
+    "businessAddress": "1 Legacy Road",
+    "businessPhone": "+256700000001",
+    "openingFloat": 500000,
+    "plan": "pro",
+    "subscriptionStatus": "active"
+  }
+]

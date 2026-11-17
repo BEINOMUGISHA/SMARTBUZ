@@ -106,8 +106,8 @@ export function LoansView() {
         { initialNumItems: rowsPerPage }
     );
 
-    const activeProfile = useQuery(api.businessProfiles.getActive);
-    const businessName = activeProfile?.businessName || "SMARTBUZ POS";
+    const activeProfile = useQuery(api.businesses.getActive, {});
+    const businessName = activeProfile?.name || "SMARTBUZ POS";
     const businessAddress = activeProfile?.businessAddress || "";
     const businessPhone = activeProfile?.businessPhone || "";
 
@@ -729,7 +729,7 @@ function HistoryModal({ isOpen, onClose, loan }: any) {
 
 function DistributorDropdown({ selectedId, onSelect }: any) {
     const [open, setOpen] = useState(false);
-    const customers = useQuery(api.customers.listAll);
+    const customers = useQuery(api.customers.listAll, {});
     const selected = customers?.find(c => c._id === selectedId);
 
     return (

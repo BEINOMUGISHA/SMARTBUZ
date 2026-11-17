@@ -1,19 +1,45 @@
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 // Trigger sync
 import { paginationOptsValidator } from "convex/server";
+import { logActivity, requirePermission, requireTenant } from "./tenancy";
+
+/**
+ * SMART_BUZ — shops (counters that stock has been issued to).
+ *
+ * A shop belongs to a business. Stock can only be issued to, taken from or
+ * adjusted in a shop of the caller's own business.
+ */
 
 export const list = query({
-    args: { paginationOpts: paginationOptsValidator },
+    args: {
+        paginationOpts: paginationOptsValidator,
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
-        return await ctx.db.query("shops").order("desc").paginate(args.paginationOpts);
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.view");
+
+        return await ctx.db
+            .query("shops")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .order("desc")
+            .paginate(args.paginationOpts);
     },
 });
 
 export const listAll = query({
-    args: {},
-    handler: async (ctx) => {
-        return await ctx.db.query("shops").order("desc").collect();
+    args: { businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.view");
+
+        return await ctx.db
+            .query("shops")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .order("desc")
+            .collect();
     },
 });
 
@@ -22,10 +48,17 @@ export const getPaginated = query({
         limit: v.number(),
         offset: v.number(),
         searchTerm: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let q = ctx.db.query("shops");
-        let results = await q.order("desc").collect();
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.view");
+
+        let results = await ctx.db
+            .query("shops")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .order("desc")
+            .collect();
 
         if (args.searchTerm) {
             const search = args.searchTerm.toLowerCase();
@@ -43,9 +76,17 @@ export const getPaginated = query({
 });
 
 export const getShop = query({
-    args: { id: v.id("shops") },
+    args: { id: v.id("shops"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        return await ctx.db.get(args.id);
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.view");
+
+        const shop = await ctx.db.get(args.id);
+        if (!shop) return null;
+        if (shop.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
+        return shop;
     },
 });
 
@@ -56,10 +97,17 @@ export const getPaginatedShopStock = query({
         offset: v.number(),
         searchTerm: v.optional(v.string()),
         halfPrice: v.optional(v.boolean()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
         const shop = await ctx.db.get(args.shopId);
         if (!shop) return { page: [], totalCount: 0, stats: { totalValue: 0, totalPV: 0, totalBV: 0, totalItems: 0 } };
+        if (shop.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         let stocks = shop.issuedStocks || [];
 
@@ -100,21 +148,38 @@ export const create = mutation({
         serialNumber: v.string(),
         location: v.string(),
         contact: v.string(),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        branchId: v.optional(v.id("branches")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.manage");
+        const businessId = tenant.businessId;
+
+        if (args.branchId) {
+            const branch = await ctx.db.get(args.branchId);
+            if (!branch || branch.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that branch belongs to another business.");
+            }
+        }
+
+        const { userId, businessId: _ignored, ...shopArgs } = args;
         const shopId = await ctx.db.insert("shops", {
-            ...args,
+            ...shopArgs,
+            businessId,
+            userId: tenant.user._id,
             issuedStocks: [],
         });
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Create Shop",
-            details: `Created new shop: ${args.name} (${args.serialNumber}) at ${args.location}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Create Shop",
+            `Created new shop: ${args.name} (${args.serialNumber}) at ${args.location}`
+        );
 
         return shopId;
     },
@@ -127,43 +192,61 @@ export const update = mutation({
         serialNumber: v.optional(v.string()),
         location: v.optional(v.string()),
         contact: v.optional(v.string()),
-        userId: v.optional(v.id("users")),
+        userId: v.optional(v.id("users")), // @deprecated — the caller is derived from the session
+        branchId: v.optional(v.id("branches")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const { id, userId, ...rest } = args;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.manage");
+
+        const { id, userId, businessId: _ignored, ...rest } = args;
         const shop = await ctx.db.get(id);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
-        await ctx.db.patch(id, rest);
+        await ctx.db.patch(id, rest as any);
 
         // Log activity
-        if (userId) {
-            const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
-            await ctx.db.insert("activityLogs", {
-                userId,
-                action: "Update Shop",
-                details: `Updated shop: ${shop.name} - Changes: ${changes}`,
-                timestamp: new Date().toISOString(),
-            });
-        }
+        const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Update Shop",
+            `Updated shop: ${shop.name} - Changes: ${changes}`
+        );
     },
 });
 
 export const remove = mutation({
-    args: { id: v.id("shops"), userId: v.id("users") },
+    args: {
+        id: v.id("shops"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.manage");
+
         const shop = await ctx.db.get(args.id);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         await ctx.db.delete(args.id);
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Delete Shop",
-            details: `Deleted shop: ${shop.name} (${shop.serialNumber}) at ${shop.location}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Delete Shop",
+            `Deleted shop: ${shop.name} (${shop.serialNumber}) at ${shop.location}`
+        );
     },
 });
 
@@ -180,24 +263,57 @@ export const issueStock = mutation({
             bv: v.number(),
             halfPrice: v.boolean(),
         })),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.transfer");
+        const businessId = tenant.businessId;
+
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
-        // Merge or replace depending on business need - original logic seems to append
-        const updatedStock = [...shop.issuedStocks, ...args.items];
-        await ctx.db.patch(args.shopId, { issuedStocks: updatedStock });
+        for (const item of args.items) {
+            const stock = await ctx.db.get(item.stockId);
+            if (!stock || stock.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that product belongs to another business.");
+            }
+        }
+
+        // Merge by product instead of appending: appending created a second
+        // row for the same product and made the shop's inventory disagree
+        // with the warehouse.
+        const issued = [...shop.issuedStocks];
+        for (const item of args.items) {
+            const index = issued.findIndex(s => s.stockId === item.stockId);
+            if (index >= 0) {
+                issued[index] = {
+                    ...issued[index],
+                    qty: issued[index].qty + item.qty,
+                    price: item.price,
+                    pv: item.pv,
+                    bv: item.bv,
+                    halfPrice: item.halfPrice,
+                };
+            } else {
+                issued.push(item);
+            }
+        }
+        await ctx.db.patch(args.shopId, { issuedStocks: issued });
 
         // Log activity
         const itemSummary = args.items.map(i => `${i.name} (${i.qty})`).join(", ");
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Issue Stock to Shop",
-            details: `Issued stock to ${shop.name}: ${itemSummary}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Issue Stock to Shop",
+            `Issued stock to ${shop.name}: ${itemSummary}`
+        );
     },
 });
 
@@ -205,42 +321,61 @@ export const removeStock = mutation({
     args: {
         shopId: v.id("shops"),
         stockId: v.id("stocks"),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.transfer");
+
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         const stockItem = shop.issuedStocks.find(s => s.stockId === args.stockId);
         const updatedStock = shop.issuedStocks.filter(s => s.stockId !== args.stockId);
         await ctx.db.patch(args.shopId, { issuedStocks: updatedStock });
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Remove Stock from Shop",
-            details: `Removed ${stockItem?.name || 'stock'} from ${shop.name}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Remove Stock from Shop",
+            `Removed ${stockItem?.name || 'stock'} from ${shop.name}`
+        );
     },
 });
 
 // Clear all stock from a shop (Dangerous)
 export const clearStocks = mutation({
-    args: { shopId: v.id("shops"), userId: v.id("users") },
+    args: {
+        shopId: v.id("shops"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.adjust");
+
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         await ctx.db.patch(args.shopId, { issuedStocks: [] });
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Clear Shop Stocks",
-            details: `Cleared all stock from ${shop.name} (${shop.issuedStocks.length} items removed)`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            tenant.businessId,
+            tenant.user._id,
+            "Clear Shop Stocks",
+            `Cleared all stock from ${shop.name} (${shop.issuedStocks.length} items removed)`
+        );
     },
 });
 
@@ -250,11 +385,19 @@ export const adjustShopStock = mutation({
         shopId: v.id("shops"),
         stockId: v.id("stocks"),
         newQty: v.number(),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.adjust");
+        const businessId = tenant.businessId;
+
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         const stockIndex = shop.issuedStocks.findIndex(s => s.stockId === args.stockId);
         if (stockIndex === -1) throw new Error("Item not found in shop");
@@ -265,9 +408,13 @@ export const adjustShopStock = mutation({
 
         if (delta === 0) return; // No change
 
+        const warehouseStock = await ctx.db.get(args.stockId);
+        if (warehouseStock && warehouseStock.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
+
         if (delta > 0) {
             // INCREASE: Deduct from Warehouse, Add to Shop
-            const warehouseStock = await ctx.db.get(args.stockId);
             if (!warehouseStock) throw new Error("Stock not found in warehouse");
 
             if (warehouseStock.qty < delta) {
@@ -280,7 +427,6 @@ export const adjustShopStock = mutation({
             });
         } else {
             // DECREASE: Add abs(delta) to Warehouse, Deduct from Shop
-            const warehouseStock = await ctx.db.get(args.stockId);
             // If warehouse stock deleted (rare), we still return? Ideally yes.
             if (warehouseStock) {
                 await ctx.db.patch(args.stockId, {
@@ -301,12 +447,13 @@ export const adjustShopStock = mutation({
         });
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Adjust Shop Stock",
-            details: `Adjusted ${stockName} in ${shop.name}: ${currentQty} -> ${args.newQty} (${delta > 0 ? '+' : ''}${delta})`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Adjust Shop Stock",
+            `Adjusted ${stockName} in ${shop.name}: ${currentQty} -> ${args.newQty} (${delta > 0 ? '+' : ''}${delta})`
+        );
     },
 });
 
@@ -315,18 +462,26 @@ export const returnShopStock = mutation({
     args: {
         shopId: v.id("shops"),
         stockId: v.id("stocks"),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.transfer");
+        const businessId = tenant.businessId;
+
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         const stockItem = shop.issuedStocks.find(s => s.stockId === args.stockId);
         if (!stockItem) throw new Error("Item not found in shop");
 
         // Return quantity to warehouse
         const warehouseStock = await ctx.db.get(args.stockId);
-        if (warehouseStock) {
+        if (warehouseStock && warehouseStock.businessId === businessId) {
             await ctx.db.patch(args.stockId, {
                 qty: warehouseStock.qty + stockItem.qty
             });
@@ -339,33 +494,44 @@ export const returnShopStock = mutation({
         });
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Return Stock to Warehouse",
-            details: `Returned ${stockItem.name} (${stockItem.qty} units) from ${shop.name} to warehouse`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Return Stock to Warehouse",
+            `Returned ${stockItem.name} (${stockItem.qty} units) from ${shop.name} to warehouse`
+        );
     },
 });
-
 
 export const transferStock = mutation({
     args: {
         shopId: v.id("shops"),
         stockId: v.id("stocks"),
         quantity: v.number(),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.transfer");
+        const businessId = tenant.businessId;
+
         // 1. Validation
         if (args.quantity <= 0) throw new Error("Quantity must be greater than zero");
 
         const stock = await ctx.db.get(args.stockId);
         if (!stock) throw new Error("Stock item not found in warehouse");
+        if (stock.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
         if (stock.qty < args.quantity) throw new Error(`Insufficient warehouse stock. Available: ${stock.qty}`);
 
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         // 2. Deduct from Main Warehouse
         await ctx.db.patch(args.stockId, {
@@ -406,35 +572,45 @@ export const transferStock = mutation({
 
         // 4. Record Issue History
         await ctx.db.insert("shopIssueRecords", {
+            businessId,
             shopId: args.shopId,
             stockId: args.stockId,
             quantity: args.quantity,
             date: new Date().toISOString(),
-            userId: args.userId,
+            userId: tenant.user._id,
         });
 
         // 5. Log Activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Transfer Stock",
-            details: `Transferred ${args.quantity}x ${stock.name} to ${shop.name}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Transfer Stock",
+            `Transferred ${args.quantity}x ${stock.name} to ${shop.name}`
+        );
     },
 });
 
 export const batchTransferStock = mutation({
     args: {
         shopId: v.id("shops"),
-        userId: v.id("users"),
+        userId: v.id("users"), // @deprecated — the caller is derived from the session
         items: v.array(v.object({
             stockId: v.id("stocks"),
             quantity: v.number(),
         })),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.transfer");
+        const businessId = tenant.businessId;
+
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         let newIssuedStocks = [...shop.issuedStocks];
         let logs: string[] = [];
@@ -442,6 +618,9 @@ export const batchTransferStock = mutation({
         for (const itemRequest of args.items) {
             const stock = await ctx.db.get(itemRequest.stockId);
             if (!stock) throw new Error(`Stock item ${itemRequest.stockId} not found`);
+            if (stock.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that product belongs to another business.");
+            }
             if (stock.qty < itemRequest.quantity) throw new Error(`Insufficient stock for ${stock.name}`);
 
             // Deduct from warehouse
@@ -479,21 +658,23 @@ export const batchTransferStock = mutation({
         // 4. Record Issue History
         for (const itemRequest of args.items) {
             await ctx.db.insert("shopIssueRecords", {
+                businessId,
                 shopId: args.shopId,
                 stockId: itemRequest.stockId,
                 quantity: itemRequest.quantity,
                 date: new Date().toISOString(),
-                userId: args.userId,
+                userId: tenant.user._id,
             });
         }
 
         // 5. Log Activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Batch Transfer Stock",
-            details: `Transferred ${logs.join(", ")} to ${shop.name}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Batch Transfer Stock",
+            `Transferred ${logs.join(", ")} to ${shop.name}`
+        );
     }
 });
 
@@ -502,8 +683,19 @@ export const getShopIssueRecords = query({
         shopId: v.id("shops"),
         startDate: v.string(), // ISO
         endDate: v.string(),   // ISO
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
+        const shop = await ctx.db.get(args.shopId);
+        if (!shop) throw new Error("Shop not found");
+        if (shop.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
+
         // Query records within date range
         // Note: Convex doesn't support complex filtering on multiple fields easily without index
         // We use the index on shopId and date range

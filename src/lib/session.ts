@@ -2,8 +2,26 @@
  * SMARTBUZ Session Management
  *
  * Provides server-side session helpers using a signed HttpOnly cookie.
- * The cookie stores a simple signed payload: base64(userId + email) + "." + HMAC-SHA256 signature.
+ * The cookie stores a signed payload: base64(userId + email + session
+ * credentials) + "." + HMAC-SHA256 signature.
  * This prevents client-side tampering and eliminates the plain-email-in-localStorage vulnerability.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * What the cookie carries (Phase 2)
+ * ────────────────────────────────────────────────────────────────────────
+ *
+ * Besides the user's identity, the cookie now carries the *session
+ * credentials*:
+ *
+ *  - `sessionId` — the public id of a server-side session row;
+ *  - `sessionSecret` — a high-entropy secret, of which the backend only
+ *    keeps a hash.
+ *
+ * The Convex access token minted from this cookie carries the same two
+ * values as claims, so the backend can check that the token belongs to a
+ * live session *and* that the session secret matches. Signing a session
+ * out revokes the row, which stops the token immediately instead of
+ * waiting out its 15-minute lifetime.
  */
 
 import { cookies } from "next/headers";
@@ -11,6 +29,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = "sb_session";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+export interface SessionPayload {
+  userId: string;
+  email: string;
+  /** The server-side session this cookie stands for. */
+  sessionId?: string;
+  /** The secret bound to that session. */
+  sessionSecret?: string;
+}
 
 function getSecret(): string {
   const secret = process.env.SESSION_SECRET;
@@ -81,7 +108,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 /** Create a signed session token string */
-export async function signSession(payload: { userId: string; email: string }): Promise<string> {
+export async function signSession(payload: SessionPayload): Promise<string> {
   const data = encodeBase64Url(JSON.stringify(payload));
   const sig = await hmacSha256Base64Url(getSecret(), data);
   return `${data}.${sig}`;
@@ -90,7 +117,7 @@ export async function signSession(payload: { userId: string; email: string }): P
 /** Verify and decode a session token. Returns null if invalid / tampered. */
 export async function verifySession(
   token: string
-): Promise<{ userId: string; email: string } | null> {
+): Promise<SessionPayload | null> {
   try {
     const [data, sig] = token.split(".");
     if (!data || !sig) return null;
@@ -105,7 +132,7 @@ export async function verifySession(
 /** Set the session cookie on a NextResponse */
 export async function setSessionCookie(
   res: NextResponse,
-  payload: { userId: string; email: string }
+  payload: SessionPayload
 ): Promise<void> {
   const token = await signSession(payload);
   res.cookies.set(SESSION_COOKIE, token, {
@@ -131,14 +158,14 @@ export function clearSessionCookie(res: NextResponse): void {
 /** Read and verify the session from incoming request cookies */
 export async function getSessionFromRequest(
   req: NextRequest
-): Promise<{ userId: string; email: string } | null> {
+): Promise<SessionPayload | null> {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return verifySession(token);
 }
 
 /** Read and verify the session inside a Server Component or Route Handler (Next.js 13+) */
-export async function getSession(): Promise<{ userId: string; email: string } | null> {
+export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;

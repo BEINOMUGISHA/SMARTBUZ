@@ -13,7 +13,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
-import { getActiveBusinessId } from "./batches";
+import { ConvexError } from "convex/values";
+import { logActivity, requirePermission, requireTenant } from "../tenancy";
 
 /* ───────────────────────── appointments ───────────────────────── */
 
@@ -25,12 +26,12 @@ export const listAppointments = query({
         status: v.optional(v.string()),
         businessType: v.optional(v.string()),
         staffId: v.optional(v.id("users")),
-        limit: v.optional(v.number()),
-    },
+        limit: v.optional(v.number()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("appointments").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
 
         if (args.date) {
             rows = rows.filter((r) => r.date === args.date);
@@ -60,10 +61,10 @@ export const createAppointment = mutation({
         endTime: v.optional(v.string()),
         notes: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
 
         // Guard against double-booking the same staff member at the same time.
         if (args.staffId) {
@@ -84,7 +85,7 @@ export const createAppointment = mutation({
         }
 
         const id = await ctx.db.insert("appointments", {
-            businessProfileId: businessId,
+            businessId,
             businessType: args.businessType,
             customerId: args.customerId,
             customerName: args.customerName,
@@ -103,7 +104,8 @@ export const createAppointment = mutation({
         });
 
         await ctx.db.insert("activityLogs", {
-            userId: args.userId,
+            businessId,
+            userId: tenant.user._id,
             action: "Create Appointment",
             details: `${args.serviceName} for ${args.customerName} on ${args.date} at ${args.startTime}`,
             timestamp: new Date().toISOString(),
@@ -117,11 +119,15 @@ export const updateAppointmentStatus = mutation({
     args: {
         id: v.id("appointments"),
         status: v.string(),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const appt = await ctx.db.get(args.id);
         if (!appt) throw new Error("Appointment not found");
+        if (appt.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
 
         await ctx.db.patch(args.id, { status: args.status });
 
@@ -136,7 +142,8 @@ export const updateAppointmentStatus = mutation({
         }
 
         await ctx.db.insert("activityLogs", {
-            userId: args.userId,
+            businessId,
+            userId: tenant.user._id,
             action: "Update Appointment",
             details: `Appointment for ${appt.customerName} marked ${args.status}`,
             timestamp: new Date().toISOString(),
@@ -151,12 +158,12 @@ export const updateAppointmentStatus = mutation({
 export const listOutlets = query({
     args: {
         businessType: v.optional(v.string()),
-        status: v.optional(v.string()),
-    },
+        status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("serviceOutlets").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
 
         if (args.businessType) rows = rows.filter((r) => r.businessType === args.businessType);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
@@ -174,12 +181,12 @@ export const createOutlet = mutation({
         rate: v.optional(v.number()),
         shopId: v.optional(v.id("shops")),
         notes: v.optional(v.string()),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const id = await ctx.db.insert("serviceOutlets", {
-            businessProfileId: businessId,
+            businessId,
             businessType: args.businessType,
             name: args.name,
             capacity: args.capacity,
@@ -189,7 +196,8 @@ export const createOutlet = mutation({
             notes: args.notes,
         });
         await ctx.db.insert("activityLogs", {
-            userId: args.userId,
+            businessId,
+            userId: tenant.user._id,
             action: `Create ${args.businessType}`,
             details: `Created ${args.businessType} ${args.name}`,
             timestamp: new Date().toISOString(),
@@ -203,9 +211,10 @@ export const updateOutletStatus = mutation({
         id: v.id("serviceOutlets"),
         status: v.string(),
         currentBookingId: v.optional(v.id("appointments")),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         await ctx.db.patch(args.id, {
             status: args.status,
             currentBookingId: args.currentBookingId,
@@ -222,16 +231,19 @@ export const openTableOrder = mutation({
         outletId: v.id("serviceOutlets"),
         customerName: v.optional(v.string()),
         staffId: v.optional(v.id("users")),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const outlet = await ctx.db.get(args.outletId);
         if (!outlet) throw new Error("Table not found");
+        if (outlet.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
         if (outlet.status === "occupied") throw new Error(`${outlet.name} already has an open order`);
 
-        const businessId = await getActiveBusinessId(ctx);
         const id = await ctx.db.insert("tableOrders", {
-            businessProfileId: businessId,
+            businessId,
             outletId: args.outletId,
             outletName: outlet.name,
             customerName: args.customerName,
@@ -259,10 +271,16 @@ export const addTableOrderItems = mutation({
             notes: v.optional(v.string()),
         })),
         userId: v.id("users"),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const order = await ctx.db.get(args.tableOrderId);
         if (!order) throw new Error("Table order not found");
+        if (order.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
         if (order.status !== "open") throw new Error("This table order is already closed");
 
         const items = [...order.items, ...args.items];
@@ -277,11 +295,15 @@ export const closeTableOrder = mutation({
     args: {
         tableOrderId: v.id("tableOrders"),
         saleId: v.optional(v.id("sales")),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const order = await ctx.db.get(args.tableOrderId);
         if (!order) throw new Error("Table order not found");
+        if (order.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
 
         await ctx.db.patch(args.tableOrderId, {
             status: "paid",
@@ -299,11 +321,12 @@ export const closeTableOrder = mutation({
 });
 
 export const listTableOrders = query({
-    args: { status: v.optional(v.string()) },
+    args: { status: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("tableOrders").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => b.openedAt.localeCompare(a.openedAt));
         return rows;
@@ -313,11 +336,12 @@ export const listTableOrders = query({
 /* ───────────────────────── menu ───────────────────────── */
 
 export const listMenu = query({
-    args: { category: v.optional(v.string()) },
+    args: { category: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         let rows = await ctx.db.query("menuItems").collect();
-        if (businessId) rows = rows.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        rows = rows.filter((r) => r.businessId === businessId);
         if (args.category) rows = rows.filter((r) => r.category === args.category);
         rows.sort((a, b) => a.name.localeCompare(b.name));
         return rows;
@@ -335,12 +359,12 @@ export const upsertMenuItem = mutation({
         available: v.optional(v.boolean()),
         preparationMinutes: v.optional(v.number()),
         dietary: v.optional(v.array(v.string())),
-        userId: v.id("users"),
-    },
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const payload = {
-            businessProfileId: businessId,
+            businessId,
             stockId: args.stockId,
             name: args.name,
             category: args.category,
@@ -360,8 +384,10 @@ export const upsertMenuItem = mutation({
 });
 
 export const toggleMenuAvailability = mutation({
-    args: { id: v.id("menuItems"), available: v.boolean() },
+    args: { id: v.id("menuItems"), available: v.boolean(), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         await ctx.db.patch(args.id, { available: args.available });
         return args.id;
     },
@@ -370,17 +396,18 @@ export const toggleMenuAvailability = mutation({
 /* ───────────────────────── summary ───────────────────────── */
 
 export const getScheduleSummary = query({
-    args: { date: v.optional(v.string()) },
+    args: { date: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
-        const businessId = await getActiveBusinessId(ctx);
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
         const date = args.date ?? new Date().toISOString().slice(0, 10);
 
         let appts = await ctx.db.query("appointments").collect();
-        if (businessId) appts = appts.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        appts = appts.filter((r) => r.businessId === businessId);
         const today = appts.filter((a) => a.date === date);
 
         let outlets = await ctx.db.query("serviceOutlets").collect();
-        if (businessId) outlets = outlets.filter((r) => !r.businessProfileId || r.businessProfileId === businessId);
+        outlets = outlets.filter((r) => r.businessId === businessId);
 
         const byStatus = today.reduce((acc: Record<string, number>, a) => {
             acc[a.status] = (acc[a.status] ?? 0) + 1;

@@ -14,9 +14,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, User, Lock, KeyRound, Eye, EyeOff, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BusinessVerticalSettings } from "@/components/business-vertical-settings";
+import { BusinessManagement } from "@/components/business-management";
+import { ActiveSessions } from "./active-sessions";
 
 export default function SettingsPage() {
-    const { user } = useAuth();
+    const { user, activeBusiness } = useAuth();
+
+    // Business settings are the owner's and the administrator's. The
+    // role comes from the caller's membership in the active business.
+    const isBusinessAdmin =
+        activeBusiness?.role === "business_owner" ||
+        activeBusiness?.role === "business_admin";
 
     // Using a query to fetch ONLY the logged in user's fresh data would be ideal, 
     // but we can use the auth context user for now or fetch by email if needed for freshness.
@@ -106,16 +114,19 @@ export default function SettingsPage() {
             </div>
 
             <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-3 lg:w-[500px] h-11 bg-muted/50 p-1.5 rounded-xl border border-sidebar-border/30 shadow-sm">
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-[640px] h-11 bg-muted/50 p-1.5 rounded-xl border border-sidebar-border/30 shadow-sm">
                     <TabsTrigger value="profile" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
                         <User className="h-4 w-4 mr-2" /> Profile
                     </TabsTrigger>
                     <TabsTrigger value="security" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
                         <Lock className="h-4 w-4 mr-2" /> Security
                     </TabsTrigger>
-                    {user.roles?.includes("admin") && (
-                        <TabsTrigger value="business" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
-                            <Store className="h-4 w-4 mr-2" /> Business & Tax
+                    <TabsTrigger value="business" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
+                        <Store className="h-4 w-4 mr-2" /> Business
+                    </TabsTrigger>
+                    {isBusinessAdmin && (
+                        <TabsTrigger value="vertical" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
+                            <Store className="h-4 w-4 mr-2" /> Vertical & Tax
                         </TabsTrigger>
                     )}
                 </TabsList>
@@ -263,10 +274,16 @@ export default function SettingsPage() {
                             </form>
                         </CardContent>
                     </Card>
+
+                    <ActiveSessions />
                 </TabsContent>
 
-                {user.roles?.includes("admin") && (
-                    <TabsContent value="business" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <TabsContent value="business" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <BusinessManagement />
+                </TabsContent>
+
+                {isBusinessAdmin && (
+                    <TabsContent value="vertical" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <BusinessVerticalSettings />
                     </TabsContent>
                 )}

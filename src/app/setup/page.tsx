@@ -111,7 +111,7 @@ const ICONS: Record<string, LucideIcon> = {
 export default function SetupPage() {
     const router = useRouter();
     const { user } = useAuth();
-    const existingProfile = useQuery(api.businessProfiles.getActive);
+    const existingProfile = useQuery(api.businesses.getActive, {});
 
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [selected, setSelected] = useState<CategoryId | null>(null);
@@ -122,8 +122,9 @@ export default function SetupPage() {
     const [seedProducts, setSeedProducts] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    const createProfile = useMutation(api.businessProfiles.create);
-    const setCategory = useMutation(api.businessProfiles.setCategory);
+    const createBusiness = useMutation(api.businesses.createForCurrentUser);
+    const setCategory = useMutation(api.businesses.setCategory);
+    const completeOnboarding = useMutation(api.businesses.completeOnboarding);
     const addCategory = useMutation(api.categories.add);
     const addStock = useMutation(api.stocks.add);
 
@@ -136,33 +137,34 @@ export default function SetupPage() {
         setSaving(true);
         try {
             if (existingProfile) {
+                // The business already exists — switch it to the chosen
+                // vertical and finish the remaining setup steps.
                 await setCategory({
-                    id: existingProfile._id,
+                    businessId: existingProfile._id,
                     categoryId: category.id,
                     modules: category.modules,
-                    taxEnabled: category.tax.enabled,
-                    taxRate: category.tax.rate,
-                    taxInclusive: category.tax.inclusive,
-                    taxNote: category.tax.note,
-                    updatedBy: user._id,
+                });
+                await completeOnboarding({
+                    businessId: existingProfile._id,
+                    categoryId: category.id,
+                    modules: category.modules,
+                    currency: existingProfile.currency || "UGX",
+                    timezone: existingProfile.timezone || "Africa/Kampala",
+                    country: existingProfile.country || "Uganda",
+                    businessAddress: businessAddress.trim() || undefined,
+                    businessPhone: businessPhone.trim() || undefined,
                 });
             } else {
-                await createProfile({
+                // No business yet — create one. The caller becomes its owner
+                // and gets a default branch, warehouse and categories.
+                await createBusiness({
                     businessName: businessName.trim() || category.name,
-                    businessType: category.id,
                     categoryId: category.id,
-                    industry: category.name,
                     modules: category.modules,
                     currency: "UGX",
                     country: "Uganda",
-                    taxEnabled: category.tax.enabled,
-                    taxRate: category.tax.rate,
-                    taxInclusive: category.tax.inclusive,
-                    taxNote: category.tax.note,
                     businessAddress: businessAddress.trim() || undefined,
                     businessPhone: businessPhone.trim() || undefined,
-                    openingFloat: Number(openingFloat) || 0,
-                    createdBy: user._id,
                 });
             }
 

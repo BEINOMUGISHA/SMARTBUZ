@@ -57,11 +57,19 @@ import {
 } from "recharts";
 
 export default function DashboardPage() {
-    const { user } = useAuth();
-    const isAdmin = user?.roles.includes("admin");
-    const isSales = user?.roles.includes("sales");
+    const { user, activeBusiness, can } = useAuth();
 
-    const { category, profile, accent, needsSetup } = useActiveCategory(user?.roles ?? []);
+    // The permissions are reported by the backend for the active business.
+    // They decide what to *show* here; the backend enforces them regardless.
+    //
+    // Somebody who may read the finance suite sees the whole business;
+    // everybody else sees only their own till.
+    const isAdmin = can("finance.view");
+    const isSales = !isAdmin;
+
+    const { category, profile, accent, needsSetup } = useActiveCategory(
+        activeBusiness?.role
+    );
 
     // Date Range State
     const [date, setDate] = useState<{
@@ -82,7 +90,7 @@ export default function DashboardPage() {
     };
 
     // If sales, find their shop
-    const shops = useQuery(api.shops.listAll);
+    const shops = useQuery(api.shops.listAll, {});
     const myShop = useMemo(() => {
         if (!isSales || !shops) return null;
         return shops.find(s => s.userId === user?._id);
@@ -222,7 +230,7 @@ export default function DashboardPage() {
 }
 
 function AdminDashboard({ stats }: { stats: any }) {
-    const lowStock = useQuery(api.dashboard.getGlobalLowStock);
+    const lowStock = useQuery(api.dashboard.getGlobalLowStock, {});
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">

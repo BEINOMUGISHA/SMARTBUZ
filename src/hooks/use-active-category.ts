@@ -1,11 +1,16 @@
 "use client";
 
 /**
- * SMART_BUZ — Active business category hook
+ * SMART_BUZ — Active business hook
  *
- * Resolves the business profile currently in use, maps it to a vertical from
- * the catalog, and exposes the derived settings the shell needs:
- * navigation, terminology, VAT configuration and enabled feature flags.
+ * Resolves the business the signed-in user is currently working in, maps it
+ * to a vertical from the catalog, and exposes the derived settings the
+ * shell needs: navigation, terminology, VAT configuration and enabled
+ * feature flags.
+ *
+ * The business comes from the server (`businesses.getActive`), which derives
+ * it from the caller's membership — the browser cannot ask for a business
+ * it does not belong to.
  */
 
 import { useMemo } from "react";
@@ -19,24 +24,28 @@ import {
     type FeatureId,
 } from "@/lib/business-categories";
 import { buildNavigation, accentFor, type NavItem } from "@/lib/category-nav";
+import { normalizeBusinessRole } from "../../convex/rbac";
 
 export interface ActiveCategory {
     /** The resolved vertical. */
     category: BusinessCategory;
-    /** The business profile backing it (may be null on a fresh install). */
+    /** The business backing it (may be null on a fresh install). */
     profile: {
         _id: string;
-        businessName: string;
-        businessType: string;
+        name: string;
+        businessType?: string;
         categoryId?: string;
         modules?: string[];
         currency?: string;
+        timezone?: string;
         taxEnabled?: boolean;
         taxRate?: number;
         taxInclusive?: boolean;
         taxNote?: string;
         openingFloat?: number;
     } | null;
+    /** The caller's role in this business. */
+    role: string | null;
     /** Sidebar entries for this vertical, filtered by the user's roles. */
     navigation: NavItem[];
     /** Accent theme for this vertical. */
@@ -47,8 +56,22 @@ export interface ActiveCategory {
     needsSetup: boolean;
 }
 
-export function useActiveCategory(roles: string[] = []): ActiveCategory {
-    const profile = useQuery(api.businessProfiles.getActive);
+export function useActiveCategory(role?: string | null): ActiveCategory {
+    const active = useQuery(api.businesses.getActive, {});
+    const profile = (active as ActiveCategory["profile"]) ?? null;
+    const backendRole = (active as { role?: string } | undefined)?.role ?? null;
+
+    // The role that counts is the one on the caller's *membership* in the
+    // active business. The server's answer is authoritative; the value
+    // passed in is a fallback for the moment before it arrives.
+    //
+    // An unknown role normalises to `auditor` — read-only — so a role the
+    // catalogue does not recognise can never widen the menu.
+    const effectiveRole = role
+        ? normalizeBusinessRole(role)
+        : backendRole
+          ? normalizeBusinessRole(backendRole)
+          : null;
 
     const category = useMemo(() => {
         if (!profile) return resolveCategory(null);
@@ -59,8 +82,8 @@ export function useActiveCategory(roles: string[] = []): ActiveCategory {
     }, [profile]);
 
     const navigation = useMemo(
-        () => buildNavigation(category, roles.length ? roles : ["admin"]),
-        [category, roles]
+        () => buildNavigation(category, effectiveRole ? [effectiveRole] : []),
+        [category, effectiveRole]
     );
 
     const accent = useMemo(() => accentFor(category), [category]);
@@ -72,15 +95,23 @@ export function useActiveCategory(roles: string[] = []): ActiveCategory {
 
     const needsSetup = useMemo(() => {
         if (!profile) return true;
-        // A profile whose vertical could not be inferred still needs choosing.
+        // A business whose vertical could not be inferred still needs choosing.
         const inferred =
             profile.categoryId ??
-            inferCategoryFromBusinessType(profile.businessType) ??
+            inferCategoryFromBusinessType(profile.businessType ?? "") ??
             null;
         return !inferred;
     }, [profile]);
 
-    return { category, profile: profile ?? null, navigation, accent, has, needsSetup };
+    return {
+        category,
+        profile,
+        role: effectiveRole ?? null,
+        navigation,
+        accent,
+        has,
+        needsSetup,
+    };
 }
 
 export { BUSINESS_CATEGORIES };

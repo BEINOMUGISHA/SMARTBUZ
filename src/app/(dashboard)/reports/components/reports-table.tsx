@@ -71,8 +71,8 @@ export function ReportTable<T>({
     const internalId = React.useId().replace(/:/g, "");
     const actualPrintId = printId || `report-print-${internalId}`;
 
-    const activeProfile = useQuery(api.businessProfiles.getActive);
-    const businessName = activeProfile?.businessName || "SMARTBUZ POS";
+    const activeProfile = useQuery(api.businesses.getActive, {});
+    const businessName = activeProfile?.name || "SMARTBUZ POS";
     const businessAddress = activeProfile?.businessAddress || "";
     const businessPhone = activeProfile?.businessPhone || "";
 

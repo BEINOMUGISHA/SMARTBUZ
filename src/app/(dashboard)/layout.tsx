@@ -19,6 +19,7 @@ import { useActiveCategory } from "@/hooks/use-active-category";
 import { groupNavigation } from "@/lib/category-nav";
 import { cn } from "@/lib/utils";
 import { OfflineStatusBanner } from "@/components/offline-status-banner";
+import { BusinessSwitcher } from "@/components/business-switcher";
 
 const reportsSubItems = [
     { href: "/reports/overview", label: "Overview" },
@@ -38,16 +39,16 @@ export default function DashboardLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const { logout, user, isLoading } = useAuth();
+    const { logout, user, isLoading, activeBusiness } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isReportsOpen, setIsReportsOpen] = useState(false);
 
-    const { category, profile, navigation, accent } = useActiveCategory(user?.roles ?? []);
+    const { category, profile, navigation, accent } = useActiveCategory(activeBusiness?.role);
 
-    const businessName = profile?.businessName || "SMARTBUZ POS";
+    const businessName = profile?.name || "SMARTBUZ POS";
     const businessSubtitle = category?.name || "Point of Sale";
 
     useEffect(() => {
@@ -123,6 +124,11 @@ export default function DashboardLayout({
                         </div>
                     )}
                 </Link>
+            </div>
+
+            {/* Business switcher — move between the businesses you belong to */}
+            <div className={cn("border-b border-sidebar-border/50", isCollapsed ? "px-2 pb-3" : "px-4 pb-3")}>
+                <BusinessSwitcher collapsed={isCollapsed} />
             </div>
 
             {/* Navigation — driven by the active business category */}

@@ -3,8 +3,17 @@
 /**
  * SMART_BUZ — Customers
  *
- * The customer directory. Every customer created here can be picked at the
- * till, appears on receipts, and drives the member/loan rules at checkout.
+ * The customer directory, and everything that hangs off a customer:
+ *
+ *  - **Profile and contact details** — who they are and how to reach them.
+ *  - **Credit account** — what they owe, their limit, and what is left.
+ *  - **Statement** — every charge and receipt with the running balance.
+ *  - **Purchase history** — what they have actually bought.
+ *  - **Loyalty points** — what they have earned.
+ *
+ * The balance shown in the table is the balance on the statement, because
+ * both are derived from the same credit sales and payments. There is no
+ * cached figure that could drift away from the transactions behind it.
  */
 
 import { useMemo, useState } from "react";
@@ -35,20 +44,32 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+} from "@/components/ui/sheet";
+import {
     UserPlus,
     Users,
     Search,
     Pencil,
     Trash2,
-    Phone,
     Mail,
     MapPin,
     Hash,
     UserRound,
+    Wallet,
+    ScrollText,
+    ShoppingBag,
+    Coins,
+    Gauge,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { FormDialog, ugx, shortDate } from "@/components/vertical/ui-kit";
 
 const PAGE_SIZE = 10;
 
@@ -62,8 +83,16 @@ const emptyForm = {
 
 type FormState = typeof emptyForm;
 
+const PAYMENT_METHODS = [
+    { value: "cash", label: "Cash" },
+    { value: "mobile_money", label: "Mobile money" },
+    { value: "bank", label: "Bank transfer" },
+    { value: "card", label: "Card" },
+    { value: "credit", label: "Other" },
+];
+
 export default function CustomersPage() {
-    const { user } = useAuth();
+    const { user, can } = useAuth();
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
 
@@ -73,15 +102,36 @@ export default function CustomersPage() {
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [deleting, setDeleting] = useState<Doc<"customers"> | null>(null);
 
+    // Account panels.
+    const [statementFor, setStatementFor] = useState<Doc<"customers"> | null>(null);
+    const [historyFor, setHistoryFor] = useState<Doc<"customers"> | null>(null);
+    const [payFor, setPayFor] = useState<Doc<"customers"> | null>(null);
+    const [limitFor, setLimitFor] = useState<Doc<"customers"> | null>(null);
+
     const customers = useQuery(api.customers.getPaginated, {
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
         searchTerm: search || undefined,
     });
 
+    const statement = useQuery(
+        api.customers.getStatement,
+        statementFor ? { customerId: statementFor._id } : "skip"
+    );
+    const history = useQuery(
+        api.customers.getPurchaseHistory,
+        historyFor ? { customerId: historyFor._id, limit: 50 } : "skip"
+    );
+    const loyalty = useQuery(
+        api.customers.getLoyalty,
+        statementFor ? { customerId: statementFor._id } : "skip"
+    );
+
     const addCustomer = useMutation(api.customers.add);
     const updateCustomer = useMutation(api.customers.update);
     const removeCustomer = useMutation(api.customers.remove);
+    const recordPayment = useMutation(api.customers.recordPayment);
+    const setCreditLimit = useMutation(api.customers.setCreditLimit);
 
     const rows = customers?.page ?? [];
     const totalCount = customers?.totalCount ?? 0;
@@ -90,8 +140,16 @@ export default function CustomersPage() {
     const stats = useMemo(() => {
         const all = customers?.page ?? [];
         const withId = all.filter((c) => c.distributorId).length;
-        const withPhone = all.filter((c) => c.phone).length;
-        return { onPage: all.length, withId, withPhone };
+        const owed = all.reduce(
+            (sum: number, c: any) => sum + (c.outstandingBalance ?? 0),
+            0
+        );
+        const overLimit = all.filter(
+            (c: any) =>
+                (c.creditLimit ?? 0) > 0 &&
+                (c.outstandingBalance ?? 0) > (c.creditLimit ?? 0)
+        ).length;
+        return { onPage: all.length, withId, owed, overLimit };
     }, [customers]);
 
     const openCreate = () => {
@@ -154,12 +212,50 @@ export default function CustomersPage() {
     const confirmDelete = async () => {
         if (!deleting || !user) return;
         try {
-            await removeCustomer({ id: deleting._id, userId: user._id });
-            toast.success("Customer removed", { description: deleting.name });
+            const result = await removeCustomer({ id: deleting._id, userId: user._id });
+            if (result?.deactivated) {
+                toast.success("Customer deactivated", {
+                    description:
+                        "They have trading history, so the record was kept for your books.",
+                });
+            } else {
+                toast.success("Customer removed", { description: deleting.name });
+            }
             setDeleting(null);
         } catch (err) {
             toast.error(formatError(err));
         }
+    };
+
+    const handlePayment = async (values: Record<string, string>) => {
+        if (!payFor) return;
+        const amount = Number(values.amount);
+        await recordPayment({
+            customerId: payFor._id,
+            amount,
+            date: values.date || undefined,
+            method: values.method || undefined,
+            reference: values.reference || undefined,
+            note: values.note || undefined,
+        });
+        toast.success(`Payment of ${ugx(amount)} recorded`, {
+            description: `Applied to ${payFor.name}'s oldest credit sales first.`,
+        });
+        setPayFor(null);
+    };
+
+    const handleCreditLimit = async (values: Record<string, string>) => {
+        if (!limitFor) return;
+        const amount = Number(values.creditLimit);
+        await setCreditLimit({
+            customerId: limitFor._id,
+            creditLimit: amount,
+            reason: values.reason || undefined,
+        });
+        toast.success(`Credit limit set to ${ugx(amount)}`, {
+            description: limitFor.name,
+        });
+        setLimitFor(null);
     };
 
     return (
@@ -171,13 +267,18 @@ export default function CustomersPage() {
                         Everyone you sell to. Pick them at the till and they show up on the receipt.
                     </p>
                 </div>
-                <Button onClick={openCreate} className="transition-transform active:scale-[0.98]">
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Add customer
-                </Button>
+                {can("customers.manage") && (
+                    <Button
+                        onClick={openCreate}
+                        className="transition-transform active:scale-[0.98]"
+                    >
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Add customer
+                    </Button>
+                )}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
                     icon={<Users className="h-4 w-4" />}
                     label="Customers on this page"
@@ -189,9 +290,14 @@ export default function CustomersPage() {
                     value={String(stats.withId)}
                 />
                 <StatCard
-                    icon={<Phone className="h-4 w-4" />}
-                    label="Reachable by phone"
-                    value={String(stats.withPhone)}
+                    icon={<Wallet className="h-4 w-4" />}
+                    label="Owed on this page"
+                    value={ugx(stats.owed)}
+                />
+                <StatCard
+                    icon={<Gauge className="h-4 w-4" />}
+                    label="Over their credit limit"
+                    value={String(stats.overLimit)}
                 />
             </div>
 
@@ -252,10 +358,12 @@ export default function CustomersPage() {
                                     Clear search
                                 </Button>
                             ) : (
-                                <Button size="sm" className="rounded-lg" onClick={openCreate}>
-                                    <UserPlus className="mr-2 h-4 w-4" />
-                                    Add customer
-                                </Button>
+                                can("customers.manage") && (
+                                    <Button size="sm" className="rounded-lg" onClick={openCreate}>
+                                        <UserPlus className="mr-2 h-4 w-4" />
+                                        Add customer
+                                    </Button>
+                                )
                             )}
                         </div>
                     ) : (
@@ -265,70 +373,142 @@ export default function CustomersPage() {
                                     <TableRow>
                                         <TableHead>Customer</TableHead>
                                         <TableHead>Phone</TableHead>
-                                        <TableHead>Email</TableHead>
-                                        <TableHead>Address</TableHead>
-                                        <TableHead className="w-[120px] text-right">Actions</TableHead>
+                                        <TableHead className="text-right">Owed</TableHead>
+                                        <TableHead className="text-right">Credit limit</TableHead>
+                                        <TableHead className="text-right">Points</TableHead>
+                                        <TableHead className="w-[260px] text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {rows.map((customer) => (
-                                        <TableRow
-                                            key={customer._id}
-                                            className="animate-in fade-in duration-300 transition-colors"
-                                        >
-                                            <TableCell>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                                                        {customer.name.trim().charAt(0).toUpperCase()}
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <div className="truncate font-medium">
-                                                            {customer.name}
+                                    {rows.map((customer: any) => {
+                                        const balance = customer.outstandingBalance ?? 0;
+                                        const limit = customer.creditLimit ?? 0;
+                                        const overLimit =
+                                            limit > 0 && balance > limit;
+                                        return (
+                                            <TableRow
+                                                key={customer._id}
+                                                className="animate-in fade-in duration-300 transition-colors"
+                                            >
+                                                <TableCell>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                                                            {customer.name.trim().charAt(0).toUpperCase()}
                                                         </div>
-                                                        {customer.distributorId && (
-                                                            <Badge
-                                                                variant="secondary"
-                                                                className="mt-0.5 border-violet-200 bg-violet-100 text-[10px] font-semibold text-violet-700 hover:bg-violet-100"
-                                                            >
-                                                                ID: {customer.distributorId}
-                                                            </Badge>
+                                                        <div className="min-w-0">
+                                                            <div className="truncate font-medium">
+                                                                {customer.name}
+                                                            </div>
+                                                            {customer.distributorId ? (
+                                                                <Badge
+                                                                    variant="secondary"
+                                                                    className="mt-0.5 border-violet-200 bg-violet-100 text-[10px] font-semibold text-violet-700 hover:bg-violet-100"
+                                                                >
+                                                                    ID: {customer.distributorId}
+                                                                </Badge>
+                                                            ) : null}
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="tabular-nums">
+                                                    {customer.phone}
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    <span
+                                                        className={
+                                                            balance > 0
+                                                                ? "font-bold text-amber-600 dark:text-amber-400"
+                                                                : "text-muted-foreground"
+                                                        }
+                                                    >
+                                                        {ugx(balance)}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    <span className="text-muted-foreground">
+                                                        {ugx(limit)}
+                                                    </span>
+                                                    {overLimit && (
+                                                        <p className="text-[10px] font-bold uppercase text-destructive">
+                                                            over limit
+                                                        </p>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                                        <Coins className="h-3 w-3" />
+                                                        {customer.loyaltyPoints ?? 0}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
+                                                            aria-label={`Statement for ${customer.name}`}
+                                                            onClick={() => setStatementFor(customer)}
+                                                        >
+                                                            <ScrollText className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
+                                                            aria-label={`Purchase history for ${customer.name}`}
+                                                            onClick={() => setHistoryFor(customer)}
+                                                        >
+                                                            <ShoppingBag className="h-4 w-4" />
+                                                        </Button>
+                                                        {can("customers.credit.manage") && (
+                                                            <>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
+                                                                    aria-label={`Record a payment from ${customer.name}`}
+                                                                    onClick={() => setPayFor(customer)}
+                                                                >
+                                                                    <Wallet className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
+                                                                    aria-label={`Set credit limit for ${customer.name}`}
+                                                                    onClick={() => setLimitFor(customer)}
+                                                                >
+                                                                    <Gauge className="h-4 w-4" />
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                        {can("customers.manage") && (
+                                                            <>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
+                                                                    aria-label={`Edit ${customer.name}`}
+                                                                    onClick={() => openEdit(customer)}
+                                                                >
+                                                                    <Pencil className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10 active:scale-95 transition-transform"
+                                                                    aria-label={`Remove ${customer.name}`}
+                                                                    onClick={() => setDeleting(customer)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </>
                                                         )}
                                                     </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="tabular-nums">
-                                                {customer.phone}
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                                {customer.email || "—"}
-                                            </TableCell>
-                                            <TableCell className="max-w-[220px] truncate text-muted-foreground">
-                                                {customer.address || "—"}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
-                                                        aria-label={`Edit ${customer.name}`}
-                                                        onClick={() => openEdit(customer)}
-                                                    >
-                                                        <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10 active:scale-95 transition-transform"
-                                                        aria-label={`Remove ${customer.name}`}
-                                                        onClick={() => setDeleting(customer)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>
@@ -364,6 +544,7 @@ export default function CustomersPage() {
                 </CardContent>
             </Card>
 
+            {/* ───────────────────── add / edit customer ───────────────────── */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
@@ -404,7 +585,9 @@ export default function CustomersPage() {
                                     className={errors.phone ? "border-destructive" : undefined}
                                 />
                                 {errors.phone && (
-                                    <p className="text-xs text-destructive">A phone number is required.</p>
+                                    <p className="text-xs text-destructive">
+                                        A phone number is required.
+                                    </p>
                                 )}
                             </div>
                             <div className="space-y-1.5">
@@ -465,12 +648,280 @@ export default function CustomersPage() {
                 </DialogContent>
             </Dialog>
 
+            {/* ───────────────────── record a payment ───────────────────── */}
+            <FormDialog
+                open={!!payFor}
+                onOpenChange={(v) => {
+                    if (!v) setPayFor(null);
+                }}
+                title="Record a payment"
+                description={
+                    payFor
+                        ? `Take money from ${payFor.name}. It is applied to their oldest credit sales first.`
+                        : undefined
+                }
+                submitLabel="Record payment"
+                fields={[
+                    {
+                        name: "amount",
+                        label: "Amount received",
+                        type: "number",
+                        required: true,
+                        min: 1,
+                        placeholder: "0",
+                        full: true,
+                    },
+                    {
+                        name: "method",
+                        label: "Method",
+                        type: "select",
+                        options: PAYMENT_METHODS,
+                    },
+                    {
+                        name: "date",
+                        label: "Date",
+                        type: "date",
+                    },
+                    {
+                        name: "reference",
+                        label: "Reference",
+                        placeholder: "Bank or receipt number",
+                        hint: "Used to stop the same payment being recorded twice.",
+                    },
+                    {
+                        name: "note",
+                        label: "Note",
+                        type: "textarea",
+                        full: true,
+                    },
+                ]}
+                onSubmit={handlePayment}
+            />
+
+            {/* ───────────────────── set credit limit ───────────────────── */}
+            <FormDialog
+                open={!!limitFor}
+                onOpenChange={(v) => {
+                    if (!v) setLimitFor(null);
+                }}
+                title="Set credit limit"
+                description={
+                    limitFor
+                        ? `How much ${limitFor.name} may owe at any one time.`
+                        : undefined
+                }
+                submitLabel="Save limit"
+                fields={[
+                    {
+                        name: "creditLimit",
+                        label: "Credit limit",
+                        type: "number",
+                        required: true,
+                        min: 0,
+                        defaultValue: limitFor?.creditLimit ?? 0,
+                        full: true,
+                    },
+                    {
+                        name: "reason",
+                        label: "Reason",
+                        placeholder: "Why the limit is changing",
+                        full: true,
+                    },
+                ]}
+                onSubmit={handleCreditLimit}
+            />
+
+            {/* ───────────────────── statement ───────────────────── */}
+            <Sheet
+                open={!!statementFor}
+                onOpenChange={(v) => {
+                    if (!v) setStatementFor(null);
+                }}
+            >
+                <SheetContent className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-xl">
+                    <SheetHeader>
+                        <SheetTitle className="flex items-center gap-2">
+                            <ScrollText className="h-5 w-5 text-primary" />
+                            Statement — {statementFor?.name}
+                        </SheetTitle>
+                        <SheetDescription>
+                            Every charge and receipt on this account, with the balance after each
+                            line.
+                        </SheetDescription>
+                    </SheetHeader>
+
+                    {statement ? (
+                        <>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                <MiniStat label="Charged" value={ugx(statement.totalCharged)} />
+                                <MiniStat label="Paid" value={ugx(statement.totalPaid)} />
+                                <MiniStat
+                                    label="Balance"
+                                    value={ugx(statement.closingBalance)}
+                                    tone="warn"
+                                />
+                            </div>
+
+                            {loyalty && (
+                                <p className="text-xs text-muted-foreground">
+                                    Loyalty points:{" "}
+                                    <span className="font-bold text-foreground">
+                                        {loyalty.points}
+                                    </span>{" "}
+                                    earned{" "}
+                                    <span className="font-bold text-foreground">
+                                        {loyalty.lifetimePoints}
+                                    </span>{" "}
+                                    in total.
+                                </p>
+                            )}
+
+                            {statement.lines.length === 0 ? (
+                                <p className="rounded-xl border border-dashed p-8 text-center text-xs text-muted-foreground">
+                                    Nothing on this account yet.
+                                </p>
+                            ) : (
+                                <div className="overflow-hidden rounded-xl border">
+                                    <table className="w-full text-xs">
+                                        <thead className="bg-muted/60">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left font-bold">Date</th>
+                                                <th className="px-3 py-2 text-left font-bold">
+                                                    Description
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-bold">
+                                                    Amount
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-bold">
+                                                    Balance
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {statement.lines.map((line: any, idx: number) => (
+                                                <tr key={idx} className="border-t">
+                                                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+                                                        {shortDate(line.date)}
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        {line.description}
+                                                        {line.reference && (
+                                                            <span className="ml-1 text-[10px] text-muted-foreground">
+                                                                ({line.reference})
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td
+                                                        className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${
+                                                            line.type === "payment"
+                                                                ? "text-emerald-600 dark:text-emerald-400"
+                                                                : ""
+                                                        }`}
+                                                    >
+                                                        {line.type === "payment" ? "−" : ""}
+                                                        {ugx(Math.abs(line.amount))}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums">
+                                                        {ugx(line.balanceAfter)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {can("customers.credit.manage") && (
+                                <Button
+                                    onClick={() => {
+                                        if (statementFor) {
+                                            setPayFor(statementFor);
+                                            setStatementFor(null);
+                                        }
+                                    }}
+                                >
+                                    <Wallet className="mr-2 h-4 w-4" />
+                                    Record a payment
+                                </Button>
+                            )}
+                        </>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">Loading statement…</p>
+                    )}
+                </SheetContent>
+            </Sheet>
+
+            {/* ───────────────────── purchase history ───────────────────── */}
+            <Sheet
+                open={!!historyFor}
+                onOpenChange={(v) => {
+                    if (!v) setHistoryFor(null);
+                }}
+            >
+                <SheetContent className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-xl">
+                    <SheetHeader>
+                        <SheetTitle className="flex items-center gap-2">
+                            <ShoppingBag className="h-5 w-5 text-primary" />
+                            Purchase history — {historyFor?.name}
+                        </SheetTitle>
+                        <SheetDescription>
+                            What this customer has bought, newest first.
+                        </SheetDescription>
+                    </SheetHeader>
+
+                    {history ? (
+                        <>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <MiniStat
+                                    label="Lifetime value"
+                                    value={ugx(history.lifetimeValue)}
+                                />
+                                <MiniStat
+                                    label="Purchases"
+                                    value={String(history.totalCount)}
+                                />
+                            </div>
+
+                            {history.sales.length === 0 ? (
+                                <p className="rounded-xl border border-dashed p-8 text-center text-xs text-muted-foreground">
+                                    No purchases recorded yet.
+                                </p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {history.sales.map((sale: any) => (
+                                        <div
+                                            key={sale._id}
+                                            className="flex items-center justify-between rounded-xl border p-3"
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="font-mono text-[11px] font-bold text-muted-foreground">
+                                                    {sale.invoiceNumber ?? "—"}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {shortDate(sale.date)} · {sale.itemCount} item(s)
+                                                    {sale.paymentMode ? ` · ${sale.paymentMode}` : ""}
+                                                </p>
+                                            </div>
+                                            <p className="shrink-0 text-sm font-black tabular-nums">
+                                                {ugx(sale.total)}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">Loading history…</p>
+                    )}
+                </SheetContent>
+            </Sheet>
+
             <ConfirmDeleteModal
                 isOpen={!!deleting}
                 onClose={() => setDeleting(null)}
                 onConfirm={confirmDelete}
                 title="Remove customer"
-                description={`This removes ${deleting?.name ?? "this customer"} from the customer list. Sales already recorded keep their receipt details.`}
+                description={`This removes ${deleting?.name ?? "this customer"} from the customer list. If they have trading history the record is deactivated instead, so your sales and credit account stay readable.`}
             />
         </div>
     );
@@ -497,5 +948,32 @@ function StatCard({
                 </div>
             </CardContent>
         </Card>
+    );
+}
+
+function MiniStat({
+    label,
+    value,
+    tone = "default",
+}: {
+    label: string;
+    value: string;
+    tone?: "default" | "warn";
+}) {
+    return (
+        <div className="rounded-xl border bg-card p-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                {label}
+            </p>
+            <p
+                className={`mt-0.5 text-lg font-black tabular-nums ${
+                    tone === "warn"
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-foreground"
+                }`}
+            >
+                {value}
+            </p>
+        </div>
     );
 }

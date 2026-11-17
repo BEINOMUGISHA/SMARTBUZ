@@ -110,6 +110,8 @@ const STATUS_TONES: Record<string, string> = {
     in_progress: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
     dispatched: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
     ordered: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
+    partially_received:
+        "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
     cleaning: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-400 border-zinc-500/20",
     ready: "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/20",
     // danger family

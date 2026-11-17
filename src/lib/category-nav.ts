@@ -90,7 +90,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Stock",
         icon: Package,
         group: "operations",
-        roles: ["admin", "stock", "settings"],
+        roles: ["business_owner", "business_admin", "inventory_manager", "branch_manager"],
     },
     inventory: {
         id: "inventory",
@@ -98,7 +98,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Inventory",
         icon: BarChart3,
         group: "operations",
-        roles: ["admin", "stock", "settings"],
+        roles: ["business_owner", "business_admin", "inventory_manager", "branch_manager"],
     },
     shops: {
         id: "shops",
@@ -106,7 +106,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Branches",
         icon: Store,
         group: "operations",
-        roles: ["admin", "settings"],
+        roles: ["business_owner", "business_admin", "branch_manager"],
     },
     suppliers: {
         id: "suppliers",
@@ -114,7 +114,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Suppliers",
         icon: Truck,
         group: "operations",
-        roles: ["admin", "stock", "settings"],
+        roles: ["business_owner", "business_admin", "inventory_manager"],
     },
     purchaseOrders: {
         id: "purchaseOrders",
@@ -122,7 +122,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Purchase Orders",
         icon: ClipboardList,
         group: "operations",
-        roles: ["admin", "stock", "settings"],
+        roles: ["business_owner", "business_admin", "inventory_manager"],
     },
     deliveries: {
         id: "deliveries",
@@ -130,7 +130,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Deliveries",
         icon: Truck,
         group: "operations",
-        roles: ["admin", "sales", "stock"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "inventory_manager"],
     },
     appointments: {
         id: "appointments",
@@ -138,7 +138,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Appointments",
         icon: CalendarClock,
         group: "operations",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "salesperson"],
     },
     bookings: {
         id: "bookings",
@@ -146,7 +146,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Bookings",
         icon: Calendar,
         group: "operations",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "salesperson"],
     },
     classes: {
         id: "classes",
@@ -154,7 +154,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Classes & Students",
         icon: GraduationCap,
         group: "operations",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "salesperson"],
     },
     tables: {
         id: "tables",
@@ -162,7 +162,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Tables & Orders",
         icon: UtensilsCrossed,
         group: "operations",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "cashier", "salesperson"],
     },
     rooms: {
         id: "rooms",
@@ -170,7 +170,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Rooms",
         icon: Building2,
         group: "operations",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "salesperson"],
     },
     menu: {
         id: "menu",
@@ -178,7 +178,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Menu",
         icon: BookOpen,
         group: "operations",
-        roles: ["admin", "sales", "stock"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "cashier", "salesperson", "inventory_manager"],
     },
     batches: {
         id: "batches",
@@ -186,7 +186,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Batches",
         icon: Boxes,
         group: "operations",
-        roles: ["admin", "stock", "settings"],
+        roles: ["business_owner", "business_admin", "inventory_manager", "branch_manager"],
     },
     expiry: {
         id: "expiry",
@@ -194,7 +194,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Expiry Watch",
         icon: PackageSearch,
         group: "operations",
-        roles: ["admin", "stock", "settings"],
+        roles: ["business_owner", "business_admin", "inventory_manager", "branch_manager"],
     },
     prescriptions: {
         id: "prescriptions",
@@ -202,7 +202,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Prescriptions",
         icon: ClipboardCheck,
         group: "operations",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "salesperson"],
     },
     members: {
         id: "members",
@@ -210,7 +210,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Members",
         icon: UsersRound,
         group: "records",
-        roles: ["admin", "sales", "reports"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "accountant", "auditor", "salesperson"],
     },
     attendance: {
         id: "attendance",
@@ -218,7 +218,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Attendance",
         icon: ClipboardCheck,
         group: "records",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "salesperson"],
     },
     customers: {
         id: "customers",
@@ -226,7 +226,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Customers",
         icon: Users,
         group: "records",
-        roles: ["admin", "sales", "reports"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "cashier", "salesperson", "accountant"],
     },
     loans: {
         id: "loans",
@@ -234,7 +234,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Credit Book",
         icon: CreditCard,
         group: "records",
-        roles: ["admin", "sales", "reports"],
+        roles: ["business_owner", "business_admin", "accountant"],
     },
     receivables: {
         id: "receivables",
@@ -242,7 +242,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Receivables",
         icon: Banknote,
         group: "records",
-        roles: ["admin", "reports"],
+        roles: ["business_owner", "business_admin", "accountant", "auditor"],
     },
     services: {
         id: "services",
@@ -250,7 +250,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Service Jobs",
         icon: Scissors,
         group: "records",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor"],
     },
     production: {
         id: "production",
@@ -258,7 +258,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Production",
         icon: PackagePlus,
         group: "operations",
-        roles: ["admin", "stock", "settings"],
+        roles: ["business_owner", "business_admin", "inventory_manager", "branch_manager"],
     },
     fuelPump: {
         id: "fuelPump",
@@ -266,7 +266,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Fuel Pumps",
         icon: Fuel,
         group: "operations",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "cashier", "salesperson"],
     },
     assets: {
         id: "assets",
@@ -274,7 +274,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Assets",
         icon: Boxes,
         group: "records",
-        roles: ["admin", "settings", "reports"],
+        roles: ["business_owner", "business_admin"],
     },
     rentals: {
         id: "rentals",
@@ -282,7 +282,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Rentals / Hire",
         icon: Sparkles,
         group: "operations",
-        roles: ["admin", "sales"],
+        roles: ["business_owner", "business_admin", "branch_manager", "supervisor", "salesperson"],
     },
     expenses: {
         id: "expenses",
@@ -290,7 +290,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Expenditures",
         icon: Receipt,
         group: "records",
-        roles: ["admin", "settings", "reports"],
+        roles: ["business_owner", "business_admin", "accountant"],
     },
     reports: {
         id: "reports",
@@ -298,7 +298,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Reports",
         icon: BarChart3,
         group: "records",
-        roles: ["admin", "reports", "settings"],
+        roles: ["business_owner", "business_admin", "accountant", "auditor"],
     },
     promotions: {
         id: "promotions",
@@ -306,7 +306,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Promotions",
         icon: Sparkles,
         group: "admin",
-        roles: ["admin", "settings"],
+        roles: ["business_owner", "business_admin"],
     },
     systemconfig: {
         id: "systemconfig",
@@ -314,7 +314,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "System Config",
         icon: Settings,
         group: "admin",
-        roles: ["admin", "settings"],
+        roles: ["business_owner", "business_admin"],
     },
     maintenance: {
         id: "maintenance",
@@ -322,7 +322,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Maintenance",
         icon: Wrench,
         group: "operations",
-        roles: ["admin", "settings"],
+        roles: ["business_owner", "business_admin"],
     },
     grn: {
         id: "grn",
@@ -330,7 +330,7 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         label: "Goods Received",
         icon: PackageCheck,
         group: "operations",
-        roles: ["admin", "stock", "settings"],
+        roles: ["business_owner", "business_admin", "inventory_manager", "branch_manager"],
     },
 };
 

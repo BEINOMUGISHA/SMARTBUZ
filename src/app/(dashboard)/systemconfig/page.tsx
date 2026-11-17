@@ -44,7 +44,9 @@ import { formatError, cn } from "@/lib/utils";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AuditLogsManager } from "./audit-logs";
+import { SecurityAuditTrail } from "./security-audit";
 import { useAuth } from "@/context/auth-context";
+import { ASSIGNABLE_ROLES } from "@/lib/permissions";
 
 export default function SystemConfigPage() {
     const [activeTab, setActiveTab] = useState("users");
@@ -83,6 +85,9 @@ export default function SystemConfigPage() {
                 </TabsContent>
                 <TabsContent value="audit" className="mt-6">
                     <AuditLogsManager />
+                    <div className="mt-6">
+                        <SecurityAuditTrail />
+                    </div>
                 </TabsContent>
             </Tabs>
         </div>
@@ -172,10 +177,11 @@ export function PaginationControls({
 
 function BusinessProfileManager() {
     const { user } = useAuth();
-    const currentProfile = useQuery((api as any).businessProfiles.getActive, {});
-    const businessProfiles = useQuery((api as any).businessProfiles.list, {});
-    const createProfile = useMutation((api as any).businessProfiles.create);
-    const updateProfile = useMutation((api as any).businessProfiles.update);
+    const currentProfile = useQuery(api.businesses.getActive, {});
+    const myBusinesses = useQuery(api.businesses.listMine, {});
+    const createBusiness = useMutation(api.businesses.createForCurrentUser);
+    const updateProfile = useMutation(api.businesses.updateSettings);
+    const setBusinessCategory = useMutation(api.businesses.setCategory);
 
     const [businessName, setBusinessName] = useState("SMART_BUZ");
     const [businessType, setBusinessType] = useState("Retail");
@@ -249,7 +255,7 @@ function BusinessProfileManager() {
 
     const loadProfile = (profile: any) => {
         if (!profile) return;
-        setBusinessName(profile.businessName || "SMART_BUZ");
+        setBusinessName(profile.name || "SMART_BUZ");
         setBusinessType(profile.businessType || "Retail");
         setIndustry(profile.industry || "Retail");
         setCurrency(profile.currency || "UGX");
@@ -269,27 +275,26 @@ function BusinessProfileManager() {
         try {
             if (currentProfile) {
                 await updateProfile({
-                    id: currentProfile._id,
-                    businessName,
-                    businessType,
-                    industry,
-                    modules: selectedModules,
+                    businessId: currentProfile._id,
+                    name: businessName,
                     currency,
                     country,
-                    taxEnabled,
-                    updatedBy: user._id,
                 });
+                if (businessType) {
+                    await setBusinessCategory({
+                        businessId: currentProfile._id,
+                        categoryId: businessType,
+                        modules: selectedModules,
+                    });
+                }
                 toast.success("Business profile updated");
             } else {
-                await createProfile({
+                await createBusiness({
                     businessName,
-                    businessType,
-                    industry,
+                    categoryId: businessType,
                     modules: selectedModules,
                     currency,
                     country,
-                    taxEnabled,
-                    createdBy: user._id,
                 });
                 toast.success("Business profile created");
             }
@@ -411,30 +416,31 @@ function BusinessProfileManager() {
                         <CardContent className="space-y-3 text-sm">
                             {currentProfile ? (
                                 <>
-                                    <div><strong>Name:</strong> {currentProfile.businessName}</div>
+                                    <div><strong>Name:</strong> {currentProfile.name}</div>
                                     <div><strong>Type:</strong> {currentProfile.businessType}</div>
                                     <div><strong>Industry:</strong> {currentProfile.industry || "General"}</div>
                                     <div><strong>Currency:</strong> {currentProfile.currency}</div>
                                     <div><strong>Country:</strong> {currentProfile.country}</div>
+                                    <div><strong>Timezone:</strong> {currentProfile.timezone}</div>
                                     <div><strong>Modules:</strong> {currentProfile.modules?.join(", ") || "No modules selected"}</div>
                                 </>
                             ) : (
                                 <div className="text-muted-foreground">No active business profile configured yet.</div>
                             )}
 
-                            {businessProfiles && businessProfiles.length > 0 && (
+                            {myBusinesses && myBusinesses.length > 0 && (
                                 <div className="pt-3 border-t">
-                                    <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Saved profiles</div>
+                                    <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Your businesses</div>
                                     <div className="space-y-2">
-                                        {businessProfiles.map((profile: any) => (
+                                        {myBusinesses.map((entry: any) => (
                                             <button
-                                                key={profile._id}
+                                                key={entry.business._id}
                                                 type="button"
-                                                onClick={() => loadProfile(profile)}
+                                                onClick={() => loadProfile(entry.business)}
                                                 className="w-full text-left rounded-md border bg-background p-2 hover:bg-muted/40"
                                             >
-                                                <div className="font-medium">{profile.businessName}</div>
-                                                <div className="text-xs text-muted-foreground">{profile.businessType} â€¢ {profile.industry || "General"}</div>
+                                                <div className="font-medium">{entry.business.name}</div>
+                                                <div className="text-xs text-muted-foreground">{entry.business.businessType} • {entry.role}</div>
                                             </button>
                                         ))}
                                     </div>
@@ -611,12 +617,15 @@ function UserManager() {
                         </div>
                         <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" required /></div>
                         <div className="space-y-2">
-                            <Label>System Role</Label>
-                            <Select name="role" defaultValue="sales" required>
+                            <Label>Business Role</Label>
+                            <Select name="role" defaultValue="salesperson" required>
                                 <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="admin">System Admin (All Access)</SelectItem>
-                                    <SelectItem value="sales">Sales Agent (Shop Limited)</SelectItem>
+                                    {ASSIGNABLE_ROLES.map((role) => (
+                                        <SelectItem key={role.id} value={role.id}>
+                                            {role.label}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -637,12 +646,15 @@ function UserManager() {
                             <div className="space-y-2"><Label>Email</Label><Input name="email" defaultValue={editingItem.email} required /></div>
                             <div className="space-y-2"><Label>Phone</Label><Input name="phone_number" defaultValue={editingItem.phone_number} /></div>
                             <div className="space-y-2">
-                                <Label>System Role</Label>
-                                <Select name="role" defaultValue={editingItem.roles[0] || "sales"} required>
+                                <Label>Business Role</Label>
+                                <Select name="role" defaultValue={editingItem.roles[0] || "salesperson"} required>
                                     <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="admin">System Admin (All Access)</SelectItem>
-                                        <SelectItem value="sales">Sales Agent (Shop Limited)</SelectItem>
+                                        {ASSIGNABLE_ROLES.map((role) => (
+                                            <SelectItem key={role.id} value={role.id}>
+                                                {role.label}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -1045,7 +1057,7 @@ function DistributorManager() {
         searchTerm: search || undefined
     });
 
-    const packageList = useQuery(api.promotions.listAll); // No longer strictly needed for dist, but keeping for reference if needed
+    const packageList = useQuery(api.promotions.listAll, {}); // No longer strictly needed for dist, but keeping for reference if needed
     // const packageMap = new Map(packageList?.map(p => [p._id, p.name]) || []);
 
     const createDistributor = useMutation(api.customers.add);
@@ -1215,7 +1227,7 @@ function ShopManager() {
         searchTerm: search || undefined
     });
 
-    const userList = useQuery(api.users.listAll);
+    const userList = useQuery(api.users.listAll, {});
     const userMap = new Map(userList?.map(u => [u._id, `${u.first_name} ${u.last_name}`]) || []);
 
     const createShop = useMutation(api.shops.create);

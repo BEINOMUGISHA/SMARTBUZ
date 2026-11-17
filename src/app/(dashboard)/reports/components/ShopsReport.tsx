@@ -62,8 +62,8 @@ export function ShopsReport() {
     });
     const [promotionsShop, setPromotionsShop] = useState<string>("all");
 
-    const shops = useQuery(api.shops.listAll);
-    const customers = useQuery(api.customers.listAll);
+    const shops = useQuery(api.shops.listAll, {});
+    const customers = useQuery(api.customers.listAll, {});
 
     // 1. OVERVIEW QUERIES
     const shopSummary = useQuery(api.reports.getShopSummary, {

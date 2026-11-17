@@ -41,8 +41,8 @@ export function DetailedSalesReport() {
     const [viewingSaleId, setViewingSaleId] = useState<Id<"sales"> | null>(null);
     const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
 
-    const shops = useQuery(api.shops.listAll);
-    const customers = useQuery(api.customers.listAll);
+    const shops = useQuery(api.shops.listAll, {});
+    const customers = useQuery(api.customers.listAll, {});
 
     const salesArgs = {
         startDate: dateRange.from,

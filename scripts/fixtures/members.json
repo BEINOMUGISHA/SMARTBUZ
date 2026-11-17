@@ -1,0 +1,12 @@
+[
+  {
+    "memberNumber": "LEG-001",
+    "name": "Legacy Member",
+    "phone": "0700000009",
+    "memberType": "saver",
+    "balance": 25000,
+    "status": "active",
+    "joinedDate": "2023-06-01",
+    "businessProfileId": "jd78vm1mkgmpar2etp5g7ekyw18j8emg"
+  }
+]

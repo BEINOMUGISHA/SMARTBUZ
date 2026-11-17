@@ -39,7 +39,7 @@ export function ExpensesReport() {
     const [viewingExpense, setViewingExpense] = useState<any>(null);
     const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
 
-    const users = useQuery(api.users.listAll);
+    const users = useQuery(api.users.listAll, {});
 
     const args = {
         startDate: dateRange.from,

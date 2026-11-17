@@ -104,7 +104,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
         halfPrice
     });
 
-    const categories = useQuery(api.categories.get);
+    const categories = useQuery(api.categories.get, {});
     // [OPTIMIZED] O(1) Category Lookup Map
     const categoryMap = new Map(categories?.map(c => [c._id, c.type]) || []);
 
@@ -546,7 +546,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
 
 function CategoryManager() {
     const { user } = useAuth();
-    const categories = useQuery(api.categories.get);
+    const categories = useQuery(api.categories.get, {});
     const addCategory = useMutation(api.categories.add);
     const deleteCategory = useMutation(api.categories.remove);
     const [name, setName] = useState("");

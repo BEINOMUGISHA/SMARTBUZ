@@ -1,11 +1,18 @@
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
+import { requirePermission, requireTenant } from "./tenancy";
 import { query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { Id } from "./_generated/dataModel";
 
 export const getDailyProfitLoss = query({
-    args: { date: v.string() }, // ISO String or YYYY-MM-DD
+    args: { date: v.string(),
+        businessId: v.optional(v.id("businesses")),
+    }, // ISO String or YYYY-MM-DD
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         const targetDate = args.date.split("T")[0];
 
         // [OPTIMIZED with Index]
@@ -45,8 +52,13 @@ export const getDailyProfitLoss = query({
 });
 
 export const getMonthlyProfitLoss = query({
-    args: { year: v.number(), month: v.number() },
+    args: { year: v.number(), month: v.number(),
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         const prefix = `${args.year}-${String(args.month).padStart(2, "0")}`;
 
         // [OPTIMIZED with Index]
@@ -87,21 +99,22 @@ export const getMonthlyProfitLoss = query({
 });
 
 export const getSalesAndExpenses = query({
-    args: { startDate: v.string(), endDate: v.string() },
+    args: { startDate: v.string(), endDate: v.string(),
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         // [OPTIMIZED with Index]
         const sales = await ctx.db
             .query("sales")
-            .withIndex("by_date", (q) =>
-                q.gte("date", args.startDate).lte("date", args.endDate)
-            )
+            .withIndex("by_businessId_date", (q) => q.eq("businessId", businessId).gte("date", args.startDate).lte("date", args.endDate))
             .collect();
 
         const expenses = await ctx.db
             .query("expenses")
-            .withIndex("by_date", (q) =>
-                q.gte("date", args.startDate).lte("date", args.endDate)
-            )
+            .withIndex("by_businessId_date", (q) => q.eq("businessId", businessId).gte("date", args.startDate).lte("date", args.endDate))
             .collect();
 
         return { sales, expenses };
@@ -117,29 +130,27 @@ export const getDetailedSalesReport = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         transactionType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         // [OPTIMIZED with Index Search]
         let salesQuery;
 
         if (args.shopId) {
             if (args.startDate && args.endDate) {
                 const endStr = args.endDate + "T23:59:59.999";
-                salesQuery = ctx.db.query("sales").withIndex("by_shop_date", q =>
-                    q.eq("shopId", args.shopId!).gte("date", args.startDate!).lte("date", endStr)
-                );
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q => q.eq("businessId", businessId).eq("shopId", args.shopId!).gte("date", args.startDate!).lte("date", endStr))
             } else {
-                salesQuery = ctx.db.query("sales").withIndex("by_shop_date", q =>
-                    q.eq("shopId", args.shopId!)
-                );
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q => q.eq("businessId", businessId).eq("shopId", args.shopId!));
             }
         } else if (args.startDate && args.endDate) {
             const endStr = args.endDate + "T23:59:59.999";
-            salesQuery = ctx.db.query("sales").withIndex("by_date", q =>
-                q.gte("date", args.startDate!).lte("date", endStr)
-            );
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", endStr))
         } else {
-            salesQuery = ctx.db.query("sales");
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId));
         }
 
         // Apply secondary filters
@@ -191,9 +202,13 @@ export const getDetailedSalesReportCount = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         transactionType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let salesQuery = ctx.db.query("sales");
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
+        let salesQuery = ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId));
         if (args.shopId) salesQuery = salesQuery.filter(q => q.eq(q.field("shopId"), args.shopId!));
         if (args.clientType && args.clientType !== "All") salesQuery = salesQuery.filter(q => q.eq(q.field("clientType"), args.clientType!));
         if (args.customerId) salesQuery = salesQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
@@ -217,9 +232,13 @@ export const getLoanReportSummary = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         clientType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let loanQuery = ctx.db.query("loans");
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
+        let loanQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
         if (args.customerId) {
             loanQuery = loanQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
         }
@@ -285,9 +304,13 @@ export const getLoanSummary = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         clientType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let loanQuery = ctx.db.query("loans");
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
+        let loanQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
         if (args.customerId) {
             loanQuery = loanQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
         }
@@ -363,9 +386,13 @@ export const getLoanSummaryCount = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         clientType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let loanQuery = ctx.db.query("loans");
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
+        let loanQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
         if (args.customerId) loanQuery = loanQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
         if (args.startDate && args.endDate) {
             const endStr = args.endDate + "T23:59:59.999";
@@ -393,24 +420,22 @@ export const summaryStats = query({
     args: {
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         // [OPTIMIZED with Index Search]
         let salesQuery;
         if (args.startDate && args.endDate) {
-            salesQuery = ctx.db.query("sales").withIndex("by_date", q =>
-                q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")
-            );
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999"))
         } else if (args.startDate) {
-            salesQuery = ctx.db.query("sales").withIndex("by_date", q =>
-                q.gte("date", args.startDate!)
-            );
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!));
         } else if (args.endDate) {
-            salesQuery = ctx.db.query("sales").withIndex("by_date", q =>
-                q.lte("date", args.endDate! + "T23:59:59.999")
-            );
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).lte("date", args.endDate! + "T23:59:59.999"));
         } else {
-            salesQuery = ctx.db.query("sales");
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId));
         }
         const sales = await salesQuery.collect();
         const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
@@ -423,24 +448,18 @@ export const summaryStats = query({
 
         let expensesQuery;
         if (args.startDate && args.endDate) {
-            expensesQuery = ctx.db.query("expenses").withIndex("by_date", q =>
-                q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")
-            );
+            expensesQuery = ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999"))
         } else if (args.startDate) {
-            expensesQuery = ctx.db.query("expenses").withIndex("by_date", q =>
-                q.gte("date", args.startDate!)
-            );
+            expensesQuery = ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!));
         } else if (args.endDate) {
-            expensesQuery = ctx.db.query("expenses").withIndex("by_date", q =>
-                q.lte("date", args.endDate! + "T23:59:59.999")
-            );
+            expensesQuery = ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).lte("date", args.endDate! + "T23:59:59.999"));
         } else {
-            expensesQuery = ctx.db.query("expenses");
+            expensesQuery = ctx.db.query("expenses").withIndex("by_businessId", q => q.eq("businessId", businessId));
         }
         const expenses = await expensesQuery.collect();
         const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
 
-        let loansQuery = ctx.db.query("loans");
+        let loansQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
         if (args.startDate) loansQuery = loansQuery.filter(q => q.gte(q.field("date"), args.startDate!));
         if (args.endDate) loansQuery = loansQuery.filter(q => q.lte(q.field("date"), args.endDate! + "T23:59:59.999"));
         const loans = await loansQuery.collect();
@@ -462,10 +481,13 @@ export const getShopSummary = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         search: v.optional(v.string()),
-
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let shops = await ctx.db.query("shops").collect();
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
+        let shops = await ctx.db.query("shops").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
 
         if (args.search) {
             const s = args.search.toLowerCase();
@@ -475,7 +497,7 @@ export const getShopSummary = query({
             );
         }
 
-        let salesQuery = ctx.db.query("sales");
+        let salesQuery = ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId));
         if (args.startDate) salesQuery = salesQuery.filter(q => q.gte(q.field("date"), args.startDate!));
         if (args.endDate) salesQuery = salesQuery.filter(q => q.lte(q.field("date"), args.endDate! + "T23:59:59.999"));
 
@@ -502,13 +524,17 @@ export const getStockSummary = query({
         paginationOpts: paginationOptsValidator,
         halfPrice: v.optional(v.boolean()),
         search: v.optional(v.string()),
-        searchType: v.optional(v.string()), // "name", "code", "supplier", "category"
+        searchType: v.optional(v.string()), // "name", "code", "supplier", "category",
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         // Fetch dependencies for enrichment
-        const categories = await ctx.db.query("categories").collect();
+        const categories = await ctx.db.query("categories").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
         const categoryMap = new Map(categories.map(c => [c._id, c.type]));
-        const shops = await ctx.db.query("shops").collect();
+        const shops = await ctx.db.query("shops").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
 
         // 1. Optimized filtering
         let stocks: any[] = [];
@@ -516,20 +542,18 @@ export const getStockSummary = query({
 
         if (args.search && args.searchType === "name") {
             stocks = await ctx.db.query("stocks")
-                .withSearchIndex("search_name", q => q.search("name", args.search!))
-                .collect();
+                .withSearchIndex("search_name", q => q.search("name", args.search!)).filter(q => q.eq(q.field("businessId"), businessId)).collect();
         } else if (args.search && args.searchType === "supplier") {
             stocks = await ctx.db.query("stocks")
-                .withSearchIndex("search_supplier", q => q.search("supplier", args.search!))
-                .collect();
+                .withSearchIndex("search_supplier", q => q.search("supplier", args.search!)).filter(q => q.eq(q.field("businessId"), businessId)).collect();
         } else if (args.search && args.searchType === "code") {
             // Product code is often exact or prefix
             stocks = await ctx.db.query("stocks")
-                .withIndex("by_productCode", q => q.gte("productCode", args.search!).lte("productCode", args.search! + "\uffff"))
+                .withIndex("by_businessId_productCode", q => q.eq("businessId", businessId).gte("productCode", args.search!).lte("productCode", args.search! + "\uffff"))
                 .collect();
         } else {
             // Default or Category search (Category doesn't have search index, so fetch all or filter)
-            stocks = await ctx.db.query("stocks").collect();
+            stocks = await ctx.db.query("stocks").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
         }
 
         // Apply secondary filters in memory
@@ -587,23 +611,27 @@ export const getStockSummaryCount = query({
         halfPrice: v.optional(v.boolean()),
         search: v.optional(v.string()),
         searchType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         // Use the same logic as getStockSummary but return length
-        const categories = await ctx.db.query("categories").collect();
+        const categories = await ctx.db.query("categories").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
         const categoryMap = new Map(categories.map(c => [c._id, c.type]));
 
         let stocks: any[] = [];
         const searchLower = args.search?.toLowerCase();
 
         if (args.search && args.searchType === "name") {
-            stocks = await ctx.db.query("stocks").withSearchIndex("search_name", q => q.search("name", args.search!)).collect();
+            stocks = await ctx.db.query("stocks").withSearchIndex("search_name", q => q.search("name", args.search!)).filter(q => q.eq(q.field("businessId"), businessId)).filter(q => q.eq(q.field("businessId"), businessId)).collect();
         } else if (args.search && args.searchType === "supplier") {
-            stocks = await ctx.db.query("stocks").withSearchIndex("search_supplier", q => q.search("supplier", args.search!)).collect();
+            stocks = await ctx.db.query("stocks").withSearchIndex("search_supplier", q => q.search("supplier", args.search!)).filter(q => q.eq(q.field("businessId"), businessId)).filter(q => q.eq(q.field("businessId"), businessId)).collect();
         } else if (args.search && args.searchType === "code") {
-            stocks = await ctx.db.query("stocks").withIndex("by_productCode", q => q.gte("productCode", args.search!).lte("productCode", args.search! + "\uffff")).collect();
+            stocks = await ctx.db.query("stocks").withIndex("by_businessId_productCode", q => q.eq("businessId", businessId).gte("productCode", args.search!).lte("productCode", args.search! + "\uffff")).collect();
         } else {
-            stocks = await ctx.db.query("stocks").collect();
+            stocks = await ctx.db.query("stocks").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
         }
 
         const filtered = stocks.filter(s => {
@@ -630,12 +658,16 @@ export const getReportsSummary = query({
         search: v.optional(v.string()),
         halfPrice: v.optional(v.boolean()),
         transactionType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         // [SALES DATA]
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // [APPLY ADDITIONAL FILTERS IN MEMORY for flexibility]
@@ -656,12 +688,12 @@ export const getReportsSummary = query({
 
         // [EXPENSES DATA] - Expenses usually only filter by date
         const expenses = await (args.startDate && args.endDate
-            ? ctx.db.query("expenses").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("expenses").collect()
+            ? ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("expenses").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // [STOCK DATA] All current stock
-        let stocks = await ctx.db.query("stocks").collect();
+        let stocks = await ctx.db.query("stocks").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
 
         if (args.halfPrice !== undefined || args.search) {
             const searchLower = args.search?.toLowerCase();
@@ -706,7 +738,7 @@ export const getReportsSummary = query({
         // [LOAN DATA] - Fetch loans and match with filtered sales
         // We can't rely on sales.balance as it's not in the schema. We must check the loans table.
         // 1. Fetch loans roughly within range (if date provided)
-        let loansQuery = ctx.db.query("loans");
+        let loansQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
         if (args.startDate) loansQuery = loansQuery.filter(q => q.gte(q.field("date"), args.startDate!));
         if (args.endDate) loansQuery = loansQuery.filter(q => q.lte(q.field("date"), args.endDate! + "T23:59:59.999"));
         const loans = await loansQuery.collect();
@@ -741,22 +773,27 @@ export const getStockEntries = query({
     args: {
         date: v.string(), // YYYY-MM-DD
         search: v.optional(v.string()),
-        searchType: v.optional(v.string()), // "name", "code", "supplier", "category"
+        searchType: v.optional(v.string()), // "name", "code", "supplier", "category",
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         const startOfToday = args.date;
         const endOfToday = args.date + "T23:59:59.999";
 
         // 1. Fetch entries for the day
         const entries = await ctx.db
             .query("stockEntries")
-            .withIndex("by_date", q => q.gte("date", startOfToday).lte("date", endOfToday))
+            .withIndex("by_businessId", q => q.eq("businessId", businessId))
+            .filter(q => q.and(q.gte(q.field("date"), startOfToday), q.lte(q.field("date"), endOfToday)))
             .collect();
 
         // 2. Fetch dependencies for enrichment and filtering
         const stockIds = [...new Set(entries.map(e => e.stockId))];
         const userIds = [...new Set(entries.map(e => e.userId))];
-        const categories = await ctx.db.query("categories").collect();
+        const categories = await ctx.db.query("categories").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
         const categoryMap = new Map(categories.map(c => [c._id, c.type]));
 
         const [stocks, users] = await Promise.all([
@@ -810,11 +847,15 @@ export const getExpensesReport = query({
         type: v.optional(v.string()),
         userId: v.optional(v.id("users")),
         search: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let expenses = await (args.startDate && args.endDate
-            ? ctx.db.query("expenses").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("expenses").collect()
+            ? ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("expenses").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Sort by date desc
@@ -865,11 +906,15 @@ export const getExpensesReportSummary = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         type: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let expenses = await (args.startDate && args.endDate
-            ? ctx.db.query("expenses").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("expenses").collect()
+            ? ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("expenses").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         if (args.type) {
@@ -912,11 +957,15 @@ export const getProductPerformanceReport = query({
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
         search: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Filter by shop
@@ -974,11 +1023,15 @@ export const getProductPerformanceSummary = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Filter by shop
@@ -1049,11 +1102,15 @@ export const getCustomerAnalyticsReport = query({
         shopId: v.optional(v.id("shops")),
         clientType: v.optional(v.string()),
         search: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Filter by shop
@@ -1143,11 +1200,15 @@ export const getCustomerAnalyticsSummary = query({
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
         clientType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Filter by shop
@@ -1217,11 +1278,15 @@ export const getUserPerformanceReport = query({
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
         search: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Filter by shop
@@ -1294,11 +1359,15 @@ export const getUserPerformanceSummary = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Filter by shop
@@ -1359,11 +1428,15 @@ export const getProfitMarginReport = query({
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
         search: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Filter by shop
@@ -1435,11 +1508,15 @@ export const getProfitMarginSummary = query({
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").collect()
+            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
+            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // Filter by shop
@@ -1518,12 +1595,16 @@ export const getPaymentsReport = query({
         customerId: v.optional(v.id("customers")),
         userId: v.optional(v.id("users")),
         search: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         // 1. Filter payments by date
         let payments = await (args.startDate && args.endDate
-            ? ctx.db.query("payments").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("payments").collect()
+            ? ctx.db.query("payments").withIndex("by_businessId", q => q.eq("businessId", businessId)).filter(q => q.and(q.gte(q.field("date"), args.startDate!), q.lte(q.field("date"), args.endDate! + "T23:59:59.999"))).collect()
+            : ctx.db.query("payments").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
 
         // 2. Filter by shop/customer
@@ -1611,11 +1692,15 @@ export const getPaymentsReportSummary = query({
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
         customerId: v.optional(v.id("customers")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         let payments = await (args.startDate && args.endDate
-            ? ctx.db.query("payments").withIndex("by_date", q => q.gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("payments").collect()
+            ? ctx.db.query("payments").withIndex("by_businessId", q => q.eq("businessId", businessId)).filter(q => q.and(q.gte(q.field("date"), args.startDate!), q.lte(q.field("date"), args.endDate! + "T23:59:59.999"))).collect()
+            : ctx.db.query("payments").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
         );
         if (args.shopId) payments = payments.filter(p => p.shopId === args.shopId);
         if (args.customerId) payments = payments.filter(p => p.customerId === args.customerId);
@@ -1627,7 +1712,7 @@ export const getPaymentsReportSummary = query({
         const avgPayment = paymentCount > 0 ? totalCollected / paymentCount : 0;
 
         // Outstanding from all currently active loans (not date filtered)
-        const allLoans = await ctx.db.query("loans").collect();
+        const allLoans = await ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
         const totalOutstanding = allLoans.reduce((sum, l) => sum + (l.balance || 0), 0);
         const recoveryRate = totalCollected + totalOutstanding > 0
             ? (totalCollected / (totalCollected + totalOutstanding)) * 100
@@ -1651,10 +1736,14 @@ export const getAgedDebtors = query({
         shopId: v.optional(v.id("shops")),
         customerId: v.optional(v.id("customers")),
         search: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "reports.view");
         // Get all loans with outstanding balance
-        const allLoans = await ctx.db.query("loans").collect();
+        const allLoans = await ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
         const outstanding = allLoans.filter(l => (l.balance || 0) > 0);
 
         // Enrich with sale (for shopId/clientType) and customer

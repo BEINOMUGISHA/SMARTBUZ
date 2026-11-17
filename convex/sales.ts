@@ -1,9 +1,25 @@
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
 import { mutation, query, MutationCtx } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { Id, Doc } from "./_generated/dataModel";
+import { logActivity, requireBranchAccess, requirePermission, requireTenant } from "./tenancy";
+import { writeAudit } from "./audit";
 
-async function generateInvoiceNumber(ctx: MutationCtx, shopId?: Id<"shops">) {
+/**
+ * SMART_BUZ — sales.
+ *
+ * A sale belongs to a business. The caller is derived from the signed
+ * session, the products and customers are re-read from the database (the
+ * client is never trusted for money), and every row that is written is
+ * stamped with the tenant.
+ */
+
+async function generateInvoiceNumber(
+    ctx: MutationCtx,
+    businessId: Id<"businesses">,
+    shopId?: Id<"shops">
+) {
     let prefix = "HQ";
 
     if (shopId) {
@@ -15,9 +31,13 @@ async function generateInvoiceNumber(ctx: MutationCtx, shopId?: Id<"shops">) {
     }
 
     const counterName = `invoice_${prefix}`;
+    // Invoice sequences are per business: two businesses may both issue
+    // "MBR-001" without colliding.
     const counter = await ctx.db
         .query("counters")
-        .withIndex("by_name", (q) => q.eq("name", counterName))
+        .withIndex("by_businessId_name", (q) =>
+            q.eq("businessId", businessId).eq("name", counterName)
+        )
         .first();
 
     let nextValue = 1; // Start from 001
@@ -25,13 +45,14 @@ async function generateInvoiceNumber(ctx: MutationCtx, shopId?: Id<"shops">) {
         nextValue = counter.lastValue + 1;
         await ctx.db.patch(counter._id, { lastValue: nextValue });
     } else {
-        await ctx.db.insert("counters", { name: counterName, lastValue: nextValue });
+        await ctx.db.insert("counters", { businessId, name: counterName, lastValue: nextValue });
     }
 
     return `${prefix}-${String(nextValue).padStart(3, "0")}`;
 }
 
 interface ProcessPromotionParams {
+    businessId: Id<"businesses">;
     salesId: Id<"sales">;
     customerId?: Id<"customers">;
     userId: Id<"users">;
@@ -49,8 +70,10 @@ interface ProcessPromotionParams {
 
 async function processPromotionTriggers(ctx: MutationCtx, params: ProcessPromotionParams) {
     const triggeredRedemptions: any[] = [];
+    // Only the promotions of this business can trigger.
     const activePromotions = await ctx.db
         .query("promotions")
+        .withIndex("by_businessId", (q) => q.eq("businessId", params.businessId))
         .filter((q) => q.eq(q.field("isActive"), true))
         .collect();
 
@@ -58,7 +81,10 @@ async function processPromotionTriggers(ctx: MutationCtx, params: ProcessPromoti
 
     const activePromoIds = new Set(activePromotions.map((p) => p._id));
     const cartStockIds = new Set(params.items.map((i) => i.stockId));
-    const allPromotionProducts = await ctx.db.query("promotionProducts").collect();
+    const allPromotionProducts = await ctx.db
+        .query("promotionProducts")
+        .withIndex("by_businessId", (q) => q.eq("businessId", params.businessId))
+        .collect();
     const relevantPromoProducts = allPromotionProducts.filter(
         (pp) => activePromoIds.has(pp.promotionId) && cartStockIds.has(pp.stockId)
     );
@@ -83,7 +109,7 @@ async function processPromotionTriggers(ctx: MutationCtx, params: ProcessPromoti
                     productCode: item.productCode,
                     prize: promotion.prize,
                 };
-                await ctx.db.insert("promotionRedemptions", redemptionData);
+                await ctx.db.insert("promotionRedemptions", { businessId: params.businessId, ...redemptionData });
                 triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
             }
         }
@@ -109,7 +135,7 @@ async function processPromotionTriggers(ctx: MutationCtx, params: ProcessPromoti
                     productCode: "THRESHOLD",
                     prize: promotion.prize,
                 };
-                await ctx.db.insert("promotionRedemptions", redemptionData);
+                await ctx.db.insert("promotionRedemptions", { businessId: params.businessId, ...redemptionData });
                 triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
             }
         } else if (promotion.triggerType === "TotalBV" && promotion.threshold && totalBV >= promotion.threshold) {
@@ -127,7 +153,7 @@ async function processPromotionTriggers(ctx: MutationCtx, params: ProcessPromoti
                     productCode: "THRESHOLD",
                     prize: promotion.prize,
                 };
-                await ctx.db.insert("promotionRedemptions", redemptionData);
+                await ctx.db.insert("promotionRedemptions", { businessId: params.businessId, ...redemptionData });
                 triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
             }
         }
@@ -142,18 +168,22 @@ export const list = query({
         paginationOpts: paginationOptsValidator,
         startDate: v.optional(v.string()),
         endDate: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let salesQuery = ctx.db.query("sales");
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.view");
 
-        // Simple filter by date range if provided
+        // Only this business's sales are visible, whatever the date range.
+        let salesQuery = ctx.db
+            .query("sales")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId));
+
         if (args.startDate && args.endDate) {
-            const start = args.startDate;
-            const end = args.endDate;
-            salesQuery = salesQuery.filter((q) =>
-                q.and(
-                    q.gte(q.field("date"), start),
-                    q.lte(q.field("date"), end)
+            salesQuery = salesQuery.filter((f) =>
+                f.and(
+                    f.gte(f.field("date"), args.startDate!),
+                    f.lte(f.field("date"), args.endDate!)
                 )
             );
         }
@@ -198,13 +228,36 @@ export const create = mutation({
             stockId: v.id("stocks"),
             price: v.number(),
         }))),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.create");
+        const businessId = tenant.businessId;
+        // The operator is the authenticated caller — the `userId` argument
+        // the browser sends is ignored.
+        const userId = tenant.user._id;
+
+        // Everything the sale refers to must belong to this business.
+        if (args.customerId) {
+            const customer = await ctx.db.get(args.customerId);
+            if (!customer || customer.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that customer belongs to another business.");
+            }
+        }
+        if (args.shopId) {
+            const shop = await ctx.db.get(args.shopId);
+            if (!shop || shop.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that shop belongs to another business.");
+            }
+        }
+
         // Idempotency check: if this sale was already synced from offline queue, return it
         if (args.clientOfflineId) {
             const existingSale = await ctx.db
                 .query("sales")
                 .withIndex("by_clientOfflineId", (q) => q.eq("clientOfflineId", args.clientOfflineId!))
+                .filter((q) => q.eq(q.field("businessId"), businessId))
                 .first();
             if (existingSale) {
                 return {
@@ -238,11 +291,7 @@ export const create = mutation({
         // any override sent by the client is ignored and the master price is
         // charged — the client still cannot falsify revenue.
         // -----------------------------------------------------------------
-        const activeProfile = await ctx.db
-            .query("businessProfiles")
-            .withIndex("by_active", (q) => q.eq("isActive", true))
-            .first();
-        const overridesEnabled = activeProfile?.allowPriceOverrides === true;
+        const overridesEnabled = tenant.business.allowPriceOverrides === true;
 
         const overrideMap = new Map<Id<"stocks">, number>();
         if (overridesEnabled) {
@@ -266,6 +315,11 @@ export const create = mutation({
             const stock = pricingMap.get(item.stockId);
             if (!stock) {
                 throw new Error(`Item ${item.name} not found`);
+            }
+            if (stock.businessId !== businessId) {
+                throw new ConvexError(
+                    "Forbidden: that product belongs to another business."
+                );
             }
             if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
                 throw new Error(`Invalid quantity for ${item.name}`);
@@ -303,10 +357,11 @@ export const create = mutation({
             );
         }
 
-        // Check if user is assigned to a shop
+        // Check if user is assigned to a shop in this business
         const shop = await ctx.db
             .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", args.userId))
+            .withIndex("by_user", (q) => q.eq("userId", userId))
+            .filter((q) => q.eq(q.field("businessId"), businessId))
             .first();
 
         // Deduct Stock
@@ -363,10 +418,11 @@ export const create = mutation({
 
         // Record the sale
         const saleId = await ctx.db.insert("sales", {
+            businessId,
             customerId: args.customerId,
             manualCustomerName: args.manualCustomerName,
             shopId: shop ? shop._id : args.shopId, // Prioritize found shop, else fallback to arg
-            userId: args.userId,
+            userId,
             total: computedTotal,
             date,
             clientType: args.clientType,
@@ -380,7 +436,7 @@ export const create = mutation({
             customerPhone: args.customerPhone,
             customerLocation: args.customerLocation,
             transactionType: args.transactionType || "Sale",
-            invoiceNumber: await generateInvoiceNumber(ctx, shop ? shop._id : args.shopId),
+            invoiceNumber: await generateInvoiceNumber(ctx, businessId, shop ? shop._id : args.shopId),
             clientOfflineId: args.clientOfflineId,
             isOfflineSync: args.isOfflineSync,
             hasPriceOverride: appliedOverrides.length > 0,
@@ -392,12 +448,13 @@ export const create = mutation({
         // Record immutable stock movements in stockLedger
         for (const item of trustedItems) {
             await ctx.db.insert("stockLedger", {
+                businessId,
                 stockId: item.stockId,
                 shopId: shop ? shop._id : args.shopId,
                 deltaQty: -item.quantity,
                 eventType: "SALE",
                 referenceId: invoiceNumberValue || saleId,
-                userId: args.userId,
+                userId,
                 timestamp: date,
                 notes: `Sale ${invoiceNumberValue || ""} to ${args.manualCustomerName || "Customer"}`,
             });
@@ -407,9 +464,10 @@ export const create = mutation({
         // PROMOTION TRIGGER LOGIC
         // ---------------------------------------------------------
         const triggeredRedemptions = await processPromotionTriggers(ctx, {
+            businessId,
             salesId: saleId,
             customerId: args.customerId,
-            userId: args.userId,
+            userId,
             shopId: shop ? shop._id : args.shopId,
             date,
             items: trustedItems,
@@ -422,6 +480,7 @@ export const create = mutation({
             const loanBalance = computedTotal - deposit;
 
             const loanId = await ctx.db.insert("loans", {
+                businessId,
                 customerId: args.customerId !== undefined ? args.customerId : undefined, // Explicitly undefined if missing
                 manualCustomerName: args.manualCustomerName,
                 salesId: saleId,
@@ -433,6 +492,7 @@ export const create = mutation({
             // If there's an initial deposit, record it as a payment
             if (deposit > 0) {
                 await ctx.db.insert("payments", {
+                    businessId,
                     loanId: loanId,
                     shopId: shop?._id,
                     customerId: args.customerId,
@@ -444,12 +504,13 @@ export const create = mutation({
         }
 
         // Log activity
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Create Sale",
-            details: `${args.clientType} sale of UGX ${computedTotal.toLocaleString()} created at ${shop ? shop.name : "HQ"}.`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            userId,
+            "Create Sale",
+            `${args.clientType} sale of ${computedTotal.toLocaleString()} created at ${shop ? shop.name : "HQ"}.`
+        );
 
         return { saleId, redemptions: triggeredRedemptions, invoiceNumber: invoiceNumberValue };
     },
@@ -483,14 +544,26 @@ export const editSale = mutation({
         deliveryStatus: v.optional(v.string()),
         customerPhone: v.optional(v.string()),
         customerLocation: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.cancel");
+        const businessId = tenant.businessId;
+        const userId = tenant.user._id;
+
         const existingSale = await ctx.db.get(args.saleId);
         if (!existingSale) throw new Error("Sale not found");
+        if (existingSale.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that sale belongs to another business.");
+        }
 
         // Determine the shop context from the original sale (preserve original location)
         const shopId = existingSale.shopId;
         const shop = shopId ? await ctx.db.get(shopId) : null;
+        if (shop && shop.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that shop belongs to another business.");
+        }
 
         // -----------------------------------------------------------------
         // 0) SERVER-SIDE PRICE + TOTAL VALIDATION (same rules as `create`)
@@ -511,6 +584,11 @@ export const editSale = mutation({
         const editTrustedItems = args.items.map((item) => {
             const stock = editPricingMap.get(item.stockId);
             if (!stock) throw new Error(`Item ${item.name} not found`);
+            if (stock.businessId !== businessId) {
+                throw new ConvexError(
+                    "Forbidden: that product belongs to another business."
+                );
+            }
             if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
                 throw new Error(`Invalid quantity for ${item.name}`);
             }
@@ -565,12 +643,13 @@ export const editSale = mutation({
         // Record compensating SALE_VOID events in stockLedger
         for (const item of existingSale.items) {
             await ctx.db.insert("stockLedger", {
+                businessId,
                 stockId: item.stockId,
                 shopId: shopId,
                 deltaQty: item.quantity,
                 eventType: "SALE_VOID",
                 referenceId: existingSale.invoiceNumber || args.saleId,
-                userId: args.userId,
+                userId,
                 timestamp: new Date().toISOString(),
                 notes: `Edit rollback for sale ${existingSale.invoiceNumber || args.saleId}`,
             });
@@ -639,12 +718,13 @@ export const editSale = mutation({
         // Record new SALE events in stockLedger
         for (const item of editTrustedItems) {
             await ctx.db.insert("stockLedger", {
+                businessId,
                 stockId: item.stockId,
                 shopId: shopId,
                 deltaQty: -item.quantity,
                 eventType: "SALE",
                 referenceId: existingSale.invoiceNumber || args.saleId,
-                userId: args.userId,
+                userId,
                 timestamp: new Date().toISOString(),
                 notes: `Updated sale item for ${existingSale.invoiceNumber || args.saleId}`,
             });
@@ -674,6 +754,7 @@ export const editSale = mutation({
         // -----------------------------------------------------------------
         const newDate = new Date().toISOString();
         const triggeredRedemptions = await processPromotionTriggers(ctx, {
+            businessId,
             salesId: args.saleId,
             customerId: args.customerId,
             userId: existingSale.userId,
@@ -690,6 +771,7 @@ export const editSale = mutation({
             const loanBalance = editComputedTotal - deposit;
 
             const loanId = await ctx.db.insert("loans", {
+                businessId,
                 customerId: args.customerId,
                 manualCustomerName: args.manualCustomerName,
                 salesId: args.saleId,
@@ -700,6 +782,7 @@ export const editSale = mutation({
 
             if (deposit > 0) {
                 await ctx.db.insert("payments", {
+                    businessId,
                     loanId: loanId,
                     shopId: shopId,
                     customerId: args.customerId,
@@ -713,12 +796,13 @@ export const editSale = mutation({
         // -----------------------------------------------------------------
         // 8) Log activity
         // -----------------------------------------------------------------
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Edit Sale",
-            details: `Edited sale ${existingSale.invoiceNumber || args.saleId} - New total: UGX ${args.total.toLocaleString()}, ${args.items.length} item(s), Payment: ${args.paymentMode}${args.isLoan ? " (Loan)" : ""}`,
-            timestamp: new Date().toISOString(),
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            userId,
+            "Edit Sale",
+            `Edited sale ${existingSale.invoiceNumber || args.saleId} - New total: ${args.total.toLocaleString()}, ${args.items.length} item(s), Payment: ${args.paymentMode}${args.isLoan ? " (Loan)" : ""}`
+        );
 
         return { saleId: args.saleId, redemptions: triggeredRedemptions };
     },
@@ -730,38 +814,30 @@ export const mySalesStats = query({
         from: v.optional(v.string()),
         to: v.optional(v.string()),
         filterType: v.optional(v.string()), // "All", "Regular", "HP"
-        email: v.optional(v.string()), // Manual Auth
+        email: v.optional(v.string()), // @deprecated — the caller is derived from the session
         customerId: v.optional(v.id("customers")),
         searchTerm: v.optional(v.string()),
         packageType: v.optional(v.string()),
         deliveryStatus: v.optional(v.string()),
         transactionType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        if (!args.email) throw new Error("Unauthorized");
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.view");
+        const businessId = tenant.businessId;
 
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email!))
-            .first();
-        if (!user) throw new Error("User not found");
-
-
-        // Find user's shop
+        // Find the caller's counter inside this business. The `email`
+        // argument is ignored — the browser used to be able to ask for
+        // somebody else's till.
         const shop = await ctx.db
             .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .withIndex("by_user", (q) => q.eq("userId", tenant.user._id))
+            .filter((q) => q.eq(q.field("businessId"), businessId))
             .first();
 
         // Base Query Selection
         let salesQuery: any = ctx.db.query("sales"); // Use any to bypass complex Query vs QueryInitializer mismatch
-
-        // 1. Determining Scope
-        // If user is Shop User AND NOT Admin, restrict to shop.
-        // If user is Admin, allow viewing all, or restrict to shop if they want (not implemented yet, defaults to all if no other filters)
-        // However, if Admin IS assigned to a shop, they might want to see that shop's data by default?
-        // User complaint: "Only and only sales for that shop".
-        // Fix: If Admin, ignore shop restriction unless we add a UI toggle later. For now, assume Admin wants ALL.
 
         // User MUST be assigned to a shop
         if (!shop) {
@@ -774,12 +850,12 @@ export const mySalesStats = query({
         }
 
         if (args.from && args.to) {
-            salesQuery = salesQuery.withIndex("by_shop_date", (q: any) =>
-                q.eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!)
+            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) =>
+                q.eq("businessId", businessId).eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!)
             );
         } else {
-            salesQuery = salesQuery.withIndex("by_shop_date", (q: any) =>
-                q.eq("shopId", shop._id)
+            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) =>
+                q.eq("businessId", businessId).eq("shopId", shop._id)
             );
         }
 
@@ -820,10 +896,13 @@ export const mySalesStats = query({
         const sales = await salesQuery.collect();
         const paymentsQuery = ctx.db
             .query("payments")
-            .withIndex("by_shop_date", (q: any) =>
-                q.eq("shopId", shop._id)
-                    .gte("date", args.from || "0")
-                    .lte("date", args.to || "z")
+            .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+            .filter((q: any) =>
+                q.and(
+                    q.eq(q.field("shopId"), shop._id),
+                    q.gte(q.field("date"), args.from || "0"),
+                    q.lte(q.field("date"), args.to || "z")
+                )
             );
 
         const allPayments = await paymentsQuery.collect();
@@ -893,25 +972,23 @@ export const mySales = query({
         from: v.optional(v.string()),
         to: v.optional(v.string()),
         filterType: v.optional(v.string()), // "All", "Regular", "HP", "Loans"
-        email: v.optional(v.string()), // Manual Auth
+        email: v.optional(v.string()), // @deprecated — the caller is derived from the session
         customerId: v.optional(v.id("customers")),
         searchTerm: v.optional(v.string()),
         packageType: v.optional(v.string()),
         deliveryStatus: v.optional(v.string()),
         transactionType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        if (!args.email) throw new Error("Unauthorized");
-
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email!))
-            .first();
-        if (!user) throw new Error("User not found");
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.view");
+        const businessId = tenant.businessId;
 
         const shop = await ctx.db
             .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .withIndex("by_user", (q) => q.eq("userId", tenant.user._id))
+            .filter((q) => q.eq(q.field("businessId"), businessId))
             .first();
 
         // User MUST be assigned to a shop
@@ -927,9 +1004,9 @@ export const mySales = query({
         let salesQuery: any = ctx.db.query("sales");
 
         if (args.from && args.to) {
-            salesQuery = salesQuery.withIndex("by_shop_date", (q: any) => q.eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!));
+            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) => q.eq("businessId", businessId).eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!));
         } else {
-            salesQuery = salesQuery.withIndex("by_shop_date", (q: any) => q.eq("shopId", shop._id));
+            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) => q.eq("businessId", businessId).eq("shopId", shop._id));
         }
 
         // 2. Apply Filters (REMOVE restriction for Hybrid view)
@@ -1047,25 +1124,23 @@ export const mySalesCount = query({
         from: v.optional(v.string()),
         to: v.optional(v.string()),
         filterType: v.optional(v.string()),
-        email: v.optional(v.string()),
+        email: v.optional(v.string()), // @deprecated — the caller is derived from the session
         customerId: v.optional(v.id("customers")),
         searchTerm: v.optional(v.string()), // Added for consistency
         packageType: v.optional(v.string()),
         deliveryStatus: v.optional(v.string()),
         transactionType: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        if (!args.email) return 0;
-
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email!))
-            .first();
-        if (!user) return 0;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.view");
+        const businessId = tenant.businessId;
 
         const shop = await ctx.db
             .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .withIndex("by_user", (q) => q.eq("userId", tenant.user._id))
+            .filter((q) => q.eq(q.field("businessId"), businessId))
             .first();
 
         // User MUST be assigned to a shop to see "My Sales" stats (even Admin)
@@ -1075,9 +1150,9 @@ export const mySalesCount = query({
 
         // Always scope by shop
         if (args.from && args.to) {
-            salesQuery = salesQuery.withIndex("by_shop_date", (q: any) => q.eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!));
+            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) => q.eq("businessId", businessId).eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!));
         } else {
-            salesQuery = salesQuery.withIndex("by_shop_date", (q: any) => q.eq("shopId", shop._id));
+            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) => q.eq("businessId", businessId).eq("shopId", shop._id));
         }
 
         // Apply Filters (REMOVE restriction for Hybrid view)
@@ -1161,14 +1236,31 @@ export const swap = mutation({
             pv: v.number(),
             bv: v.number(),
         })),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.create");
+        const businessId = tenant.businessId;
+        const userId = tenant.user._id;
+
         const date = new Date().toISOString();
+
+        // Every product involved must belong to this business.
+        for (const item of [...args.returnedItems, ...args.takenItems]) {
+            const stock = await ctx.db.get(item.stockId);
+            if (!stock || stock.businessId !== businessId) {
+                throw new ConvexError(
+                    "Forbidden: that product belongs to another business."
+                );
+            }
+        }
 
         // 1. Identify Shop/Warehouse
         const shop = await ctx.db
             .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", args.userId))
+            .withIndex("by_user", (q) => q.eq("userId", userId))
+            .filter((q) => q.eq(q.field("businessId"), businessId))
             .first();
 
         // 2. Handle Returned Items (Increase Stock)
@@ -1228,7 +1320,8 @@ export const swap = mutation({
         const totalValue = args.takenItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
         const saleId = await ctx.db.insert("sales", {
-            userId: args.userId,
+            businessId,
+            userId,
             shopId: shop?._id || args.shopId,
             total: totalValue,
             date,
@@ -1246,7 +1339,7 @@ export const swap = mutation({
                 productCode: i.productCode || "N/A",
             })),
             deliveryStatus: "Taken",
-            invoiceNumber: await generateInvoiceNumber(ctx, shop ? shop._id : args.shopId),
+            invoiceNumber: await generateInvoiceNumber(ctx, businessId, shop ? shop._id : args.shopId),
         });
 
         const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
@@ -1254,12 +1347,13 @@ export const swap = mutation({
         // Record stock movements in stockLedger
         for (const item of args.returnedItems) {
             await ctx.db.insert("stockLedger", {
+                businessId,
                 stockId: item.stockId,
                 shopId: shop ? shop._id : args.shopId,
                 deltaQty: item.quantity,
                 eventType: "SALE",
                 referenceId: invoiceNumberValue || saleId,
-                userId: args.userId,
+                userId,
                 timestamp: date,
                 notes: `Product Swap (Returned): ${item.name} (${item.quantity})`,
             });
@@ -1267,12 +1361,13 @@ export const swap = mutation({
 
         for (const item of args.takenItems) {
             await ctx.db.insert("stockLedger", {
+                businessId,
                 stockId: item.stockId,
                 shopId: shop ? shop._id : args.shopId,
                 deltaQty: -item.quantity,
                 eventType: "SALE",
                 referenceId: invoiceNumberValue || saleId,
-                userId: args.userId,
+                userId,
                 timestamp: date,
                 notes: `Product Swap (Issued): ${item.name} (${item.quantity})`,
             });
@@ -1281,22 +1376,29 @@ export const swap = mutation({
         // 5. Log activity
         const returnedSummary = args.returnedItems.map(i => `${i.name} (${i.quantity})`).join(", ");
         const takenSummary = args.takenItems.map(i => `${i.name} (${i.quantity})`).join(", ");
-        await ctx.db.insert("activityLogs", {
-            userId: args.userId,
-            action: "Product Swap",
-            details: `Swapped items at ${shop ? shop.name : "HQ"} - Returned: ${returnedSummary}, Taken: ${takenSummary}, Total Value: UGX ${totalValue.toLocaleString()}`,
-            timestamp: date,
-        });
+        await logActivity(
+            ctx,
+            businessId,
+            userId,
+            "Product Swap",
+            `Swapped items at ${shop ? shop.name : "HQ"} - Returned: ${returnedSummary}, Taken: ${takenSummary}, Total Value: ${totalValue.toLocaleString()}`
+        );
 
         return { saleId, invoiceNumber: invoiceNumberValue };
     },
 });
 
 export const getSale = query({
-    args: { id: v.id("sales") },
+    args: { id: v.id("sales"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.view");
+
         const sale = await ctx.db.get(args.id);
         if (!sale) return null;
+        if (sale.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that sale belongs to another business.");
+        }
 
         const [customer, shop, user] = await Promise.all([
             sale.customerId ? ctx.db.get(sale.customerId) : null,
@@ -1310,5 +1412,171 @@ export const getSale = query({
             shop,
             user,
         };
+    },
+});
+
+/**
+ * Refund a completed sale.
+ *
+ * A refund is not a sale edit. It is a separate action with its own
+ * permission (`sales.refund`), so the people who can ring up a sale are
+ * not automatically the people who can hand money back � the owner,
+ * an administrator and a supervisor can; a cashier cannot.
+ *
+ * The stock goes back to the warehouse, the money is recorded against the
+ * original invoice, and the action is written to the audit trail.
+ */
+export const refundSale = mutation({
+    args: {
+        saleId: v.id("sales"),
+        items: v.array(
+            v.object({
+                stockId: v.id("stocks"),
+                quantity: v.number(),
+            })
+        ),
+        reason: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
+    },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.refund");
+        const businessId = tenant.businessId;
+        const userId = tenant.user._id;
+
+        const sale = await ctx.db.get(args.saleId);
+        if (!sale) throw new ConvexError("Sale not found");
+        if (sale.businessId !== businessId) {
+            throw new ConvexError(
+                "Forbidden: that sale belongs to another business."
+            );
+        }
+        if (args.items.length === 0) {
+            throw new ConvexError("Choose at least one item to refund.");
+        }
+
+        // A branch manager may only refund sales from their own branches.
+        if (sale.branchId) {
+            await requireBranchAccess(ctx, tenant.membership, sale.branchId);
+        }
+
+        const alreadyRefunded = new Map<string, number>();
+        for (const item of sale.refundedItems ?? []) {
+            alreadyRefunded.set(item.stockId, (alreadyRefunded.get(item.stockId) ?? 0) + item.quantity);
+        }
+
+        const refundedItems: {
+            stockId: Id<"stocks">;
+            name: string;
+            productCode?: string;
+            quantity: number;
+            amount: number;
+        }[] = [];
+        let refundTotal = 0;
+
+        for (const line of args.items) {
+            if (line.quantity <= 0) {
+                throw new ConvexError("Refund quantities must be positive.");
+            }
+
+            const soldLine = sale.items.find((i) => i.stockId === line.stockId);
+            if (!soldLine) {
+                throw new ConvexError(
+                    "Forbidden: that product was not on this sale."
+                );
+            }
+
+            const already = alreadyRefunded.get(line.stockId) ?? 0;
+            if (already + line.quantity > soldLine.quantity) {
+                throw new ConvexError(
+                    `Cannot refund ${line.quantity} of ${soldLine.name} � only ${
+                        soldLine.quantity - already
+                    } remain on this sale.`
+                );
+            }
+
+            // The stock must belong to this business.
+            const stock = await ctx.db.get(line.stockId);
+            if (!stock || stock.businessId !== businessId) {
+                throw new ConvexError(
+                    "Forbidden: that product belongs to another business."
+                );
+            }
+
+            // The amount refunded is computed on the server from the price
+            // that was actually charged, never from the browser.
+            const amount = soldLine.price * line.quantity;
+            refundTotal += amount;
+
+            refundedItems.push({
+                stockId: line.stockId,
+                name: soldLine.name,
+                productCode: soldLine.productCode,
+                quantity: line.quantity,
+                amount,
+            });
+
+            await ctx.db.patch(line.stockId, { qty: stock.qty + line.quantity });
+
+            await ctx.db.insert("stockLedger", {
+                businessId,
+                stockId: line.stockId,
+                shopId: sale.shopId,
+                deltaQty: line.quantity,
+                eventType: "SALE_REFUND",
+                referenceId: sale.invoiceNumber || args.saleId,
+                userId,
+                timestamp: new Date().toISOString(),
+                notes: `Refund of ${soldLine.name} (${line.quantity}) on sale ${
+                    sale.invoiceNumber || args.saleId
+                }`,
+            });
+        }
+
+        const nextRefunded = [...(sale.refundedItems ?? []), ...refundedItems];
+        const totalRefunded = (sale.refundAmount ?? 0) + refundTotal;
+        const isFullyRefunded = totalRefunded >= sale.total;
+
+        await ctx.db.patch(args.saleId, {
+            refundedItems: nextRefunded,
+            refundAmount: totalRefunded,
+            refundedAt: new Date().toISOString(),
+            refundedBy: userId,
+            refundReason: args.reason,
+            deliveryStatus: isFullyRefunded ? "Refunded" : sale.deliveryStatus,
+        });
+
+        await logActivity(
+            ctx,
+            businessId,
+            userId,
+            "Refund Sale",
+            `Refunded ${refundedItems.length} line(s) worth ${refundTotal} on sale ${
+                sale.invoiceNumber || args.saleId
+            }${args.reason ? ` � ${args.reason}` : ""}`
+        );
+
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: userId,
+            actorRole: tenant.membership.role,
+            action: "sales.refund",
+            targetType: "sale",
+            targetId: args.saleId,
+            metadata: {
+                invoiceNumber: sale.invoiceNumber,
+                refundAmount: refundTotal,
+                totalRefunded,
+                fullyRefunded: isFullyRefunded,
+                items: refundedItems.map((i) => ({
+                    name: i.name,
+                    quantity: i.quantity,
+                    amount: i.amount,
+                })),
+                reason: args.reason,
+            },
+        });
+
+        return { refundAmount: refundTotal, totalRefunded, fullyRefunded: isFullyRefunded };
     },
 });

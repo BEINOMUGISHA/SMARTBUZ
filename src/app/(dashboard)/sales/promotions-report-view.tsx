@@ -46,8 +46,8 @@ export function PromotionsReportView() {
 
     // 1. Stats
     const stats = useQuery(api.promotions.redemptionsStats, queryArgs);
-    const activeProfile = useQuery(api.businessProfiles.getActive);
-    const businessName = activeProfile?.businessName || "SMARTBUZ POS";
+    const activeProfile = useQuery(api.businesses.getActive, {});
+    const businessName = activeProfile?.name || "SMARTBUZ POS";
     const businessAddress = activeProfile?.businessAddress || "";
     const businessPhone = activeProfile?.businessPhone || "";
 

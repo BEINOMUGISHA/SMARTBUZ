@@ -1,7 +1,16 @@
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { Id } from "./_generated/dataModel";
+import { logActivity, requirePermission, requireTenant } from "./tenancy";
+
+/**
+ * SMART_BUZ — products (stock).
+ *
+ * Each business keeps its own catalogue. Product codes are unique *per
+ * business*, so two businesses may both sell "SKU-001" without colliding.
+ */
 
 // List stocks with pagination, search, and category filtering
 export const list = query({
@@ -10,14 +19,29 @@ export const list = query({
         searchTerm: v.optional(v.string()),
         categoryId: v.optional(v.id("categories")),
         halfPrice: v.optional(v.boolean()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
+        if (args.categoryId) {
+            const category = await ctx.db.get(args.categoryId);
+            if (!category || category.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that category belongs to another business.");
+            }
+        }
+
         // [OPTIMIZED with Index]
         let query;
         if (args.searchTerm) {
+            // The search index spans every business, so the tenant filter is
+            // applied to the result set.
             query = ctx.db
                 .query("stocks")
-                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!));
+                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!))
+                .filter((q) => q.eq(q.field("businessId"), businessId));
 
             if (args.halfPrice !== undefined) {
                 query = query.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
@@ -27,14 +51,21 @@ export const list = query({
             }
             return await query.paginate(args.paginationOpts);
         } else if (args.categoryId) {
-            query = ctx.db.query("stocks").withIndex("by_category", q => q.eq("categoryId", args.categoryId!));
+            query = ctx.db
+                .query("stocks")
+                .withIndex("by_businessId_category", (q) =>
+                    q.eq("businessId", businessId).eq("categoryId", args.categoryId!)
+                );
             if (args.halfPrice !== undefined) {
                 query = query.filter(q => q.eq(q.field("halfPrice"), args.halfPrice));
             }
         } else if (args.halfPrice !== undefined) {
-            query = ctx.db.query("stocks").withIndex("by_halfPrice", q => q.eq("halfPrice", args.halfPrice!));
+            query = ctx.db
+                .query("stocks")
+                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+                .filter(q => q.eq(q.field("halfPrice"), args.halfPrice!));
         } else {
-            query = ctx.db.query("stocks");
+            query = ctx.db.query("stocks").withIndex("by_businessId", (q) => q.eq("businessId", businessId));
         }
 
         return await query.order("desc").paginate(args.paginationOpts);
@@ -48,13 +79,19 @@ export const getPaginated = query({
         searchTerm: v.optional(v.string()),
         categoryId: v.optional(v.id("categories")),
         halfPrice: v.optional(v.boolean()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
         // [OPTIMIZED with proper types]
         if (args.searchTerm) {
             let searchQ = ctx.db
                 .query("stocks")
-                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!));
+                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!))
+                .filter((q) => q.eq(q.field("businessId"), businessId));
 
             if (args.halfPrice !== undefined) {
                 searchQ = searchQ.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
@@ -65,8 +102,11 @@ export const getPaginated = query({
             const all = await searchQ.collect();
             // Fallback to exact code match if no name results
             if (all.length === 0) {
-                const byCode = await ctx.db.query("stocks")
-                    .withIndex("by_productCode", q => q.eq("productCode", args.searchTerm!))
+                const byCode = await ctx.db
+                    .query("stocks")
+                    .withIndex("by_businessId_productCode", (q) =>
+                        q.eq("businessId", businessId).eq("productCode", args.searchTerm!)
+                    )
                     .first();
                 if (byCode) {
                     if ((args.halfPrice === undefined || byCode.halfPrice === args.halfPrice) &&
@@ -80,14 +120,21 @@ export const getPaginated = query({
 
         let stocksQuery;
         if (args.categoryId) {
-            stocksQuery = ctx.db.query("stocks").withIndex("by_category", q => q.eq("categoryId", args.categoryId!));
+            stocksQuery = ctx.db
+                .query("stocks")
+                .withIndex("by_businessId_category", (q) =>
+                    q.eq("businessId", businessId).eq("categoryId", args.categoryId!)
+                );
             if (args.halfPrice !== undefined) {
                 stocksQuery = stocksQuery.filter(q => q.eq(q.field("halfPrice"), args.halfPrice));
             }
         } else if (args.halfPrice !== undefined) {
-            stocksQuery = ctx.db.query("stocks").withIndex("by_halfPrice", q => q.eq("halfPrice", args.halfPrice!));
+            stocksQuery = ctx.db
+                .query("stocks")
+                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+                .filter(q => q.eq(q.field("halfPrice"), args.halfPrice!));
         } else {
-            stocksQuery = ctx.db.query("stocks");
+            stocksQuery = ctx.db.query("stocks").withIndex("by_businessId", (q) => q.eq("businessId", businessId));
         }
 
         const all = await stocksQuery.order("desc").collect();
@@ -103,14 +150,20 @@ export const count = query({
         searchTerm: v.optional(v.string()),
         categoryId: v.optional(v.id("categories")),
         halfPrice: v.optional(v.boolean()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
         // [OPTIMIZED with Index]
         let query;
         if (args.searchTerm) {
             query = ctx.db
                 .query("stocks")
-                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!));
+                .withSearchIndex("search_name", (q) => q.search("name", args.searchTerm!))
+                .filter((q) => q.eq(q.field("businessId"), businessId));
 
             if (args.halfPrice !== undefined) {
                 query = query.filter((q) => q.eq(q.field("halfPrice"), args.halfPrice));
@@ -119,14 +172,21 @@ export const count = query({
                 query = query.filter((q) => q.eq(q.field("categoryId"), args.categoryId));
             }
         } else if (args.categoryId) {
-            query = ctx.db.query("stocks").withIndex("by_category", q => q.eq("categoryId", args.categoryId!));
+            query = ctx.db
+                .query("stocks")
+                .withIndex("by_businessId_category", (q) =>
+                    q.eq("businessId", businessId).eq("categoryId", args.categoryId!)
+                );
             if (args.halfPrice !== undefined) {
                 query = query.filter(q => q.eq(q.field("halfPrice"), args.halfPrice));
             }
         } else if (args.halfPrice !== undefined) {
-            query = ctx.db.query("stocks").withIndex("by_halfPrice", q => q.eq("halfPrice", args.halfPrice!));
+            query = ctx.db
+                .query("stocks")
+                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+                .filter(q => q.eq(q.field("halfPrice"), args.halfPrice!));
         } else {
-            query = ctx.db.query("stocks");
+            query = ctx.db.query("stocks").withIndex("by_businessId", (q) => q.eq("businessId", businessId));
         }
 
         return (await query.collect()).length;
@@ -134,11 +194,24 @@ export const count = query({
 });
 
 export const getInventoryStats = query({
-    args: {},
-    handler: async (ctx) => {
-        const stocks = await ctx.db.query("stocks").collect();
-        const categories = await ctx.db.query("categories").collect();
-        const shops = await ctx.db.query("shops").collect();
+    args: { businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
+        const stocks = await ctx.db
+            .query("stocks")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
+        const categories = await ctx.db
+            .query("categories")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
+        const shops = await ctx.db
+            .query("shops")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
         const catMap = new Map(categories.map(c => [c._id, c.type]));
 
         const stats = stocks.reduce((acc, s) => {
@@ -222,20 +295,31 @@ export const getLowStockAudit = query({
     args: {
         threshold: v.optional(v.number()),
         lookbackDays: v.optional(v.number()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
         const threshold = args.threshold ?? 10;
         const lookbackDays = args.lookbackDays ?? 7;
         const lowStock = await ctx.db
             .query("stocks")
-            .withIndex("by_qty")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
             .filter(q => q.lt(q.field("qty"), threshold))
             .collect();
 
-        const categories = await ctx.db.query("categories").collect();
+        const categories = await ctx.db
+            .query("categories")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
         const catMap = new Map(categories.map(c => [c._id, c.type]));
 
-        const sales = await ctx.db.query("sales").collect();
+        const sales = await ctx.db
+            .query("sales")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
         const startTime = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
         const soldByStock = new Map<Id<"stocks">, number>();
 
@@ -272,23 +356,23 @@ export const getShopStock = query({
         searchTerm: v.optional(v.string()),
         halfPrice: v.optional(v.boolean()),
         availability: v.optional(v.union(v.literal("inStock"), v.literal("outOfStock"), v.literal("all"))),
-        email: v.optional(v.string()), // Pass email explicitly because we don't use Convex Auth
+        email: v.optional(v.string()), // @deprecated — the caller is derived from the session
         limit: v.optional(v.number()),
         offset: v.optional(v.number()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        if (!args.email) return { shop: null, stocks: [] };
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
 
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email!))
-            .first();
-
-        if (!user) return { shop: null, stocks: [] };
-
+        // The shop is the counter the caller runs in *this* business. The
+        // email argument is ignored: the browser used to be able to ask for
+        // any user's counter.
         const shop = await ctx.db
             .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .withIndex("by_user", (q) => q.eq("userId", tenant.user._id))
+            .filter((q) => q.eq(q.field("businessId"), businessId))
             .first();
 
         // If no shop, user is HQ or unassigned
@@ -317,9 +401,6 @@ export const getShopStock = query({
             stocks = stocks.filter(s => s.qty <= 0);
         }
 
-        // Map to match the shape of the main 'stocks' table for UI consistency if needed
-        // The array in 'shops' already has { stockId, name, qty... }
-
         const totalCount = stocks.length;
         if (args.offset !== undefined && args.limit !== undefined) {
             stocks = stocks.slice(args.offset, args.offset + args.limit);
@@ -332,15 +413,17 @@ export const getShopStock = query({
 export const listAll = query({
     args: {
         halfPrice: v.optional(v.boolean()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let q = ctx.db.query("stocks");
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
 
-        // We can't easily chain filters if we don't know which index to use or if we just scan all.
-        // For "stocks", scanning all is fine for < 10k items.
-        // If we want to be strict, we can use an index if defined, but schema didn't show "by_halfPrice".
-
-        const all = await q.collect();
+        const all = await ctx.db
+            .query("stocks")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
 
         if (args.halfPrice !== undefined) {
             return all.filter(s => !!s.halfPrice === args.halfPrice);
@@ -350,23 +433,37 @@ export const listAll = query({
     },
 });
 
-// Get stock by product code
+// Get stock by product code (unique within the business)
 export const getByCode = query({
-    args: { productCode: v.string() },
+    args: {
+        productCode: v.string(),
+        businessId: v.optional(v.id("businesses")),
+    },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
         return await ctx.db
             .query("stocks")
-            .withIndex("by_productCode", (q) => q.eq("productCode", args.productCode))
+            .withIndex("by_businessId_productCode", (q) =>
+                q.eq("businessId", tenant.businessId).eq("productCode", args.productCode)
+            )
             .unique();
     },
 });
 
 // Get a single stock with details
 export const getStock = query({
-    args: { id: v.id("stocks") },
+    args: { id: v.id("stocks"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+
         const stock = await ctx.db.get(args.id);
         if (!stock) return null;
+        if (stock.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
 
         // Get category if available
         const category = stock.categoryId ? await ctx.db.get(stock.categoryId) : null;
@@ -392,53 +489,76 @@ export const add = mutation({
         categoryId: v.id("categories"),
         halfPrice: v.optional(v.boolean()),
         supplier: v.optional(v.string()),
+        warehouseId: v.optional(v.id("warehouses")),
+        branchId: v.optional(v.id("branches")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const { supplier, ...insertArgs } = args;
-        const identity = await ctx.auth.getUserIdentity();
-        let userId: Id<"users"> | undefined;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.create");
+        const businessId = tenant.businessId;
+        const userId = tenant.user._id;
 
-        if (identity) {
-            const user = await ctx.db
-                .query("users")
-                .withIndex("by_email", (q) => q.eq("email", identity.email!))
-                .first();
-            if (user) userId = user._id;
+        const category = await ctx.db.get(args.categoryId);
+        if (!category || category.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that category belongs to another business.");
+        }
+        if (args.warehouseId) {
+            const warehouse = await ctx.db.get(args.warehouseId);
+            if (!warehouse || warehouse.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that warehouse belongs to another business.");
+            }
+        }
+        if (args.branchId) {
+            const branch = await ctx.db.get(args.branchId);
+            if (!branch || branch.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that branch belongs to another business.");
+            }
         }
 
-        if (!userId) {
-            const admin = await ctx.db.query("users").first();
-            if (admin) userId = admin._id;
+        // Product codes are unique within the business.
+        const duplicate = await ctx.db
+            .query("stocks")
+            .withIndex("by_businessId_productCode", (q) =>
+                q.eq("businessId", businessId).eq("productCode", args.productCode)
+            )
+            .unique();
+        if (duplicate) {
+            throw new ConvexError(
+                `Product code "${args.productCode}" already exists in this business.`
+            );
         }
 
+        const { supplier, businessId: _ignored, ...insertArgs } = args;
         const stockId = await ctx.db.insert("stocks", {
             ...insertArgs,
+            businessId,
             supplier,
         });
 
-        if (userId) {
-            await ctx.db.insert("stockEntries", {
-                stockId,
-                quantity: args.qty,
-                userId,
-                date: new Date().toISOString(),
-                price: args.price,
-                purchasePrice: args.purchasePrice,
-                pv: args.pv,
-                bv: args.bv,
-                halfPrice: args.halfPrice || false,
-                type: "add",
-                supplier,
-            });
+        await ctx.db.insert("stockEntries", {
+            businessId,
+            stockId,
+            quantity: args.qty,
+            userId,
+            date: new Date().toISOString(),
+            price: args.price,
+            purchasePrice: args.purchasePrice,
+            pv: args.pv,
+            bv: args.bv,
+            halfPrice: args.halfPrice || false,
+            type: "add",
+            supplier,
+        });
 
-            // Log activity
-            await ctx.db.insert("activityLogs", {
-                userId,
-                action: "Add Stock",
-                details: `Added new stock: ${args.name} (${args.productCode}) - Qty: ${args.qty}, Price: UGX ${args.price.toLocaleString()}`,
-                timestamp: new Date().toISOString(),
-            });
-        }
+        // Log activity
+        await logActivity(
+            ctx,
+            businessId,
+            userId,
+            "Add Stock",
+            `Added new stock: ${args.name} (${args.productCode}) - Qty: ${args.qty}, Price: ${args.price.toLocaleString()}`
+        );
 
         return stockId;
     },
@@ -459,11 +579,41 @@ export const update = mutation({
         categoryId: v.optional(v.id("categories")),
         halfPrice: v.optional(v.boolean()),
         supplier: v.optional(v.string()),
+        warehouseId: v.optional(v.id("warehouses")),
+        branchId: v.optional(v.id("branches")),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const { id, ...rest } = args;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.update");
+        const businessId = tenant.businessId;
+
+        const { id, businessId: _ignored, ...rest } = args;
         const oldStock = await ctx.db.get(id);
         if (!oldStock) throw new Error("Stock not found");
+        if (oldStock.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
+
+        if (rest.categoryId) {
+            const category = await ctx.db.get(rest.categoryId);
+            if (!category || category.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that category belongs to another business.");
+            }
+        }
+        if (rest.productCode && rest.productCode !== oldStock.productCode) {
+            const duplicate = await ctx.db
+                .query("stocks")
+                .withIndex("by_businessId_productCode", (q) =>
+                    q.eq("businessId", businessId).eq("productCode", rest.productCode!)
+                )
+                .unique();
+            if (duplicate) {
+                throw new ConvexError(
+                    `Product code "${rest.productCode}" already exists in this business.`
+                );
+            }
+        }
 
         await ctx.db.patch(id, rest);
 
@@ -471,7 +621,10 @@ export const update = mutation({
         const halfPriceChanged = rest.halfPrice !== undefined && rest.halfPrice !== oldStock.halfPrice;
 
         if (priceChanged || halfPriceChanged || rest.pv !== undefined || rest.bv !== undefined) {
-            const shops = await ctx.db.query("shops").collect();
+            const shops = await ctx.db
+                .query("shops")
+                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+                .collect();
             for (const shop of shops) {
                 const issuedStocks = shop.issuedStocks.map(item => {
                     if (item.stockId === id) {
@@ -490,42 +643,35 @@ export const update = mutation({
         }
 
         // Log activity
-        const identity = await ctx.auth.getUserIdentity();
-        let userId: Id<"users"> | undefined;
-
-        if (identity) {
-            const user = await ctx.db
-                .query("users")
-                .withIndex("by_email", (q) => q.eq("email", identity.email!))
-                .first();
-            if (user) userId = user._id;
-        }
-
-        if (!userId) {
-            const admin = await ctx.db.query("users").first();
-            if (admin) userId = admin._id;
-        }
-
-        if (userId) {
-            const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
-            await ctx.db.insert("activityLogs", {
-                userId,
-                action: "Update Stock",
-                details: `Updated stock: ${oldStock.name} (${oldStock.productCode}) - Changes: ${changes}`,
-                timestamp: new Date().toISOString(),
-            });
-        }
+        const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Update Stock",
+            `Updated stock: ${oldStock.name} (${oldStock.productCode}) - Changes: ${changes}`
+        );
     },
 });
 
 // Delete stock
 export const remove = mutation({
-    args: { id: v.id("stocks") },
+    args: { id: v.id("stocks"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.update");
+        const businessId = tenant.businessId;
+
         const stock = await ctx.db.get(args.id);
         if (!stock) throw new Error("Stock not found");
+        if (stock.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
 
-        const shops = await ctx.db.query("shops").collect();
+        const shops = await ctx.db
+            .query("shops")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
         for (const shop of shops) {
             const issuedStocks = shop.issuedStocks.filter(item => item.stockId !== args.id);
             if (issuedStocks.length !== shop.issuedStocks.length) {
@@ -535,30 +681,13 @@ export const remove = mutation({
         await ctx.db.delete(args.id);
 
         // Log activity
-        const identity = await ctx.auth.getUserIdentity();
-        let userId: Id<"users"> | undefined;
-
-        if (identity) {
-            const user = await ctx.db
-                .query("users")
-                .withIndex("by_email", (q) => q.eq("email", identity.email!))
-                .first();
-            if (user) userId = user._id;
-        }
-
-        if (!userId) {
-            const admin = await ctx.db.query("users").first();
-            if (admin) userId = admin._id;
-        }
-
-        if (userId) {
-            await ctx.db.insert("activityLogs", {
-                userId,
-                action: "Delete Stock",
-                details: `Deleted stock: ${stock.name} (${stock.productCode}) - Previous Qty: ${stock.qty}`,
-                timestamp: new Date().toISOString(),
-            });
-        }
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Stock",
+            `Deleted stock: ${stock.name} (${stock.productCode}) - Previous Qty: ${stock.qty}`
+        );
     },
 });
 
@@ -573,27 +702,21 @@ export const restock = mutation({
         halfPrice: v.boolean(),
         date: v.string(),
         supplier: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        const { supplier, ...restockArgs } = args;
-        const identity = await ctx.auth.getUserIdentity();
-        let userId: Id<"users"> | undefined;
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.adjust");
+        const businessId = tenant.businessId;
+        const userId = tenant.user._id;
 
-        if (identity) {
-            const user = await ctx.db
-                .query("users")
-                .withIndex("by_email", (q) => q.eq("email", identity.email!))
-                .first();
-            if (user) userId = user._id;
-        }
-
-        if (!userId) {
-            const admin = await ctx.db.query("users").first();
-            if (admin) userId = admin._id;
-        }
+        const { supplier, businessId: _ignored, ...restockArgs } = args;
 
         const stock = await ctx.db.get(args.id);
         if (!stock) throw new Error("Stock not found");
+        if (stock.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
 
         await ctx.db.patch(args.id, {
             qty: stock.qty + args.quantityToAdd,
@@ -604,31 +727,34 @@ export const restock = mutation({
             supplier: supplier ?? stock.supplier,
         });
 
-        if (userId) {
-            await ctx.db.insert("stockEntries", {
-                stockId: args.id,
-                quantity: args.quantityToAdd,
-                userId,
-                date: args.date || new Date().toISOString(),
-                price: args.price,
-                purchasePrice: stock.purchasePrice,
-                pv: args.pv,
-                bv: args.bv,
-                halfPrice: args.halfPrice,
-                type: "restock",
-                supplier,
-            });
+        await ctx.db.insert("stockEntries", {
+            businessId,
+            stockId: args.id,
+            quantity: args.quantityToAdd,
+            userId,
+            date: args.date || new Date().toISOString(),
+            price: args.price,
+            purchasePrice: stock.purchasePrice,
+            pv: args.pv,
+            bv: args.bv,
+            halfPrice: args.halfPrice,
+            type: "restock",
+            supplier,
+        });
 
-            // Log activity
-            await ctx.db.insert("activityLogs", {
-                userId,
-                action: "Restock",
-                details: `Restocked ${stock.name} (${stock.productCode}) - Added: ${args.quantityToAdd}, New Qty: ${stock.qty + args.quantityToAdd}, Supplier: ${supplier || stock.supplier || 'N/A'}`,
-                timestamp: new Date().toISOString(),
-            });
-        }
+        // Log activity
+        await logActivity(
+            ctx,
+            businessId,
+            userId,
+            "Restock",
+            `Restocked ${stock.name} (${stock.productCode}) - Added: ${args.quantityToAdd}, New Qty: ${stock.qty + args.quantityToAdd}, Supplier: ${supplier || stock.supplier || 'N/A'}`
+        );
 
-        const shops = await ctx.db.query("shops").collect();
+        const shops = await ctx.db
+            .query("shops")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
         for (const shop of shops) {
             const issuedStocks = shop.issuedStocks.map(item => {
                 if (item.stockId === args.id) {
@@ -653,11 +779,26 @@ export const getShopIssueRecords = query({
         from: v.optional(v.string()),
         to: v.optional(v.string()),
         searchTerm: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
+        if (args.shopId) {
+            const shop = await ctx.db.get(args.shopId);
+            if (!shop || shop.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that shop belongs to another business.");
+            }
+        }
+
         let q;
         if (args.shopId) {
-            q = ctx.db.query("shopIssueRecords").withIndex("by_shop_date", q => q.eq("shopId", args.shopId!));
+            q = ctx.db
+                .query("shopIssueRecords")
+                .withIndex("by_businessId", (index) => index.eq("businessId", businessId))
+                .filter((filter) => filter.eq(filter.field("shopId"), args.shopId));
             if (args.from && args.to) {
                 q = q.filter(q => q.and(
                     q.gte(q.field("date"), args.from!),
@@ -665,7 +806,9 @@ export const getShopIssueRecords = query({
                 ));
             }
         } else {
-            q = ctx.db.query("shopIssueRecords");
+            q = ctx.db
+                .query("shopIssueRecords")
+                .withIndex("by_businessId", (index) => index.eq("businessId", businessId));
             if (args.from && args.to) {
                 q = q.filter(q => q.and(
                     q.gte(q.field("date"), args.from!),
@@ -714,9 +857,16 @@ export const getStockEntries = query({
         from: v.optional(v.string()),
         to: v.optional(v.string()),
         type: v.optional(v.string()), // "add" or "restock"
+        businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
-        let q = ctx.db.query("stockEntries");
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.view");
+        const businessId = tenant.businessId;
+
+        let q = ctx.db
+            .query("stockEntries")
+            .withIndex("by_businessId", (index) => index.eq("businessId", businessId));
 
         if (args.from && args.to) {
             q = q.filter(q => q.and(

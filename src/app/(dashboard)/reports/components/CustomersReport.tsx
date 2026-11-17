@@ -39,7 +39,7 @@ export function CustomersReport() {
     const [viewingCustomer, setViewingCustomer] = useState<any>(null);
     const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
 
-    const shops = useQuery(api.shops.listAll);
+    const shops = useQuery(api.shops.listAll, {});
 
     const args = {
         startDate: dateRange.from,

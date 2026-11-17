@@ -100,8 +100,8 @@ export function MySalesView() {
 
     // 1. Stats
     const stats = useQuery(api.sales.mySalesStats, queryArgs);
-    const activeProfile = useQuery(api.businessProfiles.getActive);
-    const businessName = activeProfile?.businessName || "SMARTBUZ POS";
+    const activeProfile = useQuery(api.businesses.getActive, {});
+    const businessName = activeProfile?.name || "SMARTBUZ POS";
     const businessAddress = activeProfile?.businessAddress || "";
     const businessPhone = activeProfile?.businessPhone || "";
 
@@ -759,7 +759,7 @@ export function MySalesView() {
 
 function DistributorValues({ selectedId, onSelect }: { selectedId: Id<"customers"> | undefined, onSelect: (id: Id<"customers"> | undefined) => void }) {
     const [open, setOpen] = useState(false);
-    const customers = useQuery(api.customers.listAll);
+    const customers = useQuery(api.customers.listAll, {});
 
     const selectedCustomer = customers?.find((c) => c._id === selectedId);
 

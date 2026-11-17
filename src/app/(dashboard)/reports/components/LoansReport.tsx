@@ -35,8 +35,8 @@ export function LoansReport() {
     const [customerId, setCustomerId] = useState<string>("all");
     const [clientType, setClientType] = useState<string>("All");
 
-    const shops = useQuery(api.shops.listAll);
-    const customers = useQuery(api.customers.listAll);
+    const shops = useQuery(api.shops.listAll, {});
+    const customers = useQuery(api.customers.listAll, {});
 
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);

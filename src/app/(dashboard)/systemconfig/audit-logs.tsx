@@ -47,7 +47,7 @@ export function AuditLogsManager() {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
 
-    const users = useQuery(api.users.listAll) || [];
+    const users = useQuery(api.users.listAll, {}) || [];
 
     const logsResult = useQuery(api.activityLogs.list, {
         paginationOpts: {

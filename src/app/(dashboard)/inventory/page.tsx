@@ -23,7 +23,7 @@ import Link from "next/link";
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export default function InventoryPage() {
-    const stats = useQuery(api.stocks.getInventoryStats);
+    const stats = useQuery(api.stocks.getInventoryStats, {});
     const lowStockAudit = useQuery(api.stocks.getLowStockAudit, { threshold: 15, lookbackDays: 7 });
     const activities = useQuery(api.activityLogs.list, { paginationOpts: { numItems: 8, cursor: null } });
 
