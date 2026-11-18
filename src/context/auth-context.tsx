@@ -20,6 +20,12 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { can, canAll, canAny, type Permission } from "@/lib/permissions";
+import {
+  cacheSession,
+  clearCachedSession,
+  readCachedSession,
+  type CachedSession,
+} from "@/lib/offline/session-cache";
 
 type User = {
   _id: Id<"users">;
@@ -79,10 +85,26 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [email, setEmail] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
+  /**
+   * The last session the server confirmed, kept locally.
+   *
+   * A till with no network still has to come up so the cashier can sell.
+   * The cache is only a fallback: it never grants anything the server
+   * would not grant, it just lets the interface show the right screen
+   * while the server cannot be asked.
+   */
+  const [cachedSession, setCachedSession] = useState<CachedSession | null>(null);
   const router = useRouter();
 
-  // Rehydrate session from the server-side cookie on mount
+  // Rehydrate session from the server-side cookie on mount, falling back
+  // to the locally cached session when the server cannot be reached.
   useEffect(() => {
+    const cached = readCachedSession();
+    if (cached) {
+      setCachedSession(cached);
+      setEmail(cached.email);
+    }
+
     fetch("/api/auth", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : { user: null }))
       .then((data) => {
@@ -90,26 +112,53 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setEmail(data.user.email);
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        // No network. The cached session stands until the server can be
+        // reached again.
+      })
       .finally(() => setIsRestoring(false));
   }, []);
 
   // The caller is derived from the signed access token, not from the email.
-  const me = useQuery(api.users.me, email ? {} : "skip");
+  const liveMe = useQuery(api.users.me, email ? {} : "skip");
+
+  // Remember the session as soon as the server confirms it, so the next
+  // time the network goes the till still knows who is at it.
+  useEffect(() => {
+    if (!liveMe?.user || !email) return;
+    const snapshot = {
+      email,
+      user: liveMe.user as unknown as Record<string, unknown>,
+      businesses: liveMe.businesses ?? [],
+      activeBusiness: liveMe.activeBusiness ?? null,
+      permissions: (liveMe.permissions as string[]) ?? [],
+    };
+    setCachedSession({ ...snapshot, cachedAt: new Date().toISOString() });
+    cacheSession(snapshot);
+  }, [liveMe, email]);
+
+  // The live session when there is one; the cached one when the server
+  // cannot be reached.
+  const me = liveMe ?? cachedSession;
 
   const user = (me?.user as User | undefined) ?? null;
-  const businesses: BusinessSummary[] = me?.businesses ?? [];
-  const activeBusiness = me?.activeBusiness ?? null;
+  const businesses: BusinessSummary[] = (me?.businesses as BusinessSummary[]) ?? [];
+  const activeBusiness =
+    (me?.activeBusiness as AuthContextType["activeBusiness"]) ?? null;
   const permissions: readonly string[] = (me?.permissions as string[] | undefined) ?? [];
 
   const isLoading = isRestoring || (email !== null && me === undefined);
 
-  // If the session no longer resolves to a valid user, clear the local state
+  // If the server has answered and says the session is no good, the local
+  // state goes too. An unanswered server (no network) does not sign the
+  // cashier out — that would lose their queue.
   useEffect(() => {
-    if (!isLoading && email && me === null) {
+    if (!isLoading && email && liveMe === null) {
       setEmail(null);
+      setCachedSession(null);
+      clearCachedSession();
     }
-  }, [me, isLoading, email]);
+  }, [liveMe, isLoading, email]);
 
   const login = useCallback(async (newEmail: string, password: string) => {
     try {
@@ -134,6 +183,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [router]);
 
   const logout = useCallback(async () => {
+    clearCachedSession();
+    setCachedSession(null);
     await fetch("/api/auth?action=logout", {
       method: "POST",
       credentials: "include",

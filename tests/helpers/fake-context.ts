@@ -94,6 +94,10 @@ const TABLES = [
   "stocks",
   "sales",
   "shops",
+  /** Promotions — read by the sale, so a sale cannot be made without them. */
+  "promotions",
+  "promotionProducts",
+  "promotionRedemptions",
   "expenses",
   // Phase 4
   "customers",
@@ -124,6 +128,9 @@ const TABLES = [
   "subscriptionPayments",
   "licenseKeys",
   "devices",
+  // Phase 7
+  "syncLogs",
+  "stockConflicts",
 ] as const;
 
 type TableName = (typeof TABLES)[number];

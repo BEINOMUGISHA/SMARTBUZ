@@ -14,6 +14,7 @@ import {
     Settings,
     CreditCard,
     ShieldCheck,
+    MonitorSmartphone,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,8 @@ import { useAuth } from "@/context/auth-context";
 import { useActiveCategory } from "@/hooks/use-active-category";
 import { groupNavigation } from "@/lib/category-nav";
 import { cn } from "@/lib/utils";
-import { OfflineStatusBanner } from "@/components/offline-status-banner";
+import { OfflineStatusBanner } from "@/components/offline/sync-status";
+import { SyncProvider } from "@/components/offline/sync-provider";
 import { BusinessSwitcher } from "@/components/business-switcher";
 
 const reportsSubItems = [
@@ -265,6 +267,20 @@ export default function DashboardLayout({
                 </Link>
 
                 <Link
+                    href="/devices"
+                    onClick={() => setIsMobileOpen(false)}
+                    className={cn(
+                        "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        pathname === "/devices" && "bg-sidebar-accent text-sidebar-accent-foreground",
+                        isCollapsed && "justify-center px-2"
+                    )}
+                    title={isCollapsed ? "Devices" : undefined}
+                >
+                    <MonitorSmartphone className="h-5 w-5" />
+                    {!isCollapsed && <span>Devices</span>}
+                </Link>
+
+                <Link
                     href="/settings"
                     onClick={() => setIsMobileOpen(false)}
                     className={cn(
@@ -360,6 +376,7 @@ export default function DashboardLayout({
     );
 
     return (
+        <SyncProvider>
         <div className="flex min-h-screen w-full bg-background/50">
             {/* Desktop Sidebar */}
             <aside
@@ -414,5 +431,6 @@ export default function DashboardLayout({
                 </main>
             </div>
         </div>
+        </SyncProvider>
     );
 }

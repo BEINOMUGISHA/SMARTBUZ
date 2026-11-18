@@ -5,6 +5,11 @@ import { paginationOptsValidator } from "convex/server";
 import { Id, Doc } from "./_generated/dataModel";
 import { logActivity, requireBranchAccess, requirePermission, requireTenant } from "./tenancy";
 import { writeAudit } from "./audit";
+import {
+    applySale,
+    generateInvoiceNumber,
+    processPromotionTriggers,
+} from "./salesCore";
 
 /**
  * SMART_BUZ — sales.
@@ -14,153 +19,6 @@ import { writeAudit } from "./audit";
  * client is never trusted for money), and every row that is written is
  * stamped with the tenant.
  */
-
-async function generateInvoiceNumber(
-    ctx: MutationCtx,
-    businessId: Id<"businesses">,
-    shopId?: Id<"shops">
-) {
-    let prefix = "HQ";
-
-    if (shopId) {
-        const shop = await ctx.db.get(shopId);
-        if (shop && shop.serialNumber) {
-            // Extract the first part of the serial number (e.g., "MBR" from "MBR-101")
-            prefix = shop.serialNumber.split("-")[0];
-        }
-    }
-
-    const counterName = `invoice_${prefix}`;
-    // Invoice sequences are per business: two businesses may both issue
-    // "MBR-001" without colliding.
-    const counter = await ctx.db
-        .query("counters")
-        .withIndex("by_businessId_name", (q) =>
-            q.eq("businessId", businessId).eq("name", counterName)
-        )
-        .first();
-
-    let nextValue = 1; // Start from 001
-    if (counter) {
-        nextValue = counter.lastValue + 1;
-        await ctx.db.patch(counter._id, { lastValue: nextValue });
-    } else {
-        await ctx.db.insert("counters", { businessId, name: counterName, lastValue: nextValue });
-    }
-
-    return `${prefix}-${String(nextValue).padStart(3, "0")}`;
-}
-
-interface ProcessPromotionParams {
-    businessId: Id<"businesses">;
-    salesId: Id<"sales">;
-    customerId?: Id<"customers">;
-    userId: Id<"users">;
-    shopId?: Id<"shops">;
-    date: string;
-    items: Array<{
-        stockId: Id<"stocks">;
-        name: string;
-        productCode?: string;
-        quantity: number;
-        pv: number;
-        bv: number;
-    }>;
-}
-
-async function processPromotionTriggers(ctx: MutationCtx, params: ProcessPromotionParams) {
-    const triggeredRedemptions: any[] = [];
-    // Only the promotions of this business can trigger.
-    const activePromotions = await ctx.db
-        .query("promotions")
-        .withIndex("by_businessId", (q) => q.eq("businessId", params.businessId))
-        .filter((q) => q.eq(q.field("isActive"), true))
-        .collect();
-
-    if (activePromotions.length === 0) return triggeredRedemptions;
-
-    const activePromoIds = new Set(activePromotions.map((p) => p._id));
-    const cartStockIds = new Set(params.items.map((i) => i.stockId));
-    const allPromotionProducts = await ctx.db
-        .query("promotionProducts")
-        .withIndex("by_businessId", (q) => q.eq("businessId", params.businessId))
-        .collect();
-    const relevantPromoProducts = allPromotionProducts.filter(
-        (pp) => activePromoIds.has(pp.promotionId) && cartStockIds.has(pp.stockId)
-    );
-
-    // 1. Product Triggers
-    for (const item of params.items) {
-        const triggers = relevantPromoProducts.filter((pp) => pp.stockId === item.stockId);
-        for (const trigger of triggers) {
-            const promotion = activePromotions.find((p) => p._id === trigger.promotionId);
-            if (!promotion) continue;
-            const redemptionCount = Math.floor(item.quantity / trigger.requiredQuantity);
-            if (redemptionCount > 0) {
-                const redemptionData = {
-                    promotionId: promotion._id,
-                    salesId: params.salesId,
-                    customerId: params.customerId,
-                    userId: params.userId,
-                    shopId: params.shopId,
-                    date: params.date,
-                    redeemedQuantity: redemptionCount,
-                    productName: item.name,
-                    productCode: item.productCode,
-                    prize: promotion.prize,
-                };
-                await ctx.db.insert("promotionRedemptions", { businessId: params.businessId, ...redemptionData });
-                triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
-            }
-        }
-    }
-
-    // 2. Global Threshold Triggers (Total PV/BV)
-    const totalPV = params.items.reduce((sum, item) => sum + item.pv * item.quantity, 0);
-    const totalBV = params.items.reduce((sum, item) => sum + item.bv * item.quantity, 0);
-
-    for (const promotion of activePromotions) {
-        if (promotion.triggerType === "TotalPV" && promotion.threshold && totalPV >= promotion.threshold) {
-            const redemptionCount = Math.floor(totalPV / promotion.threshold);
-            if (redemptionCount > 0) {
-                const redemptionData = {
-                    promotionId: promotion._id,
-                    salesId: params.salesId,
-                    customerId: params.customerId,
-                    userId: params.userId,
-                    shopId: params.shopId,
-                    date: params.date,
-                    redeemedQuantity: redemptionCount,
-                    productName: "WHOLE SALE (PV)",
-                    productCode: "THRESHOLD",
-                    prize: promotion.prize,
-                };
-                await ctx.db.insert("promotionRedemptions", { businessId: params.businessId, ...redemptionData });
-                triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
-            }
-        } else if (promotion.triggerType === "TotalBV" && promotion.threshold && totalBV >= promotion.threshold) {
-            const redemptionCount = Math.floor(totalBV / promotion.threshold);
-            if (redemptionCount > 0) {
-                const redemptionData = {
-                    promotionId: promotion._id,
-                    salesId: params.salesId,
-                    customerId: params.customerId,
-                    userId: params.userId,
-                    shopId: params.shopId,
-                    date: params.date,
-                    redeemedQuantity: redemptionCount,
-                    productName: "WHOLE SALE (BV)",
-                    productCode: "THRESHOLD",
-                    prize: promotion.prize,
-                };
-                await ctx.db.insert("promotionRedemptions", { businessId: params.businessId, ...redemptionData });
-                triggeredRedemptions.push({ ...redemptionData, promotionName: promotion.name });
-            }
-        }
-    }
-
-    return triggeredRedemptions;
-}
 
 // List sales with pagination
 export const list = query({
@@ -210,6 +68,8 @@ export const create = mutation({
             quantity: v.number(),
             pv: v.number(),
             bv: v.number(),
+            /** What the till believed was on hand, for an offline sale. */
+            expectedQty: v.optional(v.number()),
         })),
         isLoan: v.optional(v.boolean()),
         paymentDueDate: v.optional(v.string()),
@@ -233,286 +93,26 @@ export const create = mutation({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "sales.create");
-        const businessId = tenant.businessId;
+
         // The operator is the authenticated caller — the `userId` argument
         // the browser sends is ignored.
         const userId = tenant.user._id;
 
-        // Everything the sale refers to must belong to this business.
-        if (args.customerId) {
-            const customer = await ctx.db.get(args.customerId);
-            if (!customer || customer.businessId !== businessId) {
-                throw new ConvexError("Forbidden: that customer belongs to another business.");
-            }
-        }
-        if (args.shopId) {
-            const shop = await ctx.db.get(args.shopId);
-            if (!shop || shop.businessId !== businessId) {
-                throw new ConvexError("Forbidden: that shop belongs to another business.");
-            }
-        }
-
-        // Idempotency check: if this sale was already synced from offline queue, return it
-        if (args.clientOfflineId) {
-            const existingSale = await ctx.db
-                .query("sales")
-                .withIndex("by_clientOfflineId", (q) => q.eq("clientOfflineId", args.clientOfflineId!))
-                .filter((q) => q.eq(q.field("businessId"), businessId))
-                .first();
-            if (existingSale) {
-                return {
-                    saleId: existingSale._id,
-                    invoiceNumber: existingSale.invoiceNumber,
-                    redemptions: [],
-                    isDuplicateSync: true,
-                };
-            }
-        }
-
-        const date = new Date().toISOString();
-
-        // -----------------------------------------------------------------
-        // SERVER-SIDE PRICE + TOTAL VALIDATION
-        // The client is not trusted for money. Prices are re-read from the
-        // `stocks` table and the total is recomputed server-side, so a
-        // tampered client cannot record a sale for less than it is worth
-        // (or inflate profit reports).
-        // -----------------------------------------------------------------
-        const stockIdsForPricing = [...new Set(args.items.map((i) => i.stockId))];
-        const pricingDocs = await Promise.all(stockIdsForPricing.map((id) => ctx.db.get(id)));
-        const pricingMap = new Map(
-            pricingDocs.filter((s): s is NonNullable<typeof s> => s !== null).map((s) => [s._id, s])
-        );
-
-        // -----------------------------------------------------------------
-        // PRICE OVERRIDES (opt-in per business)
-        // A cashier may lower a line price at the till, but only when the
-        // business has explicitly enabled overrides. When the setting is off,
-        // any override sent by the client is ignored and the master price is
-        // charged — the client still cannot falsify revenue.
-        // -----------------------------------------------------------------
-        const overridesEnabled = tenant.business.allowPriceOverrides === true;
-
-        const overrideMap = new Map<Id<"stocks">, number>();
-        if (overridesEnabled) {
-            for (const override of args.priceOverrides ?? []) {
-                if (!Number.isFinite(override.price) || override.price < 0) {
-                    throw new Error(`Invalid price override for ${override.stockId}`);
-                }
-                overrideMap.set(override.stockId, override.price);
-            }
-        }
-
-        const appliedOverrides: {
-            stockId: Id<"stocks">;
-            name: string;
-            originalPrice: number;
-            price: number;
-        }[] = [];
-
-        let computedTotal = 0;
-        const trustedItems = args.items.map((item) => {
-            const stock = pricingMap.get(item.stockId);
-            if (!stock) {
-                throw new Error(`Item ${item.name} not found`);
-            }
-            if (stock.businessId !== businessId) {
-                throw new ConvexError(
-                    "Forbidden: that product belongs to another business."
-                );
-            }
-            if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
-                throw new Error(`Invalid quantity for ${item.name}`);
-            }
-            // Trust the server-side price, not the client-supplied one.
-            let unitPrice = stock.price;
-            const override = overrideMap.get(item.stockId);
-            if (override !== undefined) {
-                if (override > stock.price) {
-                    throw new Error(
-                        `Price override for ${item.name} is above the list price (${stock.price}).`
-                    );
-                }
-                unitPrice = override;
-                appliedOverrides.push({
-                    stockId: item.stockId,
-                    name: item.name,
-                    originalPrice: stock.price,
-                    price: override,
-                });
-            }
-            computedTotal += unitPrice * item.quantity;
-            return {
-                ...item,
-                price: unitPrice,
-                pv: stock.pv,
-                bv: stock.bv,
-            };
+        // The sale itself is applied in one place, so that a sale made
+        // offline and pushed later is recorded exactly like one made with
+        // the network up.
+        const result = await applySale(ctx, args, {
+            businessId: tenant.businessId,
+            userId,
+            allowPriceOverrides: tenant.business.allowPriceOverrides === true,
         });
 
-        // Guard against a client submitting a mismatched total (e.g. 0).
-        if (Math.abs(computedTotal - args.total) > 0.01) {
-            throw new Error(
-                `Sale total mismatch: client sent ${args.total} but the server computed ${computedTotal}.`
-            );
-        }
-
-        // Check if user is assigned to a shop in this business
-        const shop = await ctx.db
-            .query("shops")
-            .withIndex("by_user", (q) => q.eq("userId", userId))
-            .filter((q) => q.eq(q.field("businessId"), businessId))
-            .first();
-
-        // Deduct Stock
-        if (shop) {
-            // SHOP SALE: Deduct from shop.issuedStocks (ALLOW NEGATIVE)
-            const updatedStocks = [...shop.issuedStocks];
-
-            for (const item of trustedItems) {
-                const stockIndex = updatedStocks.findIndex(s => s.stockId === item.stockId);
-                if (stockIndex === -1) {
-                    throw new Error(`Item ${item.name} not found in shop stock`);
-                }
-
-                const currentQty = updatedStocks[stockIndex].qty;
-                // [CHANGED] We allow negative stock now as per user request
-                // if (currentQty < item.quantity) {
-                //     throw new Error(`Insufficient stock for ${item.name} in shop. Available: ${currentQty}`);
-                // }
-
-                updatedStocks[stockIndex] = {
-                    ...updatedStocks[stockIndex],
-                    qty: currentQty - item.quantity
-                };
-            }
-
-            // Update shop stocks
-            await ctx.db.patch(shop._id, {
-                issuedStocks: updatedStocks
-            });
-
-        } else {
-            // HQ SALE: Deduct from main warehouse 'stocks' (ALLOW NEGATIVE)
-            // [OPTIMIZED] Batch fetch all stocks first to avoid N+1
-            const stockIds = trustedItems.map(i => i.stockId);
-            const stockDocs = await Promise.all(stockIds.map(id => ctx.db.get(id)));
-            const stockMap = new Map(stockDocs.filter((s): s is NonNullable<typeof s> => s !== null).map(s => [s._id, s]));
-
-            for (const item of trustedItems) {
-                const stock = stockMap.get(item.stockId);
-                if (!stock) {
-                    throw new Error(`Item ${item.name} not found in warehouse`);
-                }
-
-                // [CHANGED] We allow negative stock now as per user request
-                // if (stock.qty < item.quantity) {
-                //     throw new Error(`Insufficient stock for ${item.name} in warehouse. Available: ${stock.qty}`);
-                // }
-
-                await ctx.db.patch(item.stockId, {
-                    qty: stock.qty - item.quantity,
-                });
-            }
-        }
-
-        // Record the sale
-        const saleId = await ctx.db.insert("sales", {
-            businessId,
-            customerId: args.customerId,
-            manualCustomerName: args.manualCustomerName,
-            shopId: shop ? shop._id : args.shopId, // Prioritize found shop, else fallback to arg
-            userId,
-            total: computedTotal,
-            date,
-            clientType: args.clientType,
-            paymentMode: args.paymentMode,
-            items: trustedItems,
-            isLoan: args.isLoan,
-            paymentDueDate: args.paymentDueDate,
-            initialDeposit: args.initialDeposit,
-            packageType: args.packageType,
-            deliveryStatus: args.deliveryStatus,
-            customerPhone: args.customerPhone,
-            customerLocation: args.customerLocation,
-            transactionType: args.transactionType || "Sale",
-            invoiceNumber: await generateInvoiceNumber(ctx, businessId, shop ? shop._id : args.shopId),
-            clientOfflineId: args.clientOfflineId,
-            isOfflineSync: args.isOfflineSync,
-            hasPriceOverride: appliedOverrides.length > 0,
-            priceOverrides: appliedOverrides.length > 0 ? appliedOverrides : undefined,
-        });
-
-        const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;
-
-        // Record immutable stock movements in stockLedger
-        for (const item of trustedItems) {
-            await ctx.db.insert("stockLedger", {
-                businessId,
-                stockId: item.stockId,
-                shopId: shop ? shop._id : args.shopId,
-                deltaQty: -item.quantity,
-                eventType: "SALE",
-                referenceId: invoiceNumberValue || saleId,
-                userId,
-                timestamp: date,
-                notes: `Sale ${invoiceNumberValue || ""} to ${args.manualCustomerName || "Customer"}`,
-            });
-        }
-
-        // ---------------------------------------------------------
-        // PROMOTION TRIGGER LOGIC
-        // ---------------------------------------------------------
-        const triggeredRedemptions = await processPromotionTriggers(ctx, {
-            businessId,
-            salesId: saleId,
-            customerId: args.customerId,
-            userId,
-            shopId: shop ? shop._id : args.shopId,
-            date,
-            items: trustedItems,
-        });
-        // ---------------------------------------------------------
-
-        // Handle Loans
-        if (args.isLoan && args.paymentDueDate) {
-            const deposit = args.initialDeposit || 0;
-            const loanBalance = computedTotal - deposit;
-
-            const loanId = await ctx.db.insert("loans", {
-                businessId,
-                customerId: args.customerId !== undefined ? args.customerId : undefined, // Explicitly undefined if missing
-                manualCustomerName: args.manualCustomerName,
-                salesId: saleId,
-                amount: computedTotal,
-                balance: loanBalance,
-                date: new Date().toISOString(),
-            });
-
-            // If there's an initial deposit, record it as a payment
-            if (deposit > 0) {
-                await ctx.db.insert("payments", {
-                    businessId,
-                    loanId: loanId,
-                    shopId: shop?._id,
-                    customerId: args.customerId,
-                    amount: deposit,
-                    date: new Date().toISOString(),
-                    balance: loanBalance,
-                });
-            }
-        }
-
-        // Log activity
-        await logActivity(
-            ctx,
-            businessId,
-            userId,
-            "Create Sale",
-            `${args.clientType} sale of ${computedTotal.toLocaleString()} created at ${shop ? shop.name : "HQ"}.`
-        );
-
-        return { saleId, redemptions: triggeredRedemptions, invoiceNumber: invoiceNumberValue };
+        return {
+            saleId: result.saleId,
+            invoiceNumber: result.invoiceNumber,
+            redemptions: result.redemptions,
+            ...(result.isDuplicateSync ? { isDuplicateSync: true } : {}),
+        };
     },
 });
 

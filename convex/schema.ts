@@ -515,6 +515,14 @@ export default defineSchema({
                 quantity: v.number(),
                 pv: v.number(),
                 bv: v.number(),
+                /**
+                 * What the till believed was on hand when it made this sale.
+                 *
+                 * Recorded only for sales made offline. When the server later
+                 * finds a different figure, this is how it knows the stock
+                 * moved under another device rather than simply being wrong.
+                 */
+                expectedQty: v.optional(v.number()),
             })
         ),
         packageType: v.optional(v.string()), // Bronze, Silver, Gold
@@ -551,6 +559,45 @@ export default defineSchema({
         )),
         clientOfflineId: v.optional(v.string()), // Idempotency key for offline queued sales
         isOfflineSync: v.optional(v.boolean()),
+        /**
+         * The moment the sale happened **on the till**.
+         *
+         * An offline sale reaches the server later, but it belongs to the day
+         * it was rung up — not the day it happened to find the network. The
+         * reports are built from this date, not from the moment the server
+         * happened to receive it.
+         */
+        occurredAt: v.optional(v.string()),
+        /**
+         * The installation that recorded the sale.
+         *
+         * "Which till rang this up" is the first question asked about any
+         * offline sale that turns out to be a problem.
+         */
+        deviceId: v.optional(v.string()),
+        /**
+         * Whether the money has actually been confirmed.
+         *
+         * `pending_verification` means nobody has seen the payment but the
+         * customer and the cashier. An offline mobile-money payment is
+         * **not** a confirmed payment: it stays pending until it is checked
+         * against the provider's own record. Cash in the drawer is a
+         * different matter — that money is already in the business.
+         */
+        paymentConfirmation: v.optional(v.string()), // confirmed | pending_verification
+        /** online | offline — where the sale was first recorded. */
+        syncSource: v.optional(v.string()),
+        /** The unique id of the transaction, wherever it was first created. */
+        clientTransactionId: v.optional(v.string()),
+        /**
+         * What the till thought the sale came to.
+         *
+         * Recorded only for offline sales, where the price list on the till
+         * may have been out of date. The books use the server's price — this
+         * is kept so the difference can be seen and explained rather than
+         * quietly swallowed.
+         */
+        clientTotal: v.optional(v.number()),
         // Price override audit trail. `hasPriceOverride` is true when the
         // business allows till-level price changes; `priceOverrides` records
         // the master price that was replaced on each affected line.
@@ -572,7 +619,9 @@ export default defineSchema({
         .index("by_shop_date", ["shopId", "date"])
         .index("by_customer_date", ["customerId", "date"])
         .index("by_invoiceNumber", ["invoiceNumber"])
-        .index("by_clientOfflineId", ["clientOfflineId"]),
+        .index("by_clientOfflineId", ["clientOfflineId"])
+        .index("by_businessId_occurredAt", ["businessId", "occurredAt"])
+        .index("by_deviceId", ["deviceId"]),
 
     loans: defineTable({
         businessId: v.optional(v.id("businesses")),
@@ -1955,10 +2004,97 @@ export default defineSchema({
         revokedAt: v.optional(v.string()),
         revokedBy: v.optional(v.id("users")),
         revocationReason: v.optional(v.string()),
+        /**
+         * When this device last pushed its offline queue.
+         *
+         * A device that has not synced for a long time is a device that may
+         * be quietly holding sales that nobody has seen.
+         */
+        lastSyncAt: v.optional(v.string()),
+        /** The state of the device's last synchronisation. */
+        lastSyncStatus: v.optional(v.string()), // idle | syncing | ok | error
+        /** The last error the device reported. */
+        lastSyncError: v.optional(v.string()),
         createdAt: v.string(),
     })
         .index("by_businessId", ["businessId"])
         .index("by_businessId_deviceId", ["businessId", "deviceId"])
         .index("by_licenseKeyId", ["licenseKeyId"])
         .index("by_status", ["status"]),
+
+/**
+ * The synchronisation audit trail.
+ *
+ * Every push the server receives is recorded here: what arrived, from which
+ * device, whether it was applied, refused as a duplicate, or held as a
+ * conflict. When a business asks "did my till's sales get in?", this is the
+ * answer.
+ */
+syncLogs: defineTable({
+    businessId: v.id("businesses"),
+    /** The installation that sent it. */
+    deviceId: v.optional(v.string()),
+    /** The transaction this log is about. */
+    transactionId: v.optional(v.string()),
+    /** push | pull */
+    direction: v.string(),
+    /** applied | duplicate | rejected | conflict */
+    status: v.string(),
+    /** How many times the device had tried before this one. */
+    attempts: v.optional(v.number()),
+    /** Why it was refused or held. */
+    reason: v.optional(v.string()),
+    /** The sale it produced, when it produced one. */
+    saleId: v.optional(v.id("sales")),
+    invoiceNumber: v.optional(v.string()),
+    /** How many stock conflicts came with it. */
+    conflictCount: v.optional(v.number()),
+    actorUserId: v.optional(v.id("users")),
+    createdAt: v.string(),
+})
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_createdAt", ["businessId", "createdAt"])
+    .index("by_transactionId", ["transactionId"])
+    .index("by_deviceId", ["deviceId"]),
+
+/**
+ * Stock that two devices both sold while they were offline.
+ *
+ * When an offline sale arrives, the stock it needs may already have been
+ * sold by another till. The sale is still applied — the customer has the
+ * goods — but the shortfall is recorded here and shown to the owner, so it
+ * is dealt with rather than quietly buried in a negative quantity.
+ */
+stockConflicts: defineTable({
+    businessId: v.id("businesses"),
+    /** The device that made the sale. */
+    deviceId: v.optional(v.string()),
+    /** The transaction that hit the conflict. */
+    transactionId: v.optional(v.string()),
+    stockId: v.id("stocks"),
+    stockName: v.optional(v.string()),
+    /** What the till believed was on hand when it made the sale. */
+    expectedQty: v.optional(v.number()),
+    /** What the server says is on hand now. */
+    availableQty: v.number(),
+    /** What the sale needed. */
+    requestedQty: v.number(),
+    /**
+     * `insufficient` — there was not enough stock to cover the sale.
+     * `drift`       — the stock moved since the till last saw it, but the
+     *                 sale could still be covered.
+     */
+    kind: v.string(),
+    /** pending | accepted | resolved | rejected */
+    status: v.string(),
+    /** What the owner decided. */
+    resolution: v.optional(v.string()),
+    resolvedBy: v.optional(v.id("users")),
+    resolvedAt: v.optional(v.string()),
+    note: v.optional(v.string()),
+    createdAt: v.string(),
+})
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_transactionId", ["transactionId"]),
 });

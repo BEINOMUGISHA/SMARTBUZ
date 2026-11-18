@@ -29,7 +29,14 @@ import { cn, formatError } from "@/lib/utils";
 import { generateRestockPDF } from "@/lib/restock-pdf";
 import { PromotionsReportView } from "./promotions-report-view";
 import { PromoCartBanner } from "@/components/promo-cart-banner";
-import { queueOfflineSale, getQueuedSales } from "@/lib/offline-sales-manager";
+import { useSync } from "@/components/offline/sync-provider";
+import { queueSale } from "@/lib/offline/queue";
+import { getDeviceId } from "@/lib/offline/device";
+import {
+    readCatalog,
+    rememberCatalogItems,
+    type CatalogItem,
+} from "@/lib/offline/price-list";
 import { MobileMoneyModal } from "@/components/mobile-money-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedNumber } from "@/components/animated-number";
@@ -46,45 +53,6 @@ type CartItem = {
     pv: number;
     bv: number;
 };
-
-type OfflineSaleDraft = {
-    id: string;
-    createdAt: string;
-    isHp: boolean;
-    cart: CartItem[];
-    selectedCustomerId: Id<"customers"> | "walk-in";
-    clientType: string;
-    paymentMethod: string;
-    isLoan: boolean;
-    manualName: string;
-    paymentDate: string;
-    initialDeposit: string;
-    deliveryStatus: "Taken" | "Pending";
-    customerPhone: string;
-    customerLocation: string;
-    isPackageSale: boolean;
-    packageType: "Bronze" | "Silver" | "Gold";
-};
-
-const OFFLINE_DRAFT_KEY = "pos_offline_sale_drafts";
-
-function readOfflineDrafts(): OfflineSaleDraft[] {
-    if (typeof window === "undefined") return [];
-
-    try {
-        const raw = window.localStorage.getItem(OFFLINE_DRAFT_KEY);
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-}
-
-function writeOfflineDrafts(drafts: OfflineSaleDraft[]) {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(OFFLINE_DRAFT_KEY, JSON.stringify(drafts));
-}
 
 export default function SalesPage() {
     return (
@@ -188,8 +156,6 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [receiptData, setReceiptData] = useState<any | null>(null);
     const [isMoMoModalOpen, setIsMoMoModalOpen] = useState(false);
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
-    const [isOffline, setIsOffline] = useState(typeof navigator !== "undefined" ? !navigator.onLine : false);
-    const [offlineDrafts, setOfflineDrafts] = useState<OfflineSaleDraft[]>([]);
 
     // Auto-select "Loan" payment method when isLoan is true
     useEffect(() => {
@@ -216,9 +182,81 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         offset: (currentPage - 1) * rowsPerPage,
     });
 
+    // Sales queued in IndexedDB while offline. The banner in the shell counts
+    // these too, but the till shows its own count so the cashier knows a sale
+    // is not yet in the books.
+    const { status: syncStatus, refresh: refreshLocal } = useSync();
+    const queuedCount = syncStatus.pending + syncStatus.failed;
+
+    // Whether the till can actually reach the server. This is the heartbeat's
+    // answer, not `navigator.onLine` — a dead uplink behind a captive portal
+    // still reports "online" to the browser.
+    const isOffline = !syncStatus.online;
+
+    // The price list, kept locally so the till can still sell when the
+    // network is gone. The prices here are only what the customer is shown;
+    // the server always recomputes the price when the sale is pushed.
+    const [cachedProducts, setCachedProducts] = useState<CatalogItem[]>([]);
+    useEffect(() => {
+        let cancelled = false;
+        void readCatalog()
+            .then((items) => {
+                if (!cancelled) setCachedProducts(items);
+            })
+            .catch(() => {
+                // No local price list yet.
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    // Remember the price list whenever it arrives from the server, so the
+    // next time the network goes the till is not left with nothing to sell.
+    useEffect(() => {
+        const rows = shopData?.stocks;
+        if (!rows || rows.length === 0) return;
+        void rememberCatalogItems(
+            rows.map((row: any) => ({
+                stockId: row._id,
+                name: row.name,
+                productCode: row.productCode ?? "",
+                price: row.price,
+                pv: row.pv ?? 0,
+                bv: row.bv ?? 0,
+                qty: row.qty ?? 0,
+                halfPrice: row.halfPrice,
+            }))
+        ).catch(() => {
+            // The local price list is a convenience, not a requirement.
+        });
+    }, [shopData?.stocks]);
+
+    useEffect(() => {
+        void refreshLocal();
+    }, [refreshLocal]);
+
     const isShopUser = !!shopData?.shop;
-    const stocks = shopData?.stocks || [];
-    const totalStocksCount = shopData?.totalCount || 0;
+
+    // With no network the server's list is unavailable, so the till falls
+    // back to the price list it kept the last time it was online. Without
+    // this the cashier would be staring at an empty till.
+    const offlineProducts = useMemo<any[]>(
+        () =>
+            cachedProducts.map((item) => ({
+                _id: item.stockId,
+                name: item.name,
+                productCode: item.productCode,
+                price: item.price,
+                pv: item.pv,
+                bv: item.bv,
+                qty: item.qty,
+            })),
+        [cachedProducts]
+    );
+
+    const stocks = shopData ? shopData.stocks || [] : isOffline ? offlineProducts : [];
+    const totalStocksCount = shopData?.totalCount || offlineProducts.length;
 
     /* ── Business vertical + URA VAT configuration ── */
     const { category: activeCategory } = useActiveCategory(activeBusiness?.role);
@@ -229,7 +267,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         customer: "Customer",
     };
     const status = "Loaded";
-    const isStocksLoading = shopData === undefined;
+    const isStocksLoading = shopData === undefined && !isOffline;
 
     const customers = useQuery(api.customers.listAll, {});
     const activeProfile = useQuery(api.businesses.getActive, {});
@@ -250,28 +288,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const overridesEnabled = (activeProfile as any)?.allowPriceOverrides === true;
     const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
 
-    // Sales queued in IndexedDB while offline. The banner in the shell counts
-    // these too, but the till shows its own count so the cashier knows a sale
-    // is not yet in the books.
-    const [queuedCount, setQueuedCount] = useState(0);
-    useEffect(() => {
-        let cancelled = false;
-        const refreshQueued = async () => {
-            try {
-                const queued = await getQueuedSales();
-                if (!cancelled) setQueuedCount(queued.length);
-            } catch {
-                // IndexedDB may be unavailable in private browsing; the banner
-                // is the fallback signal.
-            }
-        };
-        void refreshQueued();
-        const timer = window.setInterval(refreshQueued, 15000);
-        return () => {
-            cancelled = true;
-            window.clearInterval(timer);
-        };
-    }, [isOffline, isLoading]);
+
 
     useEffect(() => {
         const saved = localStorage.getItem("pos_sales_rows_per_page");
@@ -305,29 +322,6 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             localStorage.removeItem(key);
         }
     }, [cart, isHp, isLoaded]);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-
-        const updateOnlineStatus = () => setIsOffline(!navigator.onLine);
-        updateOnlineStatus();
-        window.addEventListener("online", updateOnlineStatus);
-        window.addEventListener("offline", updateOnlineStatus);
-
-        const drafts = readOfflineDrafts();
-        setOfflineDrafts(drafts);
-
-        return () => {
-            window.removeEventListener("online", updateOnlineStatus);
-            window.removeEventListener("offline", updateOnlineStatus);
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!isOffline && user && offlineDrafts.length > 0) {
-            void syncOfflineDrafts();
-        }
-    }, [isOffline, user, offlineDrafts.length]);
 
     const totalPages = Math.ceil(totalStocksCount / rowsPerPage);
     const paginatedStocks = stocks; // Already paginated on server
@@ -514,104 +508,26 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         setCart(prev => prev.filter(i => i.stockId !== stockId));
     };
 
-    const saveOfflineDraft = (customCart: CartItem[] = cart) => {
-        if (typeof window === "undefined") return;
-
-        const draft: OfflineSaleDraft = {
-            id: crypto.randomUUID(),
-            createdAt: new Date().toISOString(),
-            isHp,
-            cart: customCart,
-            selectedCustomerId,
-            clientType,
-            paymentMethod,
-            isLoan,
-            manualName,
-            paymentDate,
-            initialDeposit,
-            deliveryStatus,
-            customerPhone,
-            customerLocation,
-            isPackageSale,
-            packageType,
-        };
-
-        const drafts = readOfflineDrafts();
-        const nextDrafts = [...drafts, draft];
-        writeOfflineDrafts(nextDrafts);
-        setOfflineDrafts(nextDrafts);
-        toast.warning("Sale saved offline. It will sync automatically when you reconnect.");
-    };
-
-    const restoreOfflineDraft = (draftId: string) => {
-        const draft = offlineDrafts.find(item => item.id === draftId);
-        if (!draft) return;
-
-        setCart(draft.cart);
-        setSelectedCustomerId(draft.selectedCustomerId);
-        setClientType(draft.clientType);
-        setPaymentMethod(draft.paymentMethod);
-        setIsLoan(draft.isLoan);
-        setManualName(draft.manualName);
-        setPaymentDate(draft.paymentDate);
-        setInitialDeposit(draft.initialDeposit);
-        setDeliveryStatus(draft.deliveryStatus);
-        setCustomerPhone(draft.customerPhone);
-        setCustomerLocation(draft.customerLocation);
-        setIsPackageSale(draft.isPackageSale);
-        setPackageType(draft.packageType);
-
-        const filteredDrafts = offlineDrafts.filter(item => item.id !== draftId);
-        writeOfflineDrafts(filteredDrafts);
-        setOfflineDrafts(filteredDrafts);
-        toast.success("Offline draft restored.");
-    };
-
-    const syncOfflineDrafts = async () => {
-        if (!user || isOffline) return;
-
-        const drafts = readOfflineDrafts();
-        if (drafts.length === 0) return;
-
-        const remaining: OfflineSaleDraft[] = [];
-
-        for (const draft of drafts) {
-            try {
-                await createSale({
-                    userId: user._id,
-                    total: draft.cart.reduce((sum, item) => sum + (item.price * item.qty), 0),
-                    clientType: draft.clientType,
-                    paymentMode: draft.paymentMethod,
-                    manualCustomerName: draft.manualName || undefined,
-                    items: draft.cart.map(item => ({
-                        stockId: item.stockId,
-                        name: item.name,
-                        productCode: item.productCode,
-                        price: item.price,
-                        quantity: item.qty,
-                        pv: item.pv,
-                        bv: item.bv,
-                    })),
-                    customerId: draft.selectedCustomerId === "walk-in" ? undefined : draft.selectedCustomerId,
-                    isLoan: draft.isLoan,
-                    paymentDueDate: draft.isLoan ? draft.paymentDate : undefined,
-                    initialDeposit: draft.isLoan ? Number(draft.initialDeposit || 0) : undefined,
-                    packageType: draft.isPackageSale ? draft.packageType : undefined,
-                    deliveryStatus: draft.deliveryStatus,
-                    customerPhone: draft.customerPhone || undefined,
-                    customerLocation: draft.customerLocation || undefined,
-                    transactionType: "Sale",
-                });
-            } catch (error) {
-                remaining.push(draft);
-            }
-        }
-
-        writeOfflineDrafts(remaining);
-        setOfflineDrafts(remaining);
-
-        if (remaining.length < drafts.length) {
-            toast.success("Offline sales synced successfully.");
+    /**
+     * Put a sale into the durable queue, quietly.
+     *
+     * Used when the network fails in the middle of a sale. The sale has not
+     * reached the server, so it is kept locally rather than lost with the
+     * cart. Returns false when the browser will not let us keep it — a
+     * private window with IndexedDB blocked, say — so the caller can show
+     * the error instead of pretending it was saved.
+     */
+    const queueSaleQuietly = async (payload: Record<string, unknown>): Promise<boolean> => {
+        try {
+            const deviceId = await getDeviceId();
+            await queueSale(payload, {
+                deviceId,
+                shopId: shopData?.shop?._id,
+                occurredAt: new Date().toISOString(),
+            });
+            return true;
+        } catch {
+            return false;
         }
     };
 
@@ -662,14 +578,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
         const depositValue = initialDeposit ? parseInt(initialDeposit.replace(/,/g, "")) : 0;
 
-        try {
-            setIsLoading(true);
-            submittingRef.current = true;
-
-            const shopPrefix = isShopUser ? (shopData.shop.serialNumber?.split("-")[0] || "SHOP") : "HQ";
-            let result: any;
-
-            const salePayload = {
+        // The payload is built before the request is made, so that a sale
+        // which fails halfway can still be put into the durable queue rather
+        // than lost with the cart.
+        const salePayload = {
                 userId: user._id,
                 total: cartTotal,
                 clientType,
@@ -682,7 +594,11 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     price: item.price,
                     quantity: item.qty,
                     pv: item.pv,
-                    bv: item.bv
+                    bv: item.bv,
+                    // What the till believed was on hand. The server compares
+                    // this with the truth when the sale arrives, so it can
+                    // tell that another device sold the same stock.
+                    expectedQty: item.maxQty,
                 })),
                 // Till price overrides. The server only honours these when the
                 // business has enabled overrides (Settings -> Till controls),
@@ -706,15 +622,33 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 transactionType: "Sale",
             };
 
-            if (!navigator.onLine) {
-                const clientOfflineId = await queueOfflineSale(salePayload, shopPrefix);
+        try {
+            setIsLoading(true);
+            submittingRef.current = true;
+
+            let result: any;
+
+            if (isOffline) {
+                // No network: the sale is written to the durable queue on this
+                // till. It has a unique transaction id, it survives the
+                // application being closed, and the sync engine sends it when
+                // the network comes back. Nothing is lost.
+                const deviceId = await getDeviceId();
+                const queued = await queueSale(salePayload, {
+                    deviceId,
+                    shopId: shopData?.shop?._id,
+                    occurredAt: new Date().toISOString(),
+                });
                 result = {
-                    saleId: clientOfflineId,
-                    invoiceNumber: clientOfflineId,
+                    saleId: queued.transactionId,
+                    invoiceNumber: queued.transactionId,
                     redemptions: promoEvaluation.unlockedRewards,
                     isOffline: true,
                 };
-                toast.warning("Working Offline: Sale queued locally. Receipt ready.");
+                await refreshLocal();
+                toast.warning(
+                    "Working offline: the sale is saved on this till and will be sent when the network returns."
+                );
             } else {
                 result = await createSale(salePayload);
             }
@@ -756,7 +690,16 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     phone: user?.phone_number
                 },
                 clientType,
-                paymentMode: paymentMethod,
+                // An offline payment that nobody else has seen is not a
+                // confirmed payment. The receipt says so, because the
+                // customer is holding it.
+                paymentMode:
+                    (result as any).isOffline &&
+                    paymentMethod !== "Cash" &&
+                    paymentMethod !== "Loan" &&
+                    paymentMethod !== "None"
+                        ? `${paymentMethod} (to confirm)`
+                        : paymentMethod,
                 date: new Date().toISOString(),
                 paymentDueDate: isLoan ? paymentDate : undefined,
                 invoiceNumber: (result as any).invoiceNumber || `INV-${Date.now()}`,
@@ -806,10 +749,20 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         } catch (error) {
             console.error(error);
 
-            if (!navigator.onLine) {
-                saveOfflineDraft();
+            // The network may have failed between the check above and the
+            // call. The sale has not reached the server, so it goes into the
+            // queue rather than being lost with the cart.
+            const queuedAnyway = await queueSaleQuietly(salePayload);
+            if (queuedAnyway) {
                 setCart([]);
-                setIsLoading(false);
+                setManualName("");
+                setPaymentDate("");
+                setInitialDeposit("");
+                setIsLoan(false);
+                await refreshLocal();
+                toast.warning(
+                    "The network failed mid-sale. The sale is saved on this till and will be sent when the network returns."
+                );
                 return;
             }
 
@@ -1010,31 +963,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                             ? `Online: ${queuedCount} sale${queuedCount === 1 ? "" : "s"} waiting to sync`
                                             : "Online mode: sales sync instantly"}
                                 </span>
-                                {offlineDrafts.length > 0 && (
-                                    <Button variant="secondary" size="sm" onClick={() => void syncOfflineDrafts()} className="h-7 text-[10px]">
-                                        Sync {offlineDrafts.length}
-                                    </Button>
-                                )}
                             </div>
-
-                            {offlineDrafts.length > 0 && (
-                                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2">
-                                    <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-amber-700">Offline drafts</div>
-                                    <div className="space-y-2">
-                                        {offlineDrafts.slice(0, 3).map((draft) => (
-                                            <button
-                                                key={draft.id}
-                                                type="button"
-                                                onClick={() => restoreOfflineDraft(draft.id)}
-                                                className="flex w-full items-center justify-between rounded-md border border-amber-200 bg-white px-2 py-1.5 text-left text-xs"
-                                            >
-                                                <span>{draft.cart.reduce((sum, item) => sum + item.qty, 0)} items · {new Date(draft.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                <span className="font-bold text-amber-700">Resume</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </div>
 
                         {/* GLOBAL PROMOTION BANNER */}
@@ -1269,7 +1198,21 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                             type="button"
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => setIsMoMoModalOpen(true)}
+                                            onClick={() => {
+                                                if (isOffline) {
+                                                    // The provider cannot be
+                                                    // reached, so the payment
+                                                    // cannot be verified. It is
+                                                    // recorded as awaiting
+                                                    // confirmation and the
+                                                    // customer is told.
+                                                    toast.warning(
+                                                        "No network: the mobile money payment cannot be confirmed now. It will be recorded as awaiting confirmation."
+                                                    );
+                                                    return;
+                                                }
+                                                setIsMoMoModalOpen(true);
+                                            }}
                                             className="w-full h-8 text-xs font-bold gap-1.5 border-amber-400 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 animate-in fade-in"
                                         >
                                             <Smartphone className="h-3.5 w-3.5 text-amber-500" />
@@ -1420,14 +1363,6 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
-                            <Button
-                                variant="outline"
-                                className="font-bold"
-                                onClick={() => saveOfflineDraft()}
-                                disabled={cart.length === 0}
-                            >
-                                Save Draft
-                            </Button>
                             <Button
                                 size="lg"
                                 className={`w-full font-bold text-lg transition-transform active:scale-[0.98] ${isLoan ? "bg-orange-600 hover:bg-orange-700" : "bg-emerald-600 hover:bg-emerald-700"}`}

@@ -17,7 +17,7 @@
  *     can outlive the session it belongs to.
  */
 
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const CACHE_NAME = `smartbuz-${CACHE_VERSION}`;
 
 /** Only real, cacheable assets are precached. "/" is deliberately absent. */
@@ -152,6 +152,41 @@ self.addEventListener("fetch", (event) => {
                             "</body></html>",
                         { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } }
                     );
+                }
+            })()
+        );
+        return;
+    }
+
+    // React Server Component payloads.
+    //
+    // Next.js asks for these when the router navigates, and when the page is
+    // rehydrated. They are the data behind the page, so without them a till
+    // that is reopened offline would come up with a shell and no content.
+    //
+    // Network-first, with the cache as a fallback: a freshly deployed page
+    // is preferred, but a till that has already been open keeps working.
+    if (request.headers.get("RSC") === "1") {
+        event.respondWith(
+            (async () => {
+                try {
+                    const response = await fetch(url.href, {
+                        credentials: "same-origin",
+                        headers: request.headers,
+                    });
+                    if (isCacheable(response)) {
+                        const copy = response.clone();
+                        const cache = await caches.open(CACHE_NAME);
+                        await cache.put(request, copy);
+                    }
+                    return response;
+                } catch {
+                    const cached = await caches.match(request);
+                    if (cached) return cached;
+                    return new Response("", {
+                        status: 504,
+                        headers: { "Content-Type": "text/plain; charset=utf-8" },
+                    });
                 }
             })()
         );

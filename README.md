@@ -130,10 +130,50 @@ Two rules the engine never breaks:
 
 Documentation: [`docs/LICENSING.md`](docs/LICENSING.md).
 
+---
+
+## The offline-first engine (Phase 7)
+
+A branch office loses its link. The cashier keeps selling. When the link comes
+back, everything they sold is on the books — once, in the right period, with
+the stock correctly accounted for.
+
+| Concept | Where it lives | Notes |
+| --- | --- | --- |
+| The queue | `src/lib/offline/db.ts`, `queue.ts` | IndexedDB on disk. A sale is written before the receipt is printed, and it survives the application being closed |
+| The till's identity | `src/lib/offline/device.ts` | A stable id made with `crypto.getRandomValues`, stamped on every sale |
+| The heartbeat | `src/lib/offline/network.ts` | `navigator.onLine` is not trusted; a real request decides |
+| The sync engine | `src/lib/offline/sync.ts` | Pushes the queue, retries with backoff, recovers from an interrupted push |
+| The price list | `src/lib/offline/catalog.ts` | The last list the till downloaded, so it can keep selling with no network |
+| The cached session | `src/lib/offline/session-cache.ts` | Lets the till come up offline. The session cookie is **not** cached |
+| One implementation of a sale | `convex/salesCore.ts` | The live till and the synchroniser both call `applySale`, so they cannot drift apart |
+| The server half | `convex/sync.ts` | Duplicate check, server-side validation, stock conflicts, the audit trail |
+| The owner's view | `src/app/(dashboard)/devices/page.tsx` | The tills, the stock conflicts, and what the server received |
+
+Four promises the engine keeps:
+
+- **Nothing is lost.** A sale is on disk before the customer is served, and it
+  is never deleted — it moves to `synced` and stays in the till's record.
+- **Nothing is counted twice.** Every transaction carries a unique id. The
+  same id arriving twice — even from a different till — is recognised the
+  second time.
+- **The money is not assumed.** An offline mobile-money payment has been seen
+  by nobody but the customer and the cashier. It is recorded as *awaiting
+  confirmation* and the receipt says so.
+- **The books are never wrong about the price.** The server always recomputes
+  the price. The till's figure is kept alongside it so a difference can be
+  explained rather than swallowed.
+
+When two tills sell the same stock offline, the sale is still recorded — the
+customer has the goods — and the shortfall is recorded as a conflict and
+shown to the owner, rather than buried in a negative quantity.
+
+Documentation: [`docs/OFFLINE.md`](docs/OFFLINE.md).
+
 ### Verifying it
 
 ```bash
-npm test                  # the whole suite: permissions, finance, subscriptions
+npm test                  # the whole suite: permissions, finance, subscriptions, offline
 ```
 
 ---

@@ -196,6 +196,46 @@ export async function requireActiveEntitlement(
 }
 
 /**
+ * Was this business entitled to trade at the given moment?
+ *
+ * This is the question an offline sale raises. A till sold goods while the
+ * subscription was running; the subscription has since lapsed. The sale
+ * still happened — the customer has the goods — so it must still be
+ * recorded, or the books would be wrong about what the business sold.
+ *
+ * Recording a sale that already happened is not trading. It is catching up
+ * on the books.
+ */
+export async function subscriptionCoveredAt(
+  ctx: any,
+  businessId: string,
+  at: Date
+): Promise<boolean> {
+  const subscription = await loadSubscriptionRow(ctx, businessId);
+
+  // A business with no subscription on record is not gated at all.
+  if (!subscription) return true;
+
+  // A suspension or a cancellation is a decision about everything, not just
+  // about the period that has already been paid for.
+  if (
+    subscription.status === "suspended" ||
+    subscription.status === "cancelled"
+  ) {
+    return false;
+  }
+
+  const end =
+    subscription.currentPeriodEnd ??
+    subscription.trialEndsAt ??
+    subscription.graceEndsAt;
+
+  if (!end) return true;
+
+  return at.getTime() <= new Date(end).getTime();
+}
+
+/**
  * Count what the business is using.
  *
  * Counted from the records, never from a counter that could drift.
