@@ -57,3 +57,18 @@ export function serverSecretMatches(provided: string | undefined): boolean {
 export function isServerSecretConfigured(): boolean {
   return configuredSecret() !== undefined;
 }
+
+/**
+ * The configured secret, for use as a **pepper** when hashing.
+ *
+ * This never leaves the server: it is not returned to a browser and it is
+ * not stored in the database. It is used to hash license keys, so that a
+ * stolen copy of the database cannot be checked against guessed keys.
+ *
+ * When no secret is configured, a fixed fallback is used so that license
+ * keys still work in development. The fallback is public, so a deployment
+ * that cares must set `SMARTBUZ_SERVER_SECRET`.
+ */
+export function serverSecretValue(): string {
+  return configuredSecret() ?? "smartbuz-license-fallback-pepper";
+}

@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { PlanPicker } from "@/components/subscription/plan-picker";
 import { Check, ChevronRight, Loader2, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -112,9 +113,12 @@ export default function SetupPage() {
     const router = useRouter();
     const { user } = useAuth();
     const existingProfile = useQuery(api.businesses.getActive, {});
+    const plans = useQuery(api.plans.list, {});
+    const chosenPlan = (plans ?? []).find((p) => p.key === planKey) ?? null;
 
-    const [step, setStep] = useState<1 | 2 | 3>(1);
+    const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
     const [selected, setSelected] = useState<CategoryId | null>(null);
+    const [planKey, setPlanKey] = useState<string | null>(null);
     const [businessName, setBusinessName] = useState("");
     const [businessPhone, setBusinessPhone] = useState("");
     const [businessAddress, setBusinessAddress] = useState("");
@@ -125,6 +129,7 @@ export default function SetupPage() {
     const createBusiness = useMutation(api.businesses.createForCurrentUser);
     const setCategory = useMutation(api.businesses.setCategory);
     const completeOnboarding = useMutation(api.businesses.completeOnboarding);
+    const selectPlan = useMutation(api.subscriptions.selectPlan);
     const addCategory = useMutation(api.categories.add);
     const addStock = useMutation(api.stocks.add);
 
@@ -138,7 +143,8 @@ export default function SetupPage() {
         try {
             if (existingProfile) {
                 // The business already exists — switch it to the chosen
-                // vertical and finish the remaining setup steps.
+                // vertical, put it on the chosen plan and finish the
+                // remaining setup steps.
                 await setCategory({
                     businessId: existingProfile._id,
                     categoryId: category.id,
@@ -154,6 +160,12 @@ export default function SetupPage() {
                     businessAddress: businessAddress.trim() || undefined,
                     businessPhone: businessPhone.trim() || undefined,
                 });
+                if (planKey) {
+                    await selectPlan({
+                        businessId: existingProfile._id,
+                        planKey,
+                    });
+                }
             } else {
                 // No business yet — create one. The caller becomes its owner
                 // and gets a default branch, warehouse and categories.
@@ -165,6 +177,7 @@ export default function SetupPage() {
                     country: "Uganda",
                     businessAddress: businessAddress.trim() || undefined,
                     businessPhone: businessPhone.trim() || undefined,
+                    planKey: planKey ?? undefined,
                 });
             }
 
@@ -226,8 +239,8 @@ export default function SetupPage() {
 
                 {/* Step indicator */}
                 <div className="flex items-center justify-center gap-2 text-xs font-bold">
-                    {["Choose your trade", "Business details", "Confirm"].map((label, i) => {
-                        const n = (i + 1) as 1 | 2 | 3;
+                    {["Choose your trade", "Choose your plan", "Business details", "Confirm"].map((label, i) => {
+                        const n = (i + 1) as 1 | 2 | 3 | 4;
                         const active = step === n;
                         const done = step > n;
                         return (
@@ -325,8 +338,38 @@ export default function SetupPage() {
                     </div>
                 )}
 
-                {/* STEP 2 — business details */}
-                {step === 2 && category && (
+                {/* STEP 2 — choose a plan */}
+                {step === 2 && (
+                    <div className="space-y-6">
+                        <div className="text-center">
+                            <h2 className="text-xl font-black">Choose your plan</h2>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Every plan starts with a free trial. You can change or
+                                cancel it at any time, and what you have already used is
+                                never taken away.
+                            </p>
+                        </div>
+
+                        <PlanPicker
+                            selected={planKey}
+                            onSelect={setPlanKey}
+                            cycle="monthly"
+                            onCycleChange={() => {}}
+                        />
+
+                        <div className="flex justify-between gap-3">
+                            <Button variant="outline" onClick={() => setStep(1)}>
+                                Back
+                            </Button>
+                            <Button onClick={() => setStep(3)} disabled={!planKey}>
+                                Continue <ChevronRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {/* STEP 3 — business details */}
+                {step === 3 && category && (
                     <Card className="mx-auto max-w-2xl">
                         <CardContent className="space-y-6 p-6">
                             <div className="flex items-center gap-3">
@@ -409,10 +452,10 @@ export default function SetupPage() {
                             </div>
 
                             <div className="flex justify-between gap-3">
-                                <Button variant="outline" onClick={() => setStep(1)}>
+                                <Button variant="outline" onClick={() => setStep(2)}>
                                     Back
                                 </Button>
-                                <Button onClick={() => setStep(3)} disabled={!category}>
+                                <Button onClick={() => setStep(4)} disabled={!category}>
                                     Continue <ChevronRight className="ml-2 h-4 w-4" />
                                 </Button>
                             </div>
@@ -420,8 +463,8 @@ export default function SetupPage() {
                     </Card>
                 )}
 
-                {/* STEP 3 — confirm */}
-                {step === 3 && category && (
+                {/* STEP 4 — confirm */}
+                {step === 4 && category && (
                     <Card className="mx-auto max-w-2xl">
                         <CardContent className="space-y-6 p-6">
                             <h2 className="text-xl font-black">Confirm your setup</h2>
@@ -456,6 +499,13 @@ export default function SetupPage() {
                                     <span className="text-muted-foreground">Modules</span>
                                     <span className="font-bold">{category.modules.length} enabled</span>
                                 </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Plan</span>
+                                    <span className="font-bold">
+                                        {chosenPlan?.name ?? planKey ?? "—"}
+                                        {chosenPlan ? ` • ${chosenPlan.trialDays}-day trial` : ""}
+                                    </span>
+                                </div>
                                 {seedProducts && (
                                     <div className="flex justify-between">
                                         <span className="text-muted-foreground">Starter stock</span>
@@ -478,7 +528,7 @@ export default function SetupPage() {
                             </div>
 
                             <div className="flex justify-between gap-3">
-                                <Button variant="outline" onClick={() => setStep(2)}>
+                                <Button variant="outline" onClick={() => setStep(3)}>
                                     Back
                                 </Button>
                                 <Button onClick={handleCreate} disabled={saving}>

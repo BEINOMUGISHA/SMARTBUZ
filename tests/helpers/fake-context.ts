@@ -63,6 +63,18 @@ export interface FakeCtxOptions {
   stockEntries?: FakeRow[];
   counters?: FakeRow[];
   warehouses?: FakeRow[];
+  /* ── Phase 5: finance ─────────────────────────────────────────────── */
+  cashShifts?: FakeRow[];
+  cashMovements?: FakeRow[];
+  incomeRecords?: FakeRow[];
+  reconciliations?: FakeRow[];
+  /* ── Phase 6: licensing and subscriptions ─────────────────────────── */
+  plans?: FakeRow[];
+  subscriptions?: FakeRow[];
+  subscriptionEvents?: FakeRow[];
+  subscriptionPayments?: FakeRow[];
+  licenseKeys?: FakeRow[];
+  devices?: FakeRow[];
 }
 
 const TABLES = [
@@ -82,6 +94,7 @@ const TABLES = [
   "stocks",
   "sales",
   "shops",
+  "expenses",
   // Phase 4
   "customers",
   "loans",
@@ -99,6 +112,18 @@ const TABLES = [
   "stockEntries",
   "counters",
   "warehouses",
+  // Phase 5
+  "cashShifts",
+  "cashMovements",
+  "incomeRecords",
+  "reconciliations",
+  // Phase 6
+  "plans",
+  "subscriptions",
+  "subscriptionEvents",
+  "subscriptionPayments",
+  "licenseKeys",
+  "devices",
 ] as const;
 
 type TableName = (typeof TABLES)[number];
@@ -533,10 +558,243 @@ export function makePurchaseOrder(overrides: Partial<FakeRow> = {}): FakeRow {
   };
 }
 
+/* ── Phase 5 builders ────────────────────────────────────────────────── */
+
+/** A `sales` row. */
+export function makeSale(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "sales_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    shopId: undefined,
+    branchId: undefined,
+    customerId: undefined,
+    userId: "users_1",
+    invoiceNumber: "INV-1",
+    total: 0,
+    itemCount: 0,
+    paymentMode: "Cash",
+    date: "2026-01-15T10:00:00.000Z",
+    items: [],
+    ...overrides,
+  };
+}
+
+/** An `expenses` row. */
+export function makeExpense(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "expenses_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    branchId: undefined,
+    date: "2026-01-15T10:00:00.000Z",
+    amount: 0,
+    expense: "An expense",
+    receivedBy: "Cashier",
+    type: "General",
+    userId: "users_1",
+    ...overrides,
+  };
+}
+
+/** A `stockCostHistory` row — what the goods actually cost when bought. */
+export function makeStockCostHistory(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "stockCostHistory_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    stockId: "stocks_1",
+    supplierId: "suppliers_1",
+    supplierName: "Nile Foods Ltd",
+    purchaseOrderId: undefined,
+    date: "2026-01-01T00:00:00.000Z",
+    quantity: 10,
+    unitCost: 1_200,
+    totalCost: 12_000,
+    ...overrides,
+  };
+}
+
+/** A `cashShifts` row. */
+export function makeCashShift(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "cashShifts_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    branchId: undefined,
+    shopId: undefined,
+    userId: "users_1",
+    userName: "Test Person",
+    status: "open",
+    openedAt: "2026-01-15T08:00:00.000Z",
+    closedAt: undefined,
+    openingFloat: 10_000,
+    countedCash: undefined,
+    expectedCash: undefined,
+    variance: undefined,
+    createdAt: "2026-01-15T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** A `cashMovements` row. */
+export function makeCashMovement(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "cashMovements_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    branchId: undefined,
+    shiftId: undefined,
+    type: "in",
+    amount: 0,
+    category: "float",
+    reason: "Float top-up",
+    reference: undefined,
+    date: "2026-01-15T09:00:00.000Z",
+    userId: "users_1",
+    userName: "Test Person",
+    createdAt: "2026-01-15T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** An `incomeRecords` row. */
+export function makeIncomeRecord(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "incomeRecords_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    branchId: undefined,
+    date: "2026-01-15T10:00:00.000Z",
+    amount: 0,
+    source: "Rent",
+    description: undefined,
+    reference: undefined,
+    userId: "users_1",
+    createdAt: "2026-01-15T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/* ── Phase 6 builders ───────────────────────────────────────────────── */
+
+/** A `plans` row. */
+export function makePlan(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "plans_1",
+    _creationTime: 1,
+    key: "starter",
+    name: "Starter",
+    description: "For a single till finding its feet.",
+    priceMonthly: 50_000,
+    priceAnnual: 500_000,
+    currency: "UGX",
+    trialDays: 14,
+    gracePeriodDays: 7,
+    deviceLimit: 1,
+    maxUsers: 3,
+    maxBranches: 1,
+    maxWarehouses: 1,
+    maxProducts: 100,
+    features: ["core.sales", "core.stock", "core.customers"],
+    isActive: true,
+    sortOrder: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** A `subscriptions` row. */
+export function makeSubscription(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "subscriptions_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    planKey: "starter",
+    status: "trial",
+    billingCycle: "monthly",
+    trialEndsAt: "2026-02-01T00:00:00.000Z",
+    currentPeriodStart: "2026-01-01T00:00:00.000Z",
+    currentPeriodEnd: "2026-02-01T00:00:00.000Z",
+    graceEndsAt: undefined,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** A `subscriptionPayments` row. */
+export function makeSubscriptionPayment(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "subscriptionPayments_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    subscriptionId: "subscriptions_1",
+    planKey: "starter",
+    amount: 50_000,
+    currency: "UGX",
+    billingCycle: "monthly",
+    periodStart: "2026-01-01T00:00:00.000Z",
+    periodEnd: "2026-02-01T00:00:00.000Z",
+    status: "pending",
+    provider: "bank",
+    providerReference: "REF-1",
+    notes: undefined,
+    verifiedAt: undefined,
+    verifiedBy: undefined,
+    failureReason: undefined,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** A `devices` row. */
+export function makeDevice(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "devices_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    deviceId: "device-abc",
+    deviceName: "Till 1",
+    platform: "web",
+    appVersion: undefined,
+    status: "active",
+    registeredAt: "2026-01-01T00:00:00.000Z",
+    lastSeenAt: "2026-01-01T00:00:00.000Z",
+    revokedAt: undefined,
+    revokedReason: undefined,
+    ...overrides,
+  };
+}
+
+/** A `licenseKeys` row. */
+export function makeLicenseKey(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "licenseKeys_1",
+    _creationTime: 1,
+    businessId: undefined,
+    planKey: "starter",
+    keyHash: "hash",
+    keyHint: "X7K2M",
+    keyPrefix: "SBUZ",
+    status: "active",
+    issuedAt: "2026-01-01T00:00:00.000Z",
+    expiresAt: undefined,
+    revokedAt: undefined,
+    revokedBy: undefined,
+    revocationReason: undefined,
+    lastUsedAt: undefined,
+    useCount: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 /**
  * A context where the given user is signed in with a live session.
- */
-export function signedInContext(options: FakeCtxOptions & { subject?: string } = {}) {
+ */export function signedInContext(options: FakeCtxOptions & { subject?: string } = {}) {
   const subject = options.subject ?? "users_1";
   const identity = {
     subject,

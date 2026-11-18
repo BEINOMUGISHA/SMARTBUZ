@@ -566,6 +566,8 @@ export default defineSchema({
     }).index("by_businessId", ["businessId"])
         .index("by_businessId_date", ["businessId", "date"])
         .index("by_businessId_shop_date", ["businessId", "shopId", "date"])
+        /** Branch-scoped reporting: the finance reports filter by branch. */
+        .index("by_businessId_branch_date", ["businessId", "branchId", "date"])
         .index("by_date", ["date"])
         .index("by_shop_date", ["shopId", "date"])
         .index("by_customer_date", ["customerId", "date"])
@@ -641,6 +643,14 @@ export default defineSchema({
 
     expenses: defineTable({
         businessId: v.optional(v.id("businesses")),
+        /**
+         * The branch this expense belongs to.
+         *
+         * An expense with no branch is a business-wide expense: it is
+         * counted in the business figures and left out of a single branch's
+         * figures, because it cannot honestly be said to belong to one.
+         */
+        branchId: v.optional(v.id("branches")),
         date: v.string(),
         amount: v.number(),
         expense: v.string(),
@@ -650,6 +660,7 @@ export default defineSchema({
     })
         .index("by_businessId", ["businessId"])
         .index("by_businessId_date", ["businessId", "date"])
+        .index("by_businessId_branch_date", ["businessId", "branchId", "date"])
         .index("by_date", ["date"]),
 
     shops: defineTable({
@@ -1577,4 +1588,377 @@ export default defineSchema({
         .index("by_shop_stock", ["shopId", "stockId"])
         .index("by_timestamp", ["timestamp"])
         .index("by_eventType", ["eventType"]),
+
+    /**
+     * A cashier shift — one till session.
+     *
+     * A shift opens with an **opening float** (the cash the cashier is given
+     * to start with) and closes with the cash counted in the drawer. What
+     * *should* be in the drawer is computed from the sales and the cash
+     * movements of the shift, so the difference between counted and expected
+     * is a real, explainable variance rather than a guess.
+     */
+    cashShifts: defineTable({
+        businessId: v.id("businesses"),
+        /** The branch whose till this is. */
+        branchId: v.optional(v.id("branches")),
+        /** The shop (counter) this shift was worked at, when there is one. */
+        shopId: v.optional(v.id("shops")),
+        /** The cashier who worked the shift. */
+        userId: v.id("users"),
+        /** A snapshot of the name, so the record still reads after a rename. */
+        userName: v.string(),
+        /** open | closed */
+        status: v.string(),
+        openedAt: v.string(),
+        closedAt: v.optional(v.string()),
+        /** The cash the cashier started with. */
+        openingFloat: v.number(),
+        /** The cash counted in the drawer when the shift closed. */
+        countedCash: v.optional(v.number()),
+        /** What the drawer should have held — computed, never typed in. */
+        expectedCash: v.optional(v.number()),
+        /** countedCash − expectedCash. Negative means cash is missing. */
+        variance: v.optional(v.number()),
+        notes: v.optional(v.string()),
+        /** Who closed the shift. */
+        closedBy: v.optional(v.id("users")),
+        createdAt: v.string(),
+        updatedAt: v.optional(v.string()),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_businessId_openedAt", ["businessId", "openedAt"])
+        .index("by_businessId_branch", ["businessId", "branchId"])
+        .index("by_userId", ["userId"])
+        .index("by_status", ["status"]),
+
+    /**
+     * Money into or out of the till.
+     *
+     * This is the cash-drawer ledger: a pay-in (a float top-up, a bank
+     * deposit being counted back in) or a pay-out (petty cash, a supplier
+     * paid from the drawer). It is separate from `expenses` because paying a
+     * bill from the drawer is not the same thing as an operating expense,
+     * and from `purchasePayments` because this is the cash side of it.
+     */
+    cashMovements: defineTable({
+        businessId: v.id("businesses"),
+        branchId: v.optional(v.id("branches")),
+        /** The shift this movement belongs to, when there is one. */
+        shiftId: v.optional(v.id("cashShifts")),
+        /** in | out */
+        type: v.string(),
+        amount: v.number(),
+        /** What the money was for — float, deposit, petty cash, supplier… */
+        category: v.string(),
+        reason: v.string(),
+        /**
+         * The receipt or transaction reference.
+         *
+         * Two movements with the same reference are the same money, so the
+         * second one is refused. A pay-out cannot be entered twice.
+         */
+        reference: v.optional(v.string()),
+        date: v.string(),
+        userId: v.id("users"),
+        userName: v.optional(v.string()),
+        createdAt: v.string(),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_businessId_date", ["businessId", "date"])
+        .index("by_shiftId", ["shiftId"])
+        .index("by_reference", ["reference"]),
+
+    /**
+     * Income that is not a sale.
+     *
+     * Rent from a third party, a service fee, a grant — money that came in
+     * without goods leaving the shelf. Kept apart from `sales` so that
+     * revenue stays the revenue and profit is not quietly flattered.
+     */
+    incomeRecords: defineTable({
+        businessId: v.id("businesses"),
+        branchId: v.optional(v.id("branches")),
+        date: v.string(),
+        amount: v.number(),
+        /** Where the income came from. */
+        source: v.string(),
+        description: v.optional(v.string()),
+        reference: v.optional(v.string()),
+        userId: v.id("users"),
+        createdAt: v.string(),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_businessId_date", ["businessId", "date"]),
+
+    /**
+     * A reconciliation between what a payment provider says was received and
+     * what the books recorded.
+     *
+     * The variance is the point of the record: money that reached the bank
+     * account but never reached the till, or the other way round.
+     */
+    reconciliations: defineTable({
+        businessId: v.id("businesses"),
+        branchId: v.optional(v.id("branches")),
+        /** What is being reconciled: bank | mobile_money | cash. */
+        kind: v.string(),
+        /** The payment method being reconciled. */
+        method: v.string(),
+        /** The period being reconciled, as YYYY-MM. */
+        period: v.string(),
+        /** The provider's own reference for the statement. */
+        statementReference: v.string(),
+        /** What the provider says was received. */
+        statementAmount: v.number(),
+        /** What the books recorded. */
+        recordedAmount: v.number(),
+        /** statementAmount − recordedAmount. */
+        variance: v.number(),
+        /** reconciled | discrepancy */
+        status: v.string(),
+        notes: v.optional(v.string()),
+        resolvedBy: v.optional(v.id("users")),
+        resolvedAt: v.optional(v.string()),
+        userId: v.id("users"),
+        createdAt: v.string(),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_businessId_period", ["businessId", "period"])
+        .index("by_status", ["status"]),
+
+    /**
+     * A subscription plan.
+     *
+     * The pricing is **data**, not code: the platform owner edits it, and
+     * every price on the pricing page comes from this table. A plan says
+     * what a business may do (its features) and how much of it there is
+     * allowed (its limits).
+     */
+    plans: defineTable({
+        /** The stable key a subscription refers to: starter, business… */
+        key: v.string(),
+        name: v.string(),
+        description: v.optional(v.string()),
+        /** The monthly price, in whole units of `currency`. */
+        priceMonthly: v.number(),
+        /** The annual price. Usually cheaper than twelve months of monthly. */
+        priceAnnual: v.number(),
+        currency: v.string(),
+        /** How long the free trial lasts, in days. */
+        trialDays: v.number(),
+        /** How long the business keeps working after a failed payment. */
+        gracePeriodDays: v.number(),
+        /** How many devices may be registered. 0 means unlimited. */
+        deviceLimit: v.number(),
+        /** How many staff may have access. 0 means unlimited. */
+        maxUsers: v.number(),
+        /** How many branches the business may run. 0 means unlimited. */
+        maxBranches: v.number(),
+        /** How many warehouses the business may run. 0 means unlimited. */
+        maxWarehouses: v.number(),
+        /** How many products the business may stock. 0 means unlimited. */
+        maxProducts: v.number(),
+        /**
+         * The entitlements this plan grants.
+         *
+         * These are the feature keys in `convex/entitlements.ts`. A feature
+         * that is not in this list is not available to the business.
+         */
+        features: v.array(v.string()),
+        /** A retired plan keeps its subscribers but cannot be chosen again. */
+        isActive: v.boolean(),
+        /** The order the plans are shown in on the pricing page. */
+        sortOrder: v.number(),
+        /** Whether this is one of the built-in plans. */
+        isDefault: v.optional(v.boolean()),
+        createdAt: v.string(),
+        updatedAt: v.optional(v.string()),
+    })
+        .index("by_key", ["key"])
+        .index("by_isActive", ["isActive"]),
+
+    /**
+     * A business's subscription.
+     *
+     * One live subscription per business. It is **never deleted** — it is
+     * cancelled or suspended — so the history of what a business paid for
+     * and when stays readable.
+     */
+    subscriptions: defineTable({
+        businessId: v.id("businesses"),
+        /** The plan this subscription is on. */
+        planKey: v.string(),
+        /** trial | active | past_due | grace | suspended | expired | cancelled */
+        status: v.string(),
+        /** monthly | annual */
+        billingCycle: v.string(),
+        /** The start of the period that has been paid for. */
+        currentPeriodStart: v.optional(v.string()),
+        /** The end of the period that has been paid for. */
+        currentPeriodEnd: v.optional(v.string()),
+        /** When the free trial ends. */
+        trialEndsAt: v.optional(v.string()),
+        /** When the grace period ends — after this the business is blocked. */
+        graceEndsAt: v.optional(v.string()),
+        /** When the subscription was suspended, and why. */
+        suspendedAt: v.optional(v.string()),
+        suspendedReason: v.optional(v.string()),
+        /** When the subscription was cancelled. */
+        cancelledAt: v.optional(v.string()),
+        /** Why the subscription was cancelled. */
+        cancellationReason: v.optional(v.string()),
+        /** The license key this subscription is bound to, when there is one. */
+        licenseKeyId: v.optional(v.id("licenseKeys")),
+        createdAt: v.string(),
+        updatedAt: v.optional(v.string()),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_status", ["status"])
+        .index("by_planKey", ["planKey"]),
+
+    /**
+     * The subscription history.
+     *
+     * Append-only: every change to a subscription is one row here, with the
+     * status it moved from and the status it moved to. This is the record
+     * of what the platform did and when.
+     */
+    subscriptionEvents: defineTable({
+        businessId: v.id("businesses"),
+        subscriptionId: v.optional(v.id("subscriptions")),
+        /** created | trial_started | activated | renewed | extended | suspended | reactivated | cancelled | expired | payment_failed | payment_verified | plan_changed | device_revoked | license_issued | license_redeemed */
+        type: v.string(),
+        fromStatus: v.optional(v.string()),
+        toStatus: v.optional(v.string()),
+        fromPlan: v.optional(v.string()),
+        toPlan: v.optional(v.string()),
+        amount: v.optional(v.number()),
+        currency: v.optional(v.string()),
+        billingCycle: v.optional(v.string()),
+        paymentId: v.optional(v.id("subscriptionPayments")),
+        note: v.optional(v.string()),
+        /** Who did it — a platform administrator, or the business owner. */
+        actorUserId: v.optional(v.id("users")),
+        actorRole: v.optional(v.string()),
+        createdAt: v.string(),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_businessId_createdAt", ["businessId", "createdAt"])
+        .index("by_subscriptionId", ["subscriptionId"]),
+
+    /**
+     * A payment made towards a subscription.
+     *
+     * A payment starts as **pending**: the business says they have paid and
+     * gives the provider's reference. It becomes `verified` only when
+     * somebody with authority confirms it against the provider's own
+     * statement. Nothing becomes active on the say-so of the browser.
+     */
+    subscriptionPayments: defineTable({
+        businessId: v.id("businesses"),
+        subscriptionId: v.optional(v.id("subscriptions")),
+        planKey: v.string(),
+        amount: v.number(),
+        currency: v.string(),
+        /** monthly | annual */
+        billingCycle: v.string(),
+        /** The period the payment pays for. */
+        periodStart: v.optional(v.string()),
+        periodEnd: v.optional(v.string()),
+        /** pending | verified | failed | refunded */
+        status: v.string(),
+        /** Which provider took the money: manual, paypal, stripe… */
+        provider: v.string(),
+        /**
+         * The provider's own reference for the transaction.
+         *
+         * Two payments with the same provider reference are the same
+         * money, so the second one is refused.
+         */
+        providerReference: v.optional(v.string()),
+        /** When it was verified, and by whom. */
+        verifiedAt: v.optional(v.string()),
+        verifiedBy: v.optional(v.id("users")),
+        /** Why a payment was rejected. */
+        failureReason: v.optional(v.string()),
+        notes: v.optional(v.string()),
+        createdAt: v.string(),
+        updatedAt: v.optional(v.string()),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_status", ["status"])
+        .index("by_providerReference", ["provider", "providerReference"])
+        .index("by_createdAt", ["createdAt"]),
+
+    /**
+     * A license key.
+     *
+     * The key itself is **never stored**. Only a keyed hash of it is, plus
+     * the last few characters so a person can recognise their own key. A
+     * database read cannot be turned back into a working license key.
+     */
+    licenseKeys: defineTable({
+        /**
+         * The business the key was issued to.
+         *
+         * A key may be issued unbound — for a customer who has not yet
+         * registered their business — and is bound to whichever business
+         * redeems it first.
+         */
+        businessId: v.optional(v.id("businesses")),
+        subscriptionId: v.optional(v.id("subscriptions")),
+        /** The keyed hash of the key. */
+        keyHash: v.string(),
+        /** The plan the key entitles the business to. */
+        planKey: v.string(),
+        /** The last few characters, so the owner can recognise the key. */
+        keyHint: v.string(),
+        /** The visible prefix, e.g. SBUZ. */
+        keyPrefix: v.string(),
+        /** active | revoked | expired */
+        status: v.string(),
+        issuedAt: v.string(),
+        expiresAt: v.optional(v.string()),
+        revokedAt: v.optional(v.string()),
+        revokedBy: v.optional(v.id("users")),
+        revocationReason: v.optional(v.string()),
+        /** When it was last used to activate something. */
+        lastUsedAt: v.optional(v.string()),
+        useCount: v.optional(v.number()),
+        createdAt: v.string(),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_keyHash", ["keyHash"])
+        .index("by_status", ["status"]),
+
+    /**
+     * A device registered against a subscription.
+     *
+     * A plan allows a number of devices — one for a single till, several
+     * for a business with more than one. A device that is revoked cannot be
+     * used again until it is registered afresh.
+     */
+    devices: defineTable({
+        businessId: v.id("businesses"),
+        licenseKeyId: v.optional(v.id("licenseKeys")),
+        /** The stable identifier the device reports for itself. */
+        deviceId: v.string(),
+        deviceName: v.string(),
+        /** The platform it runs on: windows, android, web… */
+        platform: v.optional(v.string()),
+        appVersion: v.optional(v.string()),
+        /** active | revoked */
+        status: v.string(),
+        registeredAt: v.string(),
+        lastSeenAt: v.optional(v.string()),
+        revokedAt: v.optional(v.string()),
+        revokedBy: v.optional(v.id("users")),
+        revocationReason: v.optional(v.string()),
+        createdAt: v.string(),
+    })
+        .index("by_businessId", ["businessId"])
+        .index("by_businessId_deviceId", ["businessId", "deviceId"])
+        .index("by_licenseKeyId", ["licenseKeyId"])
+        .index("by_status", ["status"]),
 });

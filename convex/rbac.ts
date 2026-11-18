@@ -161,6 +161,36 @@ export const PERMISSION_DEFINITIONS = {
     group: "Finance",
     description: "Run and export the reporting suite.",
   },
+  "finance.dashboard.view": {
+    label: "View the business dashboard",
+    group: "Finance",
+    description: "Read the daily position: sales, profit, balances and alerts.",
+  },
+  "finance.cash.shift.manage": {
+    label: "Manage cash shifts",
+    group: "Finance",
+    description: "Open and close a till shift and count the drawer.",
+  },
+  "finance.cash.manage": {
+    label: "Manage the cash drawer",
+    group: "Finance",
+    description: "Record money into and out of the till.",
+  },
+  "finance.income.create": {
+    label: "Record other income",
+    group: "Finance",
+    description: "Record income that is not a sale.",
+  },
+  "finance.reconcile.manage": {
+    label: "Reconcile payments",
+    group: "Finance",
+    description: "Reconcile provider statements against the books.",
+  },
+  "finance.reports.export": {
+    label: "Export financial reports",
+    group: "Finance",
+    description: "Export reports to CSV, Excel and PDF.",
+  },
 
   /* People & structure */
   "employees.manage": {
@@ -178,6 +208,31 @@ export const PERMISSION_DEFINITIONS = {
     group: "Platform",
     description: "Change a business's plan, status and billing dates.",
   },
+  "subscriptions.view": {
+    label: "View subscriptions",
+    group: "Platform",
+    description: "Read any business's subscription, payments and devices.",
+  },
+  "subscriptions.plan.manage": {
+    label: "Manage plans and pricing",
+    group: "Platform",
+    description: "Create plans, edit the pricing and retire a plan.",
+  },
+  "subscriptions.payment.verify": {
+    label: "Verify payments",
+    group: "Platform",
+    description: "Confirm a payment against the provider's own record.",
+  },
+  "subscriptions.self.view": {
+    label: "View own subscription",
+    group: "Subscription",
+    description: "See your own plan, renewal date, devices and payments.",
+  },
+  "subscriptions.self.manage": {
+    label: "Manage own subscription",
+    group: "Subscription",
+    description: "Choose a plan, redeem a license key and manage your devices.",
+  },
 } as const;
 
 /** The Phase 2 permission contract. */
@@ -189,13 +244,56 @@ export const ALL_PERMISSIONS = Object.keys(
 ) as Permission[];
 
 /**
+ * Permission verbs that **change** something.
+ *
+ * A permission whose verb is not in this list only reads. The distinction
+ * matters because the subscription gate uses it: a business whose
+ * subscription has closed may still *read* its own data, but must not
+ * change anything.
+ */
+const WRITE_VERBS = [
+  "manage",
+  "create",
+  "cancel",
+  "refund",
+  "adjust",
+  "transfer",
+  "pay",
+  "return",
+  "record",
+  "set",
+  "update",
+  "delete",
+  // Exporting takes data out of the business, so it is closed with the
+  // writing rather than left open.
+  "export",
+];
+
+/**
+ * Does this permission write?
+ *
+ * The verb after the last dot decides. `sales.view` reads;
+ * `customers.manage` writes; `finance.reports.export` takes data out of
+ * the business and is treated as a write.
+ */
+export function isWritePermission(permission: string): boolean {
+  const verb = permission.split(".").pop() ?? "";
+  return WRITE_VERBS.includes(verb);
+}
+
+/**
  * Permissions that may only ever be exercised by a platform administrator.
  *
  * They are deliberately *not* grantable inside a business: no business
  * administrator — not even the owner — may hand these out, so a tenant can
  * never escalate itself into controlling the platform.
  */
-export const PLATFORM_ONLY_PERMISSIONS: Permission[] = ["subscriptions.manage"];
+export const PLATFORM_ONLY_PERMISSIONS: Permission[] = [
+  "subscriptions.manage",
+  "subscriptions.view",
+  "subscriptions.plan.manage",
+  "subscriptions.payment.verify",
+];
 
 /* ────────────────────────────────────────────────────────────────────────
  * Legacy permissions
@@ -442,9 +540,11 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "inventory.view",
     "finance.view",
     "finance.reports.view",
+    "finance.dashboard.view",
     "customers.view",
     "suppliers.view",
     "purchasing.view",
+    "subscriptions.view",
   ],
 
   /* ── Business ─────────────────────────────────────────────────────── */
@@ -473,6 +573,10 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "purchasing.manage",
     "purchasing.return",
     "employees.manage",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "subscriptions.self.view",
   ],
 
   supervisor: [
@@ -486,6 +590,10 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "customers.view",
     "customers.manage",
     "customers.credit.manage",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "subscriptions.self.view",
   ],
 
   cashier: [
@@ -496,6 +604,9 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "customers.view",
     "customers.manage",
     "customers.credit.manage",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "subscriptions.self.view",
   ],
 
   inventory_manager: [
@@ -511,6 +622,7 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "purchasing.view",
     "purchasing.manage",
     "purchasing.return",
+    "subscriptions.self.view",
   ],
 
   accountant: [
@@ -526,6 +638,13 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "finance.view",
     "finance.expenses.create",
     "finance.reports.view",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "finance.income.create",
+    "finance.reconcile.manage",
+    "finance.reports.export",
+    "subscriptions.self.view",
   ],
 
   salesperson: [
@@ -535,6 +654,7 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "inventory.view",
     "customers.view",
     "customers.manage",
+    "subscriptions.self.view",
   ],
 
   auditor: [
@@ -543,9 +663,12 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "inventory.view",
     "finance.view",
     "finance.reports.view",
+    "finance.dashboard.view",
+    "finance.reports.export",
     "customers.view",
     "suppliers.view",
     "purchasing.view",
+    "subscriptions.self.view",
   ],
 };
 

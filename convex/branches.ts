@@ -10,6 +10,7 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireStructureAllowance } from "./entitlements";
 import {
   allowedBranchIds,
   logActivity,
@@ -85,6 +86,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "branches.manage");
+    await requireStructureAllowance(ctx, tenant.businessId, "branches");
 
     const name = args.name.trim();
     if (name.length < 2) throw new ConvexError("Enter a branch name.");

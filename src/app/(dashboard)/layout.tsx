@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import {
     LogOut,
     Menu,
@@ -10,6 +12,8 @@ import {
     ChevronDown,
     BarChart3,
     Settings,
+    CreditCard,
+    ShieldCheck,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -47,6 +51,10 @@ export default function DashboardLayout({
     const [isReportsOpen, setIsReportsOpen] = useState(false);
 
     const { category, profile, navigation, accent } = useActiveCategory(activeBusiness?.role);
+
+    // The platform console is for the SMARTBUZ team, not for tenants.
+    const whoami = useQuery(api.platform.whoami, {});
+    const isPlatformAdmin = Boolean(whoami?.platformRole);
 
     const businessName = profile?.name || "SMARTBUZ POS";
     const businessSubtitle = category?.name || "Point of Sale";
@@ -243,6 +251,20 @@ export default function DashboardLayout({
             {/* Footer Area */}
             <div className="space-y-2 border-t border-sidebar-border/50 p-4">
                 <Link
+                    href="/subscription"
+                    onClick={() => setIsMobileOpen(false)}
+                    className={cn(
+                        "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        pathname === "/subscription" && "bg-sidebar-accent text-sidebar-accent-foreground",
+                        isCollapsed && "justify-center px-2"
+                    )}
+                    title={isCollapsed ? "Subscription" : undefined}
+                >
+                    <CreditCard className="h-5 w-5" />
+                    {!isCollapsed && <span>Subscription</span>}
+                </Link>
+
+                <Link
                     href="/settings"
                     onClick={() => setIsMobileOpen(false)}
                     className={cn(
@@ -255,6 +277,22 @@ export default function DashboardLayout({
                     <Settings className="h-5 w-5" />
                     {!isCollapsed && <span>Settings</span>}
                 </Link>
+
+                {isPlatformAdmin && (
+                    <Link
+                        href="/platform"
+                        onClick={() => setIsMobileOpen(false)}
+                        className={cn(
+                            "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                            pathname === "/platform" && "bg-sidebar-accent text-sidebar-accent-foreground",
+                            isCollapsed && "justify-center px-2"
+                        )}
+                        title={isCollapsed ? "Platform" : undefined}
+                    >
+                        <ShieldCheck className="h-5 w-5" />
+                        {!isCollapsed && <span>Platform</span>}
+                    </Link>
+                )}
 
                 <div className="my-2 h-px bg-linear-to-r from-transparent via-sidebar-border to-transparent" />
 

@@ -61,12 +61,14 @@ export function VerticalPageHeader({
 
 export function StatStrip({
     stats,
+    className,
 }: {
     stats: Array<{
         label: string;
         value: string | number;
         tone?: "default" | "warn" | "danger" | "good";
     }>;
+    className?: string;
 }) {
     const tones = {
         default: "text-foreground",
@@ -75,7 +77,7 @@ export function StatStrip({
         good: "text-emerald-600 dark:text-emerald-400",
     };
     return (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-4", className)}>
             {stats.map((s) => (
                 <div key={s.label} className="rounded-xl border bg-card p-4 shadow-sm">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">

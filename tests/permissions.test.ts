@@ -58,9 +58,20 @@ const EXPECTED: Record<string, string[]> = {
     "finance.view",
     "finance.expenses.create",
     "finance.reports.view",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "finance.income.create",
+    "finance.reconcile.manage",
+    "finance.reports.export",
     "employees.manage",
     "branches.manage",
     "subscriptions.manage",
+    "subscriptions.view",
+    "subscriptions.plan.manage",
+    "subscriptions.payment.verify",
+    "subscriptions.self.view",
+    "subscriptions.self.manage",
   ],
 
   platform_support: [
@@ -72,6 +83,8 @@ const EXPECTED: Record<string, string[]> = {
     "purchasing.view",
     "finance.view",
     "finance.reports.view",
+    "finance.dashboard.view",
+    "subscriptions.view",
   ],
 
   /* ── Business ─────────────────────────────────────────────────────── */
@@ -99,8 +112,16 @@ const EXPECTED: Record<string, string[]> = {
     "finance.view",
     "finance.expenses.create",
     "finance.reports.view",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "finance.income.create",
+    "finance.reconcile.manage",
+    "finance.reports.export",
     "employees.manage",
     "branches.manage",
+    "subscriptions.self.view",
+    "subscriptions.self.manage",
   ],
 
   business_admin: [
@@ -126,8 +147,16 @@ const EXPECTED: Record<string, string[]> = {
     "finance.view",
     "finance.expenses.create",
     "finance.reports.view",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "finance.income.create",
+    "finance.reconcile.manage",
+    "finance.reports.export",
     "employees.manage",
     "branches.manage",
+    "subscriptions.self.view",
+    "subscriptions.self.manage",
   ],
 
   branch_manager: [
@@ -146,6 +175,10 @@ const EXPECTED: Record<string, string[]> = {
     "purchasing.manage",
     "purchasing.return",
     "employees.manage",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "subscriptions.self.view",
   ],
 
   supervisor: [
@@ -159,6 +192,10 @@ const EXPECTED: Record<string, string[]> = {
     "customers.view",
     "customers.manage",
     "customers.credit.manage",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "subscriptions.self.view",
   ],
 
   cashier: [
@@ -169,6 +206,9 @@ const EXPECTED: Record<string, string[]> = {
     "customers.view",
     "customers.manage",
     "customers.credit.manage",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "subscriptions.self.view",
   ],
 
   inventory_manager: [
@@ -184,6 +224,7 @@ const EXPECTED: Record<string, string[]> = {
     "purchasing.view",
     "purchasing.manage",
     "purchasing.return",
+    "subscriptions.self.view",
   ],
 
   accountant: [
@@ -199,6 +240,13 @@ const EXPECTED: Record<string, string[]> = {
     "finance.view",
     "finance.expenses.create",
     "finance.reports.view",
+    "finance.dashboard.view",
+    "finance.cash.shift.manage",
+    "finance.cash.manage",
+    "finance.income.create",
+    "finance.reconcile.manage",
+    "finance.reports.export",
+    "subscriptions.self.view",
   ],
 
   salesperson: [
@@ -208,6 +256,7 @@ const EXPECTED: Record<string, string[]> = {
     "inventory.view",
     "customers.view",
     "customers.manage",
+    "subscriptions.self.view",
   ],
 
   auditor: [
@@ -219,12 +268,15 @@ const EXPECTED: Record<string, string[]> = {
     "purchasing.view",
     "finance.view",
     "finance.reports.view",
+    "finance.dashboard.view",
+    "finance.reports.export",
+    "subscriptions.self.view",
   ],
 };
 
 describe("the permission catalogue", () => {
-  it("defines the eighteen Phase 2 permissions plus the seven Phase 4 ones", () => {
-    assert.equal(ALL_PERMISSIONS.length, 25);
+  it("defines the eighteen Phase 2 permissions plus the seven Phase 4 and eleven later ones", () => {
+    assert.equal(ALL_PERMISSIONS.length, 36);
 
     // The Phase 2 contract.
     const phase2 = [
@@ -271,9 +323,40 @@ describe("the permission catalogue", () => {
       );
     }
 
+    // The Phase 5 additions.
+    const phase5 = [
+      "finance.dashboard.view",
+      "finance.cash.shift.manage",
+      "finance.cash.manage",
+      "finance.income.create",
+      "finance.reconcile.manage",
+      "finance.reports.export",
+    ];
+    for (const permission of phase5) {
+      assert.ok(
+        ALL_PERMISSIONS.includes(permission as never),
+        `the Phase 5 permission ${permission} must exist`
+      );
+    }
+
+    // The Phase 6 additions — licensing and subscriptions.
+    const phase6 = [
+      "subscriptions.view",
+      "subscriptions.plan.manage",
+      "subscriptions.payment.verify",
+      "subscriptions.self.view",
+      "subscriptions.self.manage",
+    ];
+    for (const permission of phase6) {
+      assert.ok(
+        ALL_PERMISSIONS.includes(permission as never),
+        `the Phase 6 permission ${permission} must exist`
+      );
+    }
+
     assert.deepEqual(
       [...ALL_PERMISSIONS].sort(),
-      [...phase2, ...phase4].sort()
+      [...phase2, ...phase4, ...phase5, ...phase6].sort()
     );
   });
 
@@ -331,12 +414,33 @@ describe("the permission catalogue", () => {
   });
 
   it("never lets an auditor change anything", () => {
+    // The invariant is "read only", not "ends in .view": an auditor may be
+    // allowed to export a report — that produces a file on their own
+    // machine and changes nothing in the business — but must never hold a
+    // permission that writes, edits or moves anything.
+    const mutatingVerbs = [
+      ".manage",
+      ".create",
+      ".cancel",
+      ".refund",
+      ".adjust",
+      ".transfer",
+      ".pay",
+      ".return",
+      ".record",
+      ".set",
+      ".update",
+      ".delete",
+    ];
+
     const held = canonicalPermissions("auditor");
     for (const permission of held) {
-      assert.ok(
-        permission.endsWith(".view"),
-        `auditor must not hold the write permission ${permission}`
-      );
+      for (const verb of mutatingVerbs) {
+        assert.ok(
+          !permission.endsWith(verb),
+          `auditor must not hold the write permission ${permission}`
+        );
+      }
     }
   });
 

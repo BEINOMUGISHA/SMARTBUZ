@@ -33,6 +33,8 @@ export const add = mutation({
         receivedBy: v.string(),
         type: v.string(),
         date: v.string(),
+        /** The branch the expense belongs to, when it is a branch cost. */
+        branchId: v.optional(v.id("branches")),
         userId: v.id("users"),
         businessId: v.optional(v.id("businesses")),
     },
@@ -40,8 +42,16 @@ export const add = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "finance.expenses.create");
 
+        if (args.branchId) {
+            const branch = await ctx.db.get(args.branchId);
+            if (!branch || branch.businessId !== tenant.businessId) {
+                throw new ConvexError("That branch belongs to another business.");
+            }
+        }
+
         const expenseId = await ctx.db.insert("expenses", {
             businessId: tenant.businessId,
+            branchId: args.branchId,
             amount: args.amount,
             expense: args.expense,
             receivedBy: args.receivedBy,

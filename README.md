@@ -78,6 +78,66 @@ SMARTBUZ_SERVER_SECRET=... node scripts/bootstrap-platform-admin.mjs --email you
 
 See [`docs/AUTH-RBAC.md`](docs/AUTH-RBAC.md) for the rest.
 
+---
+
+## Finance and business intelligence (Phase 5)
+
+Every financial figure is derived from the authoritative transaction and
+ledger records. There are no sample numbers anywhere in the production path.
+
+| Concept | Where it lives | Notes |
+| --- | --- | --- |
+| The calculation core | `convex/financeCore.ts` | One place that decides what a day, a week and a month are, and what a sale cost |
+| Cash drawer and shifts | `convex/finance.ts` | Opening float, cash in and out, close-off variance, reconciliation |
+| The reporting suite | `convex/analytics.ts` | Daily/weekly/monthly sales, profit and loss, best sellers, slow movers, stock valuation, sales by cashier and by branch, payment methods, customer and supplier debt ageing |
+| The daily dashboard | `convex/dashboard.ts` | Today in the business's own timezone, with a 14-day chart, best sellers, low stock and recent transactions |
+| Exports | `src/lib/export.ts` | CSV, Excel and PDF, all generated on the server's own figures |
+
+The cost of a sale is resolved by a cascade, in order: the recorded cost
+history for that stock, then the book value carried on the sale, then the
+purchase price on the stock record. A business that buys the same product
+twice at different prices gets the right cost for each.
+
+Documentation: [`docs/FINANCE-BI.md`](docs/FINANCE-BI.md).
+
+---
+
+## Licensing and subscriptions (Phase 6)
+
+SMARTBUZ is a SaaS platform. A business buys a plan, the plan decides what it
+may use, and the platform owner runs the whole thing from a console.
+
+| Concept | Where it lives | Notes |
+| --- | --- | --- |
+| The catalogue | `convex/plans.ts` | Starter, Business, Professional, Enterprise. Pricing is data, not code |
+| The states | `convex/subscriptionState.ts` | Trial, active, past due, grace, suspended, expired, cancelled — computed from the dates, so nothing lapses silently |
+| The guards | `convex/entitlements.ts` | Feature entitlements and usage limits, both enforced on the server |
+| The write gate | `convex/tenancy.ts` | `requirePermission` is the one point every mutation passes through, so no function can forget to be protected |
+| Payments | `convex/billing.ts` | Pending → verified. The amount is computed from the plan, and the same provider reference cannot be claimed twice |
+| License keys | `convex/license.ts` | `SBUZ-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`, shown once, stored only as an HMAC-SHA256 hash |
+| Devices | `convex/subscriptions.ts` | Registration and the plan's device limit |
+| The console | `src/app/(dashboard)/platform/page.tsx` | Plans, subscriptions, payments and keys — platform administrators only |
+
+Two rules the engine never breaks:
+
+- **Nothing is deleted when a subscription ends.** No sales, stock, customers
+  or reports are removed, and no subscription row is deleted. The business
+  keeps the right to read its own data and its own invoice; it loses the
+  right to record anything new.
+- **There is no client-side license check.** The browser is told nothing it
+  can act on. A feature the plan does not include is refused by the server
+  even when the request is made by hand.
+
+Documentation: [`docs/LICENSING.md`](docs/LICENSING.md).
+
+### Verifying it
+
+```bash
+npm test                  # the whole suite: permissions, finance, subscriptions
+```
+
+---
+
 ### Local setup
 
 ```bash

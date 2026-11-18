@@ -13,6 +13,7 @@ import {
   requireTenant,
 } from "./tenancy";
 import { writeAudit } from "./audit";
+import { requireEntitlement } from "./entitlements";
 
 /**
  * SMARTBUZ — customers: profiles, credit accounts and statements.
@@ -342,6 +343,7 @@ export const getAccount = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "customers.view");
+    await requireEntitlement(ctx, tenant.businessId, "customer.credit");
 
     const customer = await loadCustomer(ctx, args.customerId, tenant.businessId);
     await requireBranchAccess(ctx, tenant.membership, customer.branchId);
@@ -385,6 +387,7 @@ export const getStatement = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "customers.view");
+    await requireEntitlement(ctx, tenant.businessId, "customer.credit");
 
     const customer = await loadCustomer(ctx, args.customerId, tenant.businessId);
     await requireBranchAccess(ctx, tenant.membership, customer.branchId);
@@ -523,6 +526,7 @@ export const getLoyalty = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "customers.view");
+    await requireEntitlement(ctx, tenant.businessId, "loyalty.points");
 
     const customer = await loadCustomer(ctx, args.customerId, tenant.businessId);
 
@@ -555,6 +559,7 @@ export const getOutstandingBalances = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "finance.view");
+    await requireEntitlement(ctx, tenant.businessId, "customer.credit");
 
     const loans = await ctx.db
       .query("loans")
@@ -856,6 +861,7 @@ export const setCreditLimit = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "customers.credit.manage");
+    await requireEntitlement(ctx, tenant.businessId, "customer.credit");
 
     if (args.creditLimit < 0) {
       throw new ConvexError("A credit limit cannot be negative.");
@@ -921,6 +927,7 @@ export const recordPayment = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "customers.credit.manage");
+    await requireEntitlement(ctx, tenant.businessId, "customer.credit");
 
     if (args.amount <= 0) {
       throw new ConvexError("A payment must be greater than zero.");
@@ -1031,6 +1038,7 @@ export const adjustLoyalty = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "customers.credit.manage");
+    await requireEntitlement(ctx, tenant.businessId, "loyalty.points");
 
     if (args.points === 0) {
       throw new ConvexError("A loyalty adjustment must not be zero.");

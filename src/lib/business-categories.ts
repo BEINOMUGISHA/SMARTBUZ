@@ -104,6 +104,8 @@ export type ModuleId =
     | "attendance"
     | "receivables"
     | "grn"
+    | "finance"
+    | "businessIntelligence"
     | "systemconfig";
 
 /** Unique capabilities that unlock specialised behaviour. */

@@ -47,11 +47,13 @@ import {
   type RoleId,
   effectivePermissions,
   isPlatformOnlyPermission,
+  isWritePermission,
   normalizeBusinessRole,
   roleFromLegacyRoles,
   roleHasPermission as rbacRoleHasPermission,
   sanitizePermissionList,
 } from "./rbac";
+import { assertSubscriptionWritable } from "./subscriptionState";
 
 export type Ctx = MutationCtx | QueryCtx;
 
@@ -466,6 +468,22 @@ export async function resolveMemberPermissions(
  * This is the enforcement point every handler should use. The decision is
  * made on the server from the caller's membership and the business's
  * custom grants — never from anything the browser sent.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * The subscription gate
+ * ────────────────────────────────────────────────────────────────────────
+ *
+ * When the permission **writes** something, the business's subscription is
+ * checked as well. A suspended, expired or cancelled subscription may still
+ * be *read* — the owner has to be able to see their data and their invoice
+ * — but nothing new may be recorded.
+ *
+ * The check lives here because this is the one place every mutation passes
+ * through. A handler that forgets to call a subscription guard therefore
+ * cannot accidentally write while the subscription is closed.
+ *
+ * Nothing is ever deleted when a subscription ends. The data stays; the
+ * writing stops.
  */
 export async function requirePermission(
   ctx: Ctx,
@@ -483,6 +501,11 @@ export async function requirePermission(
       )}.`
     );
   }
+
+  if (isWritePermission(permission)) {
+    await assertSubscriptionWritable(ctx, businessId);
+  }
+
   return membership;
 }
 

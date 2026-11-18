@@ -9,10 +9,12 @@
  */
 
 import type * as activityLogs from "../activityLogs.js";
+import type * as analytics from "../analytics.js";
 import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as authJwks from "../authJwks.js";
 import type * as banking from "../banking.js";
+import type * as billing from "../billing.js";
 import type * as branches from "../branches.js";
 import type * as businesses from "../businesses.js";
 import type * as categories from "../categories.js";
@@ -22,11 +24,16 @@ import type * as dashboard from "../dashboard.js";
 import type * as debug from "../debug.js";
 import type * as defaults from "../defaults.js";
 import type * as employees from "../employees.js";
+import type * as entitlements from "../entitlements.js";
 import type * as expenses from "../expenses.js";
+import type * as finance from "../finance.js";
+import type * as financeCore from "../financeCore.js";
 import type * as http from "../http.js";
 import type * as jwks from "../jwks.js";
+import type * as license from "../license.js";
 import type * as loans from "../loans.js";
 import type * as migration from "../migration.js";
+import type * as plans from "../plans.js";
 import type * as platform from "../platform.js";
 import type * as promotions from "../promotions.js";
 import type * as purchasing from "../purchasing.js";
@@ -37,6 +44,8 @@ import type * as seed from "../seed.js";
 import type * as serverSecret from "../serverSecret.js";
 import type * as shops from "../shops.js";
 import type * as stocks from "../stocks.js";
+import type * as subscriptionState from "../subscriptionState.js";
+import type * as subscriptions from "../subscriptions.js";
 import type * as suppliers from "../suppliers.js";
 import type * as tenancy from "../tenancy.js";
 import type * as userTypes from "../userTypes.js";
@@ -58,10 +67,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   activityLogs: typeof activityLogs;
+  analytics: typeof analytics;
   audit: typeof audit;
   auth: typeof auth;
   authJwks: typeof authJwks;
   banking: typeof banking;
+  billing: typeof billing;
   branches: typeof branches;
   businesses: typeof businesses;
   categories: typeof categories;
@@ -71,11 +82,16 @@ declare const fullApi: ApiFromModules<{
   debug: typeof debug;
   defaults: typeof defaults;
   employees: typeof employees;
+  entitlements: typeof entitlements;
   expenses: typeof expenses;
+  finance: typeof finance;
+  financeCore: typeof financeCore;
   http: typeof http;
   jwks: typeof jwks;
+  license: typeof license;
   loans: typeof loans;
   migration: typeof migration;
+  plans: typeof plans;
   platform: typeof platform;
   promotions: typeof promotions;
   purchasing: typeof purchasing;
@@ -86,6 +102,8 @@ declare const fullApi: ApiFromModules<{
   serverSecret: typeof serverSecret;
   shops: typeof shops;
   stocks: typeof stocks;
+  subscriptionState: typeof subscriptionState;
+  subscriptions: typeof subscriptions;
   suppliers: typeof suppliers;
   tenancy: typeof tenancy;
   userTypes: typeof userTypes;

@@ -96,23 +96,44 @@ export default function DashboardPage() {
         return shops.find(s => s.userId === user?._id);
     }, [isSales, shops, user?._id]);
 
-    const stats = useQuery(api.dashboard.getStats, {
-        startDate: date.from.toISOString(),
-        endDate: date.to.toISOString(),
-        shopId: isSales ? myShop?._id : undefined,
-    });
+    // The full business statistics need the finance reports permission.
+    // Without it the query is skipped rather than called, so somebody who
+    // may work the till is not met with a Forbidden error.
+    const canSeeStats = can("finance.reports.view");
+    const canSeeDashboard = can("finance.dashboard.view");
 
-    if (!stats || (isSales && !myShop && shops)) {
-        if (isSales && !myShop && shops) {
-            return (
-                <div className="flex h-[60vh] flex-col items-center justify-center gap-4 text-center">
-                    <Store className="h-16 w-16 text-muted-foreground opacity-20" />
-                    <h2 className="text-xl font-bold">No Shop Assigned</h2>
-                    <p className="text-muted-foreground">You are currently not assigned to any shop branch.<br />Please contact an administrator.</p>
-                </div>
-            )
-        }
+    const stats = useQuery(
+        api.dashboard.getStats,
+        canSeeStats
+            ? {
+                startDate: date.from.toISOString(),
+                endDate: date.to.toISOString(),
+                shopId: isSales ? myShop?._id : undefined,
+            }
+            : "skip"
+    );
+
+    // Today's position: sales, profit, what is running out and who owes what.
+    const dashboard = useQuery(
+        api.dashboard.getBusinessDashboard,
+        canSeeDashboard ? {} : "skip"
+    );
+
+    const waitingForStats = canSeeStats && !stats;
+    const salesAgentWithoutShop = isSales && !myShop && shops && !canSeeDashboard;
+
+    if (waitingForStats) {
         return <DashboardSkeleton />;
+    }
+
+    if (salesAgentWithoutShop) {
+        return (
+            <div className="flex h-[60vh] flex-col items-center justify-center gap-4 text-center">
+                <Store className="h-16 w-16 text-muted-foreground opacity-20" />
+                <h2 className="text-xl font-bold">No Shop Assigned</h2>
+                <p className="text-muted-foreground">You are currently not assigned to any shop branch.<br />Please contact an administrator.</p>
+            </div>
+        )
     }
 
     return (
@@ -224,7 +245,260 @@ export default function DashboardPage() {
             {/* Category-specific operational widgets */}
             <CategoryWidgets category={category} />
 
-            {isAdmin ? <AdminDashboard stats={stats} /> : <SalesDashboard stats={stats} myShop={myShop} />}
+            {canSeeDashboard && dashboard && <TodayPanel dashboard={dashboard} />}
+
+            {canSeeStats ? (
+                isAdmin ? (
+                    <AdminDashboard stats={stats} />
+                ) : (
+                    <SalesDashboard stats={stats} myShop={myShop} />
+                )
+            ) : (
+                !canSeeDashboard && (
+                    <Card>
+                        <CardContent className="flex flex-col items-center gap-2 p-10 text-center">
+                            <AlertTriangle className="h-10 w-10 text-muted-foreground opacity-30" />
+                            <p className="font-bold">No dashboard for your role</p>
+                            <p className="text-sm text-muted-foreground">
+                                Ask an administrator if you need to see the business figures.
+                            </p>
+                        </CardContent>
+                    </Card>
+                )
+            )}
+        </div>
+    );
+}
+
+/**
+ * Today's position.
+ *
+ * The first thing the owner wants to know: what did today bring in, what
+ * did it cost, what is running out, and who owes what. Every figure comes
+ * from the same calculation core as the profit and loss report, so the two
+ * cannot disagree.
+ */
+function TodayPanel({ dashboard }: { dashboard: any }) {
+    const chart = dashboard.chartData ?? [];
+
+    return (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                <KpiCard
+                    title="Today's sales"
+                    value={`UGX ${(dashboard.today?.revenue ?? 0).toLocaleString()}`}
+                    icon={TrendingUp}
+                    iconClassName="text-emerald-600 dark:text-emerald-400"
+                    description={`${dashboard.today?.transactions ?? 0} transaction(s)`}
+                />
+                <KpiCard
+                    title="Gross profit"
+                    value={`UGX ${(dashboard.today?.grossProfit ?? 0).toLocaleString()}`}
+                    icon={ShoppingCart}
+                    iconClassName="text-emerald-600 dark:text-emerald-400"
+                    description={`Cost of goods sold UGX ${Math.max(
+                        0,
+                        (dashboard.today?.revenue ?? 0) - (dashboard.today?.grossProfit ?? 0)
+                    ).toLocaleString()}`}
+                />
+                <KpiCard
+                    title="Net profit"
+                    value={`UGX ${(dashboard.today?.netProfit ?? 0).toLocaleString()}`}
+                    icon={TrendingUp}
+                    iconClassName={
+                        (dashboard.today?.netProfit ?? 0) >= 0
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-destructive"
+                    }
+                    description={`Running costs UGX ${(
+                        dashboard.today?.operatingExpenses ?? 0
+                    ).toLocaleString()}`}
+                />
+                <KpiCard
+                    title="Owed to you"
+                    value={`UGX ${(dashboard.balances?.receivables ?? 0).toLocaleString()}`}
+                    icon={CreditCard}
+                    iconClassName={
+                        (dashboard.balances?.receivables ?? 0) > 0
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-muted-foreground"
+                    }
+                    description={`Suppliers are owed UGX ${(
+                        dashboard.balances?.payables ?? 0
+                    ).toLocaleString()}`}
+                />
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-3">
+                <Card className="lg:col-span-2">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                            The last fortnight
+                        </CardTitle>
+                        <CardDescription>Revenue and gross profit, day by day</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {chart.length === 0 ? (
+                            <p className="py-10 text-center text-sm text-muted-foreground">
+                                Nothing sold yet.
+                            </p>
+                        ) : (
+                            <div className="h-[240px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chart}>
+                                        <defs>
+                                            <linearGradient id="todayRevenue" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                        <XAxis
+                                            dataKey="date"
+                                            tickFormatter={(value: string) =>
+                                                String(value).slice(5)
+                                            }
+                                            fontSize={10}
+                                        />
+                                        <YAxis fontSize={10} />
+                                        <RechartsTooltip
+                                            formatter={(value: any) =>
+                                                `UGX ${Number(value).toLocaleString()}`
+                                            }
+                                            labelFormatter={(label: any) => String(label)}
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="revenue"
+                                            stroke="#10b981"
+                                            fill="url(#todayRevenue)"
+                                            strokeWidth={2}
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="grossProfit"
+                                            stroke="#6366f1"
+                                            fill="transparent"
+                                            strokeWidth={2}
+                                            strokeDasharray="4 3"
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-base">Best sellers today</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {(dashboard.bestSellers ?? []).length === 0 ? (
+                            <p className="py-8 text-center text-sm text-muted-foreground">
+                                Nothing sold yet today.
+                            </p>
+                        ) : (
+                            <ul className="divide-y">
+                                {dashboard.bestSellers.map((product: any) => (
+                                    <li
+                                        key={product.name}
+                                        className="flex items-center justify-between py-2 text-sm"
+                                    >
+                                        <span className="min-w-0 truncate pr-3 font-medium">
+                                            {product.name}
+                                        </span>
+                                        <span className="shrink-0 text-right">
+                                            <span className="font-black tabular-nums">
+                                                {product.quantity}
+                                            </span>
+                                            <span className="block text-[10px] text-muted-foreground">
+                                                UGX {product.revenue.toLocaleString()}
+                                            </span>
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <AlertTriangle className="h-4 w-4 text-amber-600" />
+                            Running out
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {(dashboard.lowStock ?? []).length === 0 ? (
+                            <p className="py-8 text-center text-sm text-muted-foreground">
+                                Nothing is running low.
+                            </p>
+                        ) : (
+                            <ul className="divide-y">
+                                {dashboard.lowStock.map((stock: any) => (
+                                    <li
+                                        key={stock.stockId}
+                                        className="flex items-center justify-between py-2 text-sm"
+                                    >
+                                        <span className="min-w-0 truncate pr-3 font-medium">
+                                            {stock.name}
+                                        </span>
+                                        <Badge
+                                            variant="outline"
+                                            className="shrink-0 border-amber-300 text-[10px] font-bold text-amber-700"
+                                        >
+                                            {stock.qty} left
+                                        </Badge>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <History className="h-4 w-4 text-muted-foreground" />
+                            Recent transactions
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {(dashboard.recentTransactions ?? []).length === 0 ? (
+                            <p className="py-8 text-center text-sm text-muted-foreground">
+                                No sales yet today.
+                            </p>
+                        ) : (
+                            <ul className="divide-y">
+                                {dashboard.recentTransactions.map((sale: any) => (
+                                    <li
+                                        key={sale._id}
+                                        className="flex items-center justify-between py-2 text-sm"
+                                    >
+                                        <span className="min-w-0">
+                                            <span className="block truncate font-mono text-[11px] font-bold text-muted-foreground">
+                                                {sale.invoiceNumber ?? "—"}
+                                            </span>
+                                            <span className="text-[11px] text-muted-foreground">
+                                                {sale.paymentMode}
+                                                {sale.isCredit ? " · on credit" : ""}
+                                            </span>
+                                        </span>
+                                        <span className="shrink-0 font-black tabular-nums">
+                                            UGX {sale.total.toLocaleString()}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     );
 }

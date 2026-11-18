@@ -12,6 +12,7 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireUsageAllowance } from "./entitlements";
 import { BUSINESS_ROLES, type BusinessRole } from "./tenancy";
 import {
   allowedBranchIds,
@@ -117,6 +118,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "employees.manage");
+    await requireUsageAllowance(ctx, tenant.businessId, "users");
 
     const fullName = args.fullName.trim();
     if (fullName.length < 2) throw new ConvexError("Enter the employee's name.");

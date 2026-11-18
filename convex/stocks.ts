@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireUsageAllowance } from "./entitlements";
 import { paginationOptsValidator } from "convex/server";
 import { Id } from "./_generated/dataModel";
 import { logActivity, requirePermission, requireTenant } from "./tenancy";
@@ -496,6 +497,7 @@ export const add = mutation({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "products.create");
+        await requireUsageAllowance(ctx, tenant.businessId, "products");
         const businessId = tenant.businessId;
         const userId = tenant.user._id;
 

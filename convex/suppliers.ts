@@ -13,6 +13,7 @@ import {
   requireTenant,
 } from "./tenancy";
 import { writeAudit } from "./audit";
+import { requireEntitlement } from "./entitlements";
 
 /**
  * SMARTBUZ — suppliers: the book, the ledger and the statements.
@@ -155,6 +156,7 @@ export const list = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "suppliers.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const suppliers = await ctx.db
       .query("suppliers")
@@ -200,6 +202,7 @@ export async function listSuppliersHandler(
 ) {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "suppliers.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const suppliers = await ctx.db
       .query("suppliers")
@@ -274,6 +277,7 @@ export const getById = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "suppliers.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const supplier = await loadSupplier(ctx, args.id, tenant.businessId);
     await requireBranchAccess(ctx, tenant.membership, supplier.branchId);
@@ -314,6 +318,7 @@ export const getPurchaseHistory = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const supplier = await loadSupplier(ctx, args.supplierId, tenant.businessId);
 
@@ -367,6 +372,7 @@ export const getStatement = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "suppliers.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const supplier = await loadSupplier(ctx, args.supplierId, tenant.businessId);
 
@@ -446,6 +452,7 @@ export const listPayments = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const payments = await ctx.db
       .query("purchasePayments")
@@ -484,6 +491,7 @@ export const getOutstandingBalances = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "finance.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const suppliers = await ctx.db
       .query("suppliers")
@@ -531,6 +539,7 @@ export async function upsertSupplierHandler(
 ) {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "suppliers.manage");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const { id, businessId, ...payload } = args;
 
@@ -643,6 +652,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "suppliers.manage");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const supplier = await loadSupplier(ctx, args.id, tenant.businessId);
 
@@ -726,6 +736,7 @@ export const paySupplier = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.pay");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     if (args.amount <= 0) {
       throw new ConvexError("A payment must be greater than zero.");
@@ -881,6 +892,7 @@ export const adjustBalance = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.pay");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     if (args.amount === 0) {
       throw new ConvexError("An adjustment must not be zero.");

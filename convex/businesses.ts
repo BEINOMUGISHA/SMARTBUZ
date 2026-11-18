@@ -30,6 +30,8 @@ import {
   slugify,
 } from "./tenancy";
 import { resolveTax } from "./verticals/tax";
+import { startTrial } from "./subscriptions";
+import { DEFAULT_PLAN_KEY } from "./subscriptionState";
 import {
   DEFAULT_COUNTRY,
   DEFAULT_CURRENCY,
@@ -426,6 +428,8 @@ export const createForCurrentUser = mutation({
     businessPhone: v.optional(v.string()),
     branchName: v.optional(v.string()),
     warehouseName: v.optional(v.string()),
+    /** The plan the business starts on. Defaults to the default plan. */
+    planKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const owner = await requireUser(ctx);
@@ -525,6 +529,13 @@ export const createForCurrentUser = mutation({
 
     // The new business becomes the active one.
     await ctx.db.patch(owner._id, { activeBusinessId: businessId });
+
+    // Put the business on a real, tracked free trial straight away, so the
+    // subscription gate has a plan and an end date to work from.
+    await startTrial(ctx, businessId, args.planKey ?? DEFAULT_PLAN_KEY, {
+      userId: owner._id,
+      role: "owner",
+    });
 
     await ctx.db.insert("activityLogs", {
       businessId,

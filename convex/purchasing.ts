@@ -14,6 +14,7 @@ import {
 } from "./tenancy";
 import { writeAudit } from "./audit";
 import { postSupplierLedger } from "./suppliers";
+import { requireEntitlement } from "./entitlements";
 
 /**
  * SMARTBUZ — purchasing.
@@ -198,6 +199,7 @@ export async function listPurchaseOrdersHandler(
 ) {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const orders = await ctx.db
       .query("purchaseOrders")
@@ -273,6 +275,7 @@ export const getPurchaseOrder = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const order = await loadPurchaseOrder(ctx, args.id, tenant.businessId);
 
@@ -331,6 +334,7 @@ export async function createPurchaseOrderHandler(
 ) {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.manage");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
     const businessId = tenant.businessId;
 
     if (args.items.length === 0) {
@@ -442,6 +446,7 @@ export async function updatePurchaseOrderStatusHandler(
 ) {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.manage");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const order = await loadPurchaseOrder(ctx, args.id, tenant.businessId);
     const now = new Date().toISOString();
@@ -527,6 +532,7 @@ export const updatePurchaseOrder = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.manage");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const order = await loadPurchaseOrder(ctx, args.id, tenant.businessId);
 
@@ -613,6 +619,7 @@ export async function receiveGoodsHandler(
 ) {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.manage");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
     // Receiving goods moves stock, so it needs the inventory permission
     // as well as the purchasing one.
     await requirePermission(ctx, tenant.businessId, "inventory.adjust");
@@ -876,6 +883,7 @@ export async function listGoodsReceiptsHandler(
 ) {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const receipts = await ctx.db
       .query("goodsReceipts")
@@ -947,6 +955,7 @@ export const recordInvoice = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.manage");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const businessId = tenant.businessId;
     const supplier = await loadSupplier(ctx, args.supplierId, businessId);
@@ -1074,6 +1083,7 @@ export const listInvoices = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const invoices = await ctx.db
       .query("supplierInvoices")
@@ -1121,6 +1131,7 @@ export const getInvoice = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const invoice = await ctx.db.get(args.id);
     if (!invoice || invoice.businessId !== tenant.businessId) {
@@ -1174,6 +1185,7 @@ export const createPurchaseReturn = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.return");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
     await requirePermission(ctx, tenant.businessId, "inventory.adjust");
 
     const businessId = tenant.businessId;
@@ -1377,6 +1389,7 @@ export const listPurchaseReturns = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const returns = await ctx.db
       .query("purchaseReturns")
@@ -1416,6 +1429,7 @@ export const getCostHistory = query({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
+    await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
     const rows = await ctx.db
       .query("stockCostHistory")

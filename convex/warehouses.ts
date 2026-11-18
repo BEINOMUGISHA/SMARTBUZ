@@ -9,6 +9,7 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireStructureAllowance } from "./entitlements";
 import { logActivity, requirePermission, requireTenant } from "./tenancy";
 
 export const list = query({
@@ -71,6 +72,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "inventory.transfer");
+    await requireStructureAllowance(ctx, tenant.businessId, "warehouses");
 
     const name = args.name.trim();
     if (name.length < 2) throw new ConvexError("Enter a warehouse name.");
