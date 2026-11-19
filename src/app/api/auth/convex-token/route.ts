@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { clearSessionCookie, getSessionFromRequest } from "@/lib/session";
-import { signAccessToken } from "@/lib/convex-token";
+import { signAccessToken, describeTokenConfiguration } from "@/lib/convex-token";
 import { CONVEX_URL } from "@/lib/convex-url";
 
 export const dynamic = "force-dynamic";
@@ -90,7 +90,13 @@ export async function GET(request: NextRequest) {
     );
   } catch (err: any) {
     const message = String(err?.message ?? "");
+    const config = describeTokenConfiguration();
+
+    // A missing variable and an unreadable key are both configuration
+    // problems, and both are fixed in one place: the deployment's
+    // environment variables. Say which one, by name.
     const isMisconfigured =
+      config.missing.length > 0 ||
       message.includes("SMARTBUZ_JWT_PRIVATE_KEY") ||
       message.includes("site URL");
 
@@ -99,8 +105,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: isMisconfigured
-          ? "Server is not configured for Convex authentication. Run `node scripts/generate-auth-keys.mjs` and add SMARTBUZ_JWT_PRIVATE_KEY to .env.local."
+          ? `Server is not configured for Convex authentication. Missing: ${
+              config.missing.join(", ") || "a usable JWT signing key"
+            }. Add it to the deployment's environment variables (and redeploy — environment changes do not reach a live deployment on their own).`
           : "Could not issue an access token.",
+        missing: config.missing,
       },
       { status: isMisconfigured ? 503 : 500 }
     );

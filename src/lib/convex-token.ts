@@ -95,13 +95,24 @@ function getPrivateKeyMaterial(): string {
 
 async function importPrivateKey(): Promise<CryptoKey> {
   const der = decodeBase64UrlToBytes(getPrivateKeyMaterial());
-  return await crypto.subtle.importKey(
-    "pkcs8",
-    der,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
+  try {
+    return await crypto.subtle.importKey(
+      "pkcs8",
+      der,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+  } catch (err: any) {
+    // A key that is present but unreadable — pasted as PEM, truncated, or
+    // generated for a different pair — is still a configuration problem, and
+    // it must say so by name rather than surfacing as an opaque failure.
+    throw new Error(
+      "SMARTBUZ_JWT_PRIVATE_KEY is set but could not be read as a PKCS#8 DER " +
+        `key (${String(err?.message ?? err)}). Regenerate it with ` +
+        "`node scripts/generate-auth-keys.mjs`."
+    );
+  }
 }
 
 function decodeBase64UrlToBytes(input: string): Uint8Array<ArrayBuffer> {
@@ -172,4 +183,35 @@ export async function signAccessToken(claims: AccessTokenClaims): Promise<string
 /** True when the deployment is configured well enough to mint tokens. */
 export function isTokenIssuingConfigured(): boolean {
   return Boolean(process.env.SMARTBUZ_JWT_PRIVATE_KEY) && Boolean(getAuthIssuer());
+}
+
+/**
+ * A precise account of what the deployment is missing.
+ *
+ * "The server is not configured" is not an actionable error message: the
+ * missing private key and the unknown issuer are different problems with
+ * different fixes, and both surface at the same moment — the browser asking
+ * for a token. Naming the variable turns a silent 503 into a one-line fix.
+ */
+export function describeTokenConfiguration(): {
+  /** A private key is present. It may still be unreadable — see importPrivateKey. */
+  privateKey: boolean;
+  /** The issuer the tokens will claim. */
+  issuer: string;
+  /** The environment variables that must be set. Empty when nothing is missing. */
+  missing: string[];
+} {
+  const issuer = getAuthIssuer();
+  const missing: string[] = [];
+
+  if (!process.env.SMARTBUZ_JWT_PRIVATE_KEY) missing.push("SMARTBUZ_JWT_PRIVATE_KEY");
+  if (!issuer) {
+    missing.push("NEXT_PUBLIC_CONVEX_SITE_URL (or SMARTBUZ_AUTH_ISSUER)");
+  }
+
+  return {
+    privateKey: Boolean(process.env.SMARTBUZ_JWT_PRIVATE_KEY),
+    issuer,
+    missing,
+  };
 }
