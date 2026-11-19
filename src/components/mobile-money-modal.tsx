@@ -1,13 +1,21 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useConvex } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, CheckCircle2, AlertCircle, Smartphone, X } from "lucide-react";
-import { formatUgandaPhone, detectCarrier, initiateMoMoPush } from "@/lib/mobile-money";
+import { Loader2, Phone, CheckCircle2, AlertCircle, Smartphone, X, PlugZap } from "lucide-react";
+import {
+    adapterKeyForNetwork,
+    describeOutcome,
+    detectCarrier,
+    formatUgandaPhone,
+    type MobileMoneyNetwork,
+} from "@/lib/mobile-money";
 import { toast } from "sonner";
 
 interface MoMoModalProps {
@@ -15,21 +23,34 @@ interface MoMoModalProps {
     onClose: () => void;
     amount: number;
     initialPhone?: string;
-    onPaymentConfirmed: (reference: string) => void;
+    /**
+     * Called when a payment has been **started** and has a reference.
+     *
+     * The reference is handed over so the sale can carry it. The sale is
+     * recorded as awaiting confirmation — the provider confirms it, not
+     * this dialog.
+     */
+    onPaymentStarted: (reference: string, message: string) => void;
 }
+
+type ModalStatus = "IDLE" | "PROMPTING" | "WAITING_PIN" | "CONFIRMED" | "FAILED";
 
 export function MobileMoneyModal({
     isOpen,
     onClose,
     amount,
     initialPhone = "",
-    onPaymentConfirmed,
+    onPaymentStarted,
 }: MoMoModalProps) {
+    const convex = useConvex();
     const [phone, setPhone] = useState(initialPhone);
-    const [network, setNetwork] = useState<"MTN" | "AIRTEL">("MTN");
-    const [status, setStatus] = useState<"IDLE" | "PROMPTING" | "WAITING_PIN" | "CONFIRMED">("IDLE");
+    const [network, setNetwork] = useState<MobileMoneyNetwork>("MTN");
+    const [status, setStatus] = useState<ModalStatus>("IDLE");
     const [manualRef, setManualRef] = useState("");
     const [timer, setTimer] = useState(60);
+    /** The reference of the payment that was started. */
+    const [reference, setReference] = useState("");
+    const [lastMessage, setLastMessage] = useState("");
 
     // Keep the phone in sync with the checkout value (prop changes and re-open)
     useEffect(() => {
@@ -44,6 +65,8 @@ export function MobileMoneyModal({
             setStatus("IDLE");
             setManualRef("");
             setTimer(60);
+            setReference("");
+            setLastMessage("");
         }
     }, [isOpen]);
 
@@ -66,6 +89,13 @@ export function MobileMoneyModal({
         return () => clearInterval(interval);
     }, [status, timer]);
 
+    /**
+     * Ask the provider to collect the money.
+     *
+     * This calls the real adapter on the server. If the adapter has not
+     * been proved against the live provider, the server refuses — and
+     * that refusal is shown here rather than hidden.
+     */
     const handleSendPrompt = async () => {
         const msisdn = formatUgandaPhone(phone);
         if (msisdn.length !== 12) {
@@ -74,40 +104,125 @@ export function MobileMoneyModal({
         }
 
         setStatus("PROMPTING");
-        try {
-            const response = await initiateMoMoPush({
-                amount,
-                phone: msisdn,
-                network,
-                reference: `SALE-${Date.now()}`,
-                description: "POS Sale Payment",
-            });
 
-            if (response.success) {
+        try {
+            const result = await convex.action(
+                api.integrations.payments.initiatePayment,
+                {
+                    adapterKey: adapterKeyForNetwork(network),
+                    amount,
+                    currency: "UGX",
+                    phone: msisdn,
+                    description: "POS Sale Payment",
+                }
+            );
+
+            const message =
+                result.message ??
+                `The prompt was sent. The customer still has to enter their ${network} PIN.`;
+
+            setLastMessage(message);
+            setReference(result.reference);
+
+            if (result.status === "succeeded") {
+                // The provider confirmed it outright — that happens when
+                // a collection is already settled.
+                setStatus("CONFIRMED");
+                onPaymentStarted(result.reference, message);
+                toast.success(message);
+            } else if (result.status === "failed") {
+                setStatus("FAILED");
+                toast.error(message);
+            } else {
                 setStatus("WAITING_PIN");
                 setTimer(60);
-                toast.success(`Prompt sent! Customer should enter PIN on their ${network} handset.`);
-            } else {
-                toast.error(response.message || "Failed to send USSD prompt.");
-                setStatus("IDLE");
+                onPaymentStarted(result.reference, message);
+                toast.success(message);
             }
-        } catch {
-            toast.error("Network timeout requesting Mobile Money prompt.");
-            setStatus("IDLE");
+        } catch (err) {
+            const message =
+                err instanceof Error
+                    ? err.message
+                    : "The mobile money prompt could not be sent.";
+            setStatus("FAILED");
+            setLastMessage(message);
+            toast.error(message);
         }
     };
 
-    const handleConfirmPayment = () => {
-        const trimmedRef = manualRef.trim();
-        const reference = trimmedRef || `${network}-${Date.now().toString(36).toUpperCase()}`;
-        onPaymentConfirmed(reference);
-        toast.success(
-            trimmedRef
-                ? `Mobile Money payment of UGX ${amount.toLocaleString()} confirmed!`
-                : `Mobile Money payment of UGX ${amount.toLocaleString()} recorded with an unverified manual reference.`
-        );
-        onClose();
+    /**
+     * Ask the provider whether the money arrived.
+     *
+     * This is the only thing that confirms a payment. It asks the
+     * provider, not the cashier.
+     */
+    const handleCheckWithProvider = async () => {
+        if (!reference) return;
+
+        setStatus("PROMPTING");
+
+        try {
+            const result = await convex.action(
+                api.integrations.payments.verifyPaymentWithProvider,
+                { reference }
+            );
+
+            const message =
+                result.message ??
+                (result.status === "succeeded"
+                    ? "The provider confirmed the payment."
+                    : "The provider has not confirmed the payment yet.");
+
+            setLastMessage(message);
+
+            if (result.status === "succeeded") {
+                setStatus("CONFIRMED");
+                toast.success(message);
+            } else if (result.status === "failed") {
+                setStatus("FAILED");
+                toast.error(message);
+            } else {
+                setStatus("WAITING_PIN");
+                setTimer(60);
+                toast.info(message);
+            }
+        } catch (err) {
+            const message =
+                err instanceof Error
+                    ? err.message
+                    : "The provider could not be reached.";
+            setStatus("WAITING_PIN");
+            setLastMessage(message);
+            toast.error(message);
+        }
     };
+
+    /**
+     * Record a reference the customer gave us.
+     *
+     * This does **not** confirm the payment. It records the reference so
+     * that somebody with the authority to verify payments can check it
+     * against the provider's own record later.
+     */
+    const handleRecordManualReference = () => {
+        const trimmedRef = manualRef.trim();
+
+        if (!trimmedRef) {
+            toast.error("Enter the reference from the customer's confirmation first.");
+            return;
+        }
+
+        const message =
+            `Recorded reference ${trimmedRef}. The payment still has to be checked against the provider's record before it counts as confirmed.`;
+
+        setLastMessage(message);
+        setReference(trimmedRef);
+        setStatus("WAITING_PIN");
+        onPaymentStarted(trimmedRef, message);
+        toast.success(message);
+    };
+
+    const isPending = status === "WAITING_PIN";
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -130,7 +245,8 @@ export function MobileMoneyModal({
                         </Button>
                     </div>
                     <DialogDescription>
-                        Send an instant USSD PIN prompt directly to the customer's phone.
+                        Ask {network} to send a PIN prompt to the customer&apos;s phone. The
+                        money is confirmed by {network}, not by the till.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -176,7 +292,7 @@ export function MobileMoneyModal({
                                 onChange={(e) => setPhone(e.target.value)}
                                 placeholder="0772 123 456"
                                 className="pl-9 font-mono"
-                                disabled={status === "WAITING_PIN"}
+                                disabled={isPending}
                             />
                         </div>
                     </div>
@@ -189,79 +305,130 @@ export function MobileMoneyModal({
                                 className="p-4 rounded-xl border border-amber-400/30 bg-amber-500/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
                             >
                                 <Loader2 className="h-8 w-8 animate-spin text-amber-500 mx-auto" />
-                                <p className="font-bold text-sm">Sending USSD Prompt...</p>
+                                <p className="font-bold text-sm">Talking to {network}...</p>
                                 <p className="text-xs text-muted-foreground">
-                                    Requesting a PIN prompt from {network} for the customer's phone.
+                                    Asking {network} to send a PIN prompt to the customer&apos;s phone.
                                 </p>
                             </div>
                         )}
 
-                        {status === "WAITING_PIN" && (
+                        {isPending && (
                             <div
                                 key="waiting-pin"
                                 className="p-4 rounded-xl border border-primary/20 bg-primary/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
                             >
                                 <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                                <p className="font-bold text-sm">USSD Prompt Dispatched</p>
+                                <p className="font-bold text-sm">Waiting for the customer</p>
                                 <p className="text-xs text-muted-foreground">
-                                    Customer is entering their secret MoMo PIN on their phone.
+                                    The customer is entering their secret PIN on their phone. The money is
+                                    confirmed once {network} says so.
                                 </p>
                                 <div className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
                                     Timeout in {timer}s
                                 </div>
+                                {reference && (
+                                    <p className="text-[11px] font-mono text-muted-foreground break-all">
+                                        Reference: {reference}
+                                    </p>
+                                )}
                             </div>
+                        )}
+
+                        {status === "CONFIRMED" && (
+                            <div
+                                key="confirmed"
+                                className="p-4 rounded-xl border border-green-500/30 bg-green-500/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
+                            >
+                                <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto" />
+                                <p className="font-bold text-sm">Confirmed by {network}</p>
+                                <p className="text-xs text-muted-foreground">
+                                    The provider confirmed this payment.
+                                </p>
+                            </div>
+                        )}
+
+                        {status === "FAILED" && (
+                            <div
+                                key="failed"
+                                className="p-4 rounded-xl border border-red-500/30 bg-red-500/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
+                            >
+                                <AlertCircle className="h-8 w-8 text-red-600 mx-auto" />
+                                <p className="font-bold text-sm">The payment did not go through</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Nothing was charged. Record the sale as unpaid, or try again.
+                                </p>
+                            </div>
+                        )}
+
+                        {lastMessage && status !== "PROMPTING" && (
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                {lastMessage}
+                            </p>
                         )}
                     </div>
 
-                    {/* Manual SMS Reference Fallback */}
+                    {/* Manual Reference */}
                     <div className="space-y-1.5 pt-2 border-t">
                         <Label htmlFor="momo-reference" className="text-[11px] text-muted-foreground font-semibold">
-                            Manual Verification / SMS Reference (Optional)
+                            Reference from the customer&apos;s confirmation (optional)
                         </Label>
                         <Input
                             id="momo-reference"
-                            placeholder="e.g. 1948203948 (from customer's SMS)"
+                            placeholder="e.g. 1948203948 (from the customer's SMS)"
                             value={manualRef}
                             onChange={(e) => setManualRef(e.target.value)}
                             className="h-8 text-xs font-mono"
                         />
-                        {manualRef.trim().length === 0 && (
-                            <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-start gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                                <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
-                                <span>
-                                    No reference entered — this payment will be recorded as an unverified manual reference.
-                                </span>
-                            </p>
-                        )}
+                        <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                            <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                            <span>
+                                A reference records the payment for checking. It does not confirm it —
+                                that is the provider&apos;s word to give.
+                            </span>
+                        </p>
                     </div>
                 </div>
 
                 <DialogFooter className="flex items-center justify-between sm:justify-between gap-2">
                     <Button variant="outline" size="sm" onClick={onClose}>
-                        Cancel
+                        Close
                     </Button>
 
                     <div className="flex items-center gap-2">
-                        {status !== "WAITING_PIN" ? (
+                        {!isPending && status !== "CONFIRMED" && (
                             <Button
                                 size="sm"
                                 onClick={handleSendPrompt}
                                 disabled={!phone || status === "PROMPTING"}
-                                aria-label="Send USSD prompt to customer"
+                                aria-label="Send PIN prompt to customer"
                                 className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-black font-bold"
                             >
                                 {status === "PROMPTING" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Smartphone className="h-3.5 w-3.5" />}
-                                <span>Send USSD Prompt</span>
+                                <span>Send Prompt</span>
                             </Button>
-                        ) : null}
+                        )}
+
+                        {isPending && reference && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleCheckWithProvider}
+                                className="gap-1.5"
+                            >
+                                <PlugZap className="h-3.5 w-3.5" />
+                                <span>Ask {network}</span>
+                            </Button>
+                        )}
 
                         <Button
                             size="sm"
-                            onClick={handleConfirmPayment}
-                            className="gap-1.5 bg-green-600 hover:bg-green-700 text-white font-bold"
+                            variant="secondary"
+                            onClick={handleRecordManualReference}
+                            disabled={!manualRef.trim()}
+                            className="gap-1.5"
                         >
                             <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span>Confirm & Paid</span>
+                            <span>Record Reference</span>
                         </Button>
                     </div>
                 </DialogFooter>

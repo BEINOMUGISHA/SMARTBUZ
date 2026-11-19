@@ -405,6 +405,40 @@ export default defineSchema({
         warehouseId: v.optional(v.id("warehouses")),
         /** The branch this product belongs to (when branch-level stock). */
         branchId: v.optional(v.id("branches")),
+        /**
+         * The barcode printed on the product, if it has one.
+         *
+         * This is what a barcode scanner looks up. A product without a
+         * barcode can still be sold — it is found by name — but it cannot
+         * be scanned.
+         */
+        barcode: v.optional(v.string()),
+        /**
+         * The unit this product is measured in — `kg`, `crate`, `strip`.
+         *
+         * The catalogue's default unit is only a suggestion; this is what
+         * the business actually sells in.
+         */
+        unit: v.optional(v.string()),
+        /**
+         * How many of `unit` make one whole pack — 12 for a dozen, 24 for
+         * a crate of cans. Used by the bulk and wholesaler packages to turn
+         * a price per pack into a price per unit.
+         */
+        unitsPerPack: v.optional(v.number()),
+        /**
+         * Whether the quantity may be fractional.
+         *
+         * A pharmacy's tablets are not sold in halves; a butcher's meat is.
+         */
+        allowFractional: v.optional(v.boolean()),
+        /**
+         * Whether this product is sold by weight.
+         *
+         * A weighed product's price is per unit of weight, and the till
+         * takes the weight from a scale.
+         */
+        weightBased: v.optional(v.boolean()),
     })
         .index("by_businessId", ["businessId"])
         .index("by_productCode", ["productCode"])
@@ -414,6 +448,8 @@ export default defineSchema({
         .index("by_qty", ["qty"])
         .index("by_category", ["categoryId"])
         .index("by_halfPrice", ["halfPrice"])
+        .index("by_barcode", ["barcode"])
+        .index("by_businessId_barcode", ["businessId", "barcode"])
         .searchIndex("search_name", { searchField: "name" })
         .searchIndex("search_supplier", { searchField: "supplier" }),
 
@@ -585,6 +621,19 @@ export default defineSchema({
          * different matter — that money is already in the business.
          */
         paymentConfirmation: v.optional(v.string()), // confirmed | pending_verification
+        /**
+         * The payment provider's reference for this sale.
+         *
+         * When this is present, the payment was taken through a provider
+         * and the sale stays `pending_verification` until the provider
+         * confirms it — the cashier's word is not the provider's
+         * confirmation.
+         *
+         * A sale with no reference was paid for in front of the cashier
+         * (cash, or a mobile-money transfer they watched arrive), which
+         * is a different thing.
+         */
+        paymentReference: v.optional(v.string()),
         /** online | offline — where the sale was first recorded. */
         syncSource: v.optional(v.string()),
         /** The unique id of the transaction, wherever it was first created. */
@@ -2097,4 +2146,406 @@ stockConflicts: defineTable({
     .index("by_businessId", ["businessId"])
     .index("by_businessId_status", ["businessId", "status"])
     .index("by_transactionId", ["transactionId"]),
+
+  /* ────────────────────────────────────────────────────────────────────
+   * Phase 9 — integrations and industry packages
+   * ──────────────────────────────────────────────────────────────────── */
+
+  /**
+   * One integration adapter, configured for one business.
+   *
+   * The row holds what the business chose; the *adapter* — what the
+   * adapter is called, what it can do, what it needs — lives in the
+   * registry (`convex/integrations/registry.ts`), so every integration is
+   * described the same way and adding one does not mean adding a table.
+   *
+   * Secrets are encrypted before they get here and are never returned to
+   * the browser. The interface can say whether a secret is present; it can
+   * never read one back.
+   */
+  integrationConfigs: defineTable({
+    businessId: v.id("businesses"),
+    /** The adapter key from the registry, e.g. `mtn.momo`. */
+    adapterKey: v.string(),
+    /** Denormalised from the registry so a list needs no lookup. */
+    category: v.string(),
+    /** Whether the business has switched this adapter on. */
+    enabled: v.boolean(),
+    /** The non-secret configuration. */
+    config: v.optional(v.record(v.string(), v.any())),
+    /** The encrypted secrets, keyed by field name. */
+    secrets: v.optional(v.record(v.string(), v.any())),
+    /**
+     * `unverified` — nothing has been tested.
+     * `configured` — credentials saved, never exercised.
+     * `verified`   — a live test reached the real provider and passed.
+     * `failed`     — a live test was attempted and the provider refused it.
+     */
+    verificationStatus: v.string(),
+    /** When the adapter last passed a live test. */
+    verifiedAt: v.optional(v.string()),
+    /** When a live test was last attempted, passed or not. */
+    lastTestedAt: v.optional(v.string()),
+    /** What the last live test said, in words. */
+    lastTestResult: v.optional(v.string()),
+    /** Whether the last test passed. */
+    lastTestPassed: v.optional(v.boolean()),
+    /** Who last changed it. */
+    updatedBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_adapterKey", ["businessId", "adapterKey"])
+    .index("by_businessId_category", ["businessId", "category"]),
+
+  /**
+   * Every call an integration makes, and every callback it receives.
+   *
+   * This is the audit trail for the whole integration layer: what was
+   * sent, what came back, and what failed. It is also what an owner reads
+   * when they ask "did that payment actually go through?".
+   */
+  integrationEvents: defineTable({
+    businessId: v.id("businesses"),
+    adapterKey: v.string(),
+    /** `outbound` — we called the provider. `inbound` — it called us. */
+    direction: v.string(),
+    /** What kind of event: `payment_initiated`, `message_sent`, `live_test`, `webhook`… */
+    kind: v.string(),
+    /** Our reference, or the provider's. */
+    reference: v.optional(v.string()),
+    /** `ok` | `failed` */
+    status: v.string(),
+    /** A short human summary of what happened. */
+    summary: v.optional(v.string()),
+    /** The error, when there was one. */
+    error: v.optional(v.string()),
+    /** The provider's payload, kept for the audit. */
+    payload: v.optional(v.any()),
+    userId: v.optional(v.id("users")),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_createdAt", ["businessId", "createdAt"])
+    .index("by_adapterKey", ["adapterKey"])
+    .index("by_reference", ["reference"]),
+
+  /**
+   * A payment started with a provider.
+   *
+   * The row is created the moment a collection is requested and is only
+   * `succeeded` once the *provider* has confirmed it — never because the
+   * browser said so. `reference` is our idempotency key: the same
+   * reference is sent to the provider on every retry, so a timeout cannot
+   * charge the customer twice.
+   */
+  paymentIntents: defineTable({
+    businessId: v.id("businesses"),
+    /** The adapter that was used. */
+    adapterKey: v.string(),
+    /** The provider's name, e.g. `MTN`. */
+    provider: v.string(),
+    /** Our reference — the idempotency key sent to the provider. */
+    reference: v.string(),
+    /** The provider's own id for the transaction. */
+    providerReference: v.optional(v.string()),
+    amount: v.number(),
+    currency: v.string(),
+    phone: v.optional(v.string()),
+    email: v.optional(v.string()),
+    /** `pending` | `succeeded` | `failed` | `cancelled` */
+    status: v.string(),
+    /** The sale this payment belongs to. */
+    saleId: v.optional(v.id("sales")),
+    customerId: v.optional(v.id("customers")),
+    /** True only once the provider's own callback confirmed it. */
+    confirmedByProvider: v.optional(v.boolean()),
+    description: v.optional(v.string()),
+    /** The raw provider payload, for the audit. */
+    providerPayload: v.optional(v.any()),
+    error: v.optional(v.string()),
+    /** Whether this was made in a sandbox rather than live. */
+    sandbox: v.optional(v.boolean()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_reference", ["reference"])
+    .index("by_providerReference", ["providerReference"])
+    .index("by_saleId", ["saleId"]),
+
+  /**
+   * A statement that was imported from a provider.
+   *
+   * The header of the import. The lines are in `statementLines`.
+   */
+  statementImports: defineTable({
+    businessId: v.id("businesses"),
+    adapterKey: v.string(),
+    /** The provider's name, shown on the reconciliation. */
+    providerName: v.string(),
+    accountLabel: v.optional(v.string()),
+    /** The period covered, `YYYY-MM`. */
+    period: v.optional(v.string()),
+    /** Where the file came from. */
+    filename: v.optional(v.string()),
+    rowCount: v.number(),
+    total: v.number(),
+    currency: v.optional(v.string()),
+    /** Rows that could not be read. A silent skip is a hole in the books. */
+    warnings: v.optional(v.array(v.string())),
+    importedBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_period", ["businessId", "period"]),
+
+  /**
+   * One line of an imported statement.
+   *
+   * A line is matched against the payments the books recorded. It is only
+   * marked `matched` when a real payment was found — the import never
+   * invents a match to make the numbers look tidy.
+   */
+  statementLines: defineTable({
+    businessId: v.id("businesses"),
+    importId: v.id("statementImports"),
+    /** The line's position in the file, so the operator can find it. */
+    lineNumber: v.number(),
+    date: v.string(),
+    reference: v.string(),
+    amount: v.number(),
+    description: v.optional(v.string()),
+    counterparty: v.optional(v.string()),
+    fee: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    /** `unmatched` | `matched` | `ignored` */
+    status: v.string(),
+    /** The payment this line settled. */
+    matchedPaymentId: v.optional(v.id("payments")),
+    /** The sale it settled. */
+    matchedSaleId: v.optional(v.id("sales")),
+    /** The reconciliation this line ended up in. */
+    reconciliationId: v.optional(v.id("reconciliations")),
+    /** `exact` | `amount_and_date` | `reference` | `manual` */
+    matchType: v.optional(v.string()),
+    note: v.optional(v.string()),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_importId", ["importId"])
+    .index("by_businessId_status", ["businessId", "status"]),
+
+  /**
+   * A message that went out — an SMS, a WhatsApp message, an email.
+   *
+   * `status` is what SMARTBUZ knows for certain: `sent` means the
+   * provider accepted it. It does not mean the customer read it, and the
+   * interface never says it does.
+   */
+  messages: defineTable({
+    businessId: v.id("businesses"),
+    adapterKey: v.string(),
+    /** `sms` | `whatsapp` | `email` */
+    channel: v.string(),
+    to: v.string(),
+    subject: v.optional(v.string()),
+    body: v.string(),
+    /** The template this was built from, when it was built from one. */
+    templateKey: v.optional(v.string()),
+    /** `sent` | `failed` */
+    status: v.string(),
+    providerMessageId: v.optional(v.string()),
+    /** The provider's own delivery status, when it reports one. */
+    deliveryStatus: v.optional(v.string()),
+    /** What the message is about, so it can be found later. */
+    relatedType: v.optional(v.string()),
+    relatedId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    sentBy: v.optional(v.id("users")),
+    sentAt: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_relatedId", ["relatedId"])
+    .index("by_businessId_createdAt", ["businessId", "createdAt"]),
+
+  /**
+   * A piece of hardware attached to a till.
+   *
+   * The server records what the business has and how it is behaving; the
+   * browser does the talking, because the browser is what can reach a USB
+   * or serial port. A device that has never been seen by the browser is
+   * `configured`, never `verified` — the same rule the software adapters
+   * follow.
+   */
+  hardwareDevices: defineTable({
+    businessId: v.id("businesses"),
+    /** The hardware key from the registry. */
+    hardwareKey: v.string(),
+    kind: v.string(),
+    name: v.string(),
+    /** The shop or branch the hardware belongs to. */
+    shopId: v.optional(v.id("shops")),
+    branchId: v.optional(v.id("branches")),
+    /** The till this hardware is attached to. */
+    deviceId: v.optional(v.string()),
+    /** The settings — paper width, scale precision, and so on. */
+    config: v.optional(v.record(v.string(), v.any())),
+    /** `configured` | `testing` | `verified` | `not_working` */
+    status: v.string(),
+    /** What the operator said when they last tried it. */
+    statusNote: v.optional(v.string()),
+    /** When the browser last reported the device. */
+    lastSeenAt: v.optional(v.string()),
+    updatedBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_kind", ["businessId", "kind"])
+    .index("by_deviceId", ["deviceId"]),
+
+  /**
+   * An industry package, switched on for one business.
+   *
+   * The package's features live in `convex/packages/registry.ts`, so the
+   * packages are data rather than code, and a business runs only the ones
+   * it has turned on.
+   */
+  industryPackages: defineTable({
+    businessId: v.id("businesses"),
+    /** The package key, e.g. `supermarket`. */
+    packageKey: v.string(),
+    enabled: v.boolean(),
+    /** Which of the package's features are on. */
+    features: v.optional(v.array(v.string())),
+    /** The package's own settings. */
+    settings: v.optional(v.record(v.string(), v.any())),
+    updatedBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_packageKey", ["businessId", "packageKey"]),
+
+  /**
+   * A kitchen ticket — one order on the kitchen display.
+   *
+   * A ticket is fired from a table order. It carries its own copy of the
+   * lines, so a later change to the table order does not silently change
+   * what the kitchen is cooking.
+   */
+  kitchenTickets: defineTable({
+    businessId: v.id("businesses"),
+    /** The table order this ticket belongs to. */
+    orderId: v.optional(v.id("tableOrders")),
+    outletId: v.optional(v.id("serviceOutlets")),
+    outletName: v.optional(v.string()),
+    ticketNumber: v.string(),
+    /** `queued` | `preparing` | `ready` | `served` | `cancelled` */
+    status: v.string(),
+    /** The lines to cook. */
+    items: v.array(
+      v.object({
+        name: v.string(),
+        quantity: v.number(),
+        notes: v.optional(v.string()),
+      })
+    ),
+    /** When the waiter fired it. */
+    firedAt: v.string(),
+    /** When the kitchen started on it. */
+    startedAt: v.optional(v.string()),
+    /** When it was plated. */
+    readyAt: v.optional(v.string()),
+    /** Who fired it. */
+    firedBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_orderId", ["orderId"]),
+
+  /**
+   * A prescription — a pharmacy's order to dispense.
+   *
+   * The pharmacy package records the prescriber properly, which the
+   * generic appointment record could not: a prescription has a patient, a
+   * prescriber and a list of medicine that has to come out of a batch.
+   */
+  prescriptions: defineTable({
+    businessId: v.id("businesses"),
+    customerId: v.optional(v.id("customers")),
+    patientName: v.string(),
+    patientPhone: v.optional(v.string()),
+    /** The prescriber — the doctor, nurse or clinic. */
+    prescriberName: v.string(),
+    prescriberNumber: v.optional(v.string()),
+    prescriberFacility: v.optional(v.string()),
+    /** The medicine to dispense. */
+    items: v.array(
+      v.object({
+        stockId: v.optional(v.id("stocks")),
+        name: v.string(),
+        dosage: v.optional(v.string()),
+        quantity: v.number(),
+        /** The batch it came out of, once it has been dispensed. */
+        batchId: v.optional(v.id("productBatches")),
+        batchNumber: v.optional(v.string()),
+        expiryDate: v.optional(v.string()),
+      })
+    ),
+    /** `pending` | `dispensed` | `partially_dispensed` | `cancelled` */
+    status: v.string(),
+    /** The sale it was dispensed against. */
+    saleId: v.optional(v.id("sales")),
+    dispensedBy: v.optional(v.id("users")),
+    dispensedAt: v.optional(v.string()),
+    /** Whether this needs the controlled-drug record kept alongside it. */
+    controlled: v.optional(v.boolean()),
+    notes: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_customerId", ["customerId"]),
+
+  /**
+   * A price list — a wholesaler's volume tier, or a customer's own prices.
+   */
+  priceLists: defineTable({
+    businessId: v.id("businesses"),
+    name: v.string(),
+    /** `tier` — a volume band. `customer` — one customer's own prices. */
+    type: v.string(),
+    /** The customer this list belongs to, when the type is `customer`. */
+    customerId: v.optional(v.id("customers")),
+    /** The minimum quantity for a tier to apply. */
+    minQty: v.optional(v.number()),
+    isActive: v.optional(v.boolean()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_type", ["businessId", "type"])
+    .index("by_customerId", ["customerId"]),
+
+  /**
+   * One product's price within a price list.
+   */
+  priceListEntries: defineTable({
+    businessId: v.id("businesses"),
+    priceListId: v.id("priceLists"),
+    stockId: v.id("stocks"),
+    /** The price for this list. */
+    price: v.number(),
+    /** The quantity this price applies from — for a tier. */
+    minQty: v.optional(v.number()),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_priceListId", ["priceListId"])
+    .index("by_stockId", ["stockId"]),
 });

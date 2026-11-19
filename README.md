@@ -170,10 +170,57 @@ shown to the owner, rather than buried in a negative quantity.
 
 Documentation: [`docs/OFFLINE.md`](docs/OFFLINE.md).
 
+---
+
+## The integration layer and the industry packages (Phase 9)
+
+SMARTBUZ can now be extended with new payment providers, messaging
+channels and till hardware without each one inventing its own way of
+being configured, tested and audited. Four industry packages — supermarket,
+restaurant, pharmacy and wholesaler — are switched on per business.
+
+| Concept | Where it lives | Notes |
+| --- | --- | --- |
+| The contract | `convex/integrations/types.ts` | What an adapter is: the same shape for a payment provider, a message channel and a device |
+| The catalogue | `convex/integrations/registry.ts` | Every adapter, what it needs, how it is proved, and what it does **not** do |
+| The credentials | `convex/integrations/config.ts` | Encrypted with AES-GCM. The browser is told whether a key is present, never what it is |
+| The live test | `convex/integrations/engine.ts` | A real call to the real provider. Only a call the provider accepted marks an adapter verified |
+| The providers | `convex/integrations/providers/` | MTN MoMo, Airtel Money, Flutterwave, Paystack, Stripe, SMS, WhatsApp, Resend |
+| The callback | `convex/integrations/webhooks.ts` | Authenticated by the reference it names, and by an HMAC signature when the business sets one |
+| The till's hardware | `src/lib/hardware/` | Barcode scanner, ESC/POS printer, cash drawer and weighing scale — in the browser, because the browser is what can reach a USB port |
+| The industry packages | `convex/packages/` | Data, not code: features and settings are declared, and the behaviour lives beside them |
+| The page | `src/app/(dashboard)/integrations/page.tsx` | The catalogue, the configuration, the live test, and the verification badge |
+
+Five promises the layer keeps:
+
+- **Nothing claims to work before it has been tested.** Every adapter
+  starts *not verified*, and an adapter that has not been proved against
+  the real provider may not move money or send a message.
+- **The provider confirms the payment.** A collection request is not a
+  payment — the customer still has to enter their PIN. The sale stays
+  *awaiting confirmation* until the provider says otherwise, exactly as
+  an offline sale does.
+- **The same reference is the same payment.** It is the provider's
+  idempotency key, so a retry after a timeout cannot take the money twice.
+- **The server's price wins.** Every price is recomputed on the server
+  from the stored lists. A tampered till cannot charge less than the
+  books say.
+- **The limits are stated up front.** Every adapter and every package
+  says what it does not do, before anything is configured.
+
+**No adapter in SMARTBUZ has yet passed a live test against a real
+provider or a real device.** They are written against each provider's
+published API and their code paths are covered by tests, but they have
+not been run against MTN's sandbox, a live Resend account, a thermal
+printer or a cash drawer — so all of them are marked *not verified*, and
+`docs/INTEGRATIONS.md` says exactly what each one needs.
+
+Documentation: [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+
 ### Verifying it
 
 ```bash
-npm test                  # the whole suite: permissions, finance, subscriptions, offline
+npm test                  # the whole suite: permissions, finance, subscriptions, offline, integrations
 ```
 
 ---

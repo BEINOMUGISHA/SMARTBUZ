@@ -55,6 +55,14 @@ import {
 } from "./rbac";
 import { assertSubscriptionWritable } from "./subscriptionState";
 
+/**
+ * The contexts the tenancy guards accept.
+ *
+ * An `ActionCtx` is deliberately **not** included: an action has no
+ * database of its own in this Convex version, so it cannot read anything
+ * directly. An action that needs the tenant resolves it through an
+ * internal query first — see `convex/integrations/internal.ts`.
+ */
 export type Ctx = MutationCtx | QueryCtx;
 
 export type BusinessId = Id<"businesses">;

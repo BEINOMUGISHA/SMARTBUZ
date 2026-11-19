@@ -143,6 +143,15 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [selectedCustomerId, setSelectedCustomerId] = useState<Id<"customers"> | "walk-in">("walk-in");
     const [clientType, setClientType] = useState(isHp ? "HP Client" : "Non-Member");
     const [paymentMethod, setPaymentMethod] = useState("Cash");
+    /**
+     * The payment provider's reference for this sale, when the payment
+     * was taken through a provider.
+     *
+     * A sale that carries a reference is recorded as awaiting
+     * confirmation — the provider confirms it, not the till. A sale with
+     * no reference was paid for in front of the cashier.
+     */
+    const [paymentReference, setPaymentReference] = useState("");
     const [isLoan, setIsLoan] = useState(false);
     const [manualName, setManualName] = useState("");
     const [paymentDate, setPaymentDate] = useState<string>("");
@@ -620,6 +629,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 customerPhone: customerPhone || undefined,
                 customerLocation: customerLocation || undefined,
                 transactionType: "Sale",
+                paymentReference: paymentReference || undefined,
             };
 
         try {
@@ -690,11 +700,16 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     phone: user?.phone_number
                 },
                 clientType,
-                // An offline payment that nobody else has seen is not a
-                // confirmed payment. The receipt says so, because the
-                // customer is holding it.
+                // A payment that nobody else has seen is not a confirmed
+                // payment, and the receipt says so, because the customer
+                // is holding it.
+                //
+                // That covers two cases: an offline payment, where only
+                // the customer and the cashier have seen it; and an
+                // online payment taken through a provider, where the
+                // provider still has to confirm it.
                 paymentMode:
-                    (result as any).isOffline &&
+                    ((result as any).isOffline || paymentReference) &&
                     paymentMethod !== "Cash" &&
                     paymentMethod !== "Loan" &&
                     paymentMethod !== "None"
@@ -745,6 +760,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             setPaymentDate("");
             setInitialDeposit("");
             setIsLoan(false);
+            // The provider's reference belongs to the sale that has just
+            // been recorded. The next sale starts without one.
+            setPaymentReference("");
 
         } catch (error) {
             console.error(error);
@@ -759,6 +777,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 setPaymentDate("");
                 setInitialDeposit("");
                 setIsLoan(false);
+                setPaymentReference("");
                 await refreshLocal();
                 toast.warning(
                     "The network failed mid-sale. The sale is saved on this till and will be sent when the network returns."
@@ -1158,6 +1177,12 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                 value={paymentMethod}
                                                 onValueChange={(v) => {
                                                     setPaymentMethod(v);
+                                                    // A reference belongs to the
+                                                    // payment it was issued for.
+                                                    // Changing the method drops it,
+                                                    // so a cash sale never carries a
+                                                    // provider's reference.
+                                                    if (v !== "Mobile Money") setPaymentReference("");
                                                     if (v === "Loan") setIsLoan(true);
                                                     else if (isLoan) setIsLoan(false);
                                                 }}
@@ -1391,9 +1416,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 onClose={() => setIsMoMoModalOpen(false)}
                 amount={cartTotal}
                 initialPhone={customerPhone || (customers?.find(c => c._id === selectedCustomerId)?.phone || "")}
-                onPaymentConfirmed={(ref) => {
+                onPaymentStarted={(ref, message) => {
                     setPaymentMethod("Mobile Money");
-                    toast.success(`Mobile Money verified with reference: ${ref}`);
+                    setPaymentReference(ref);
+                    toast.success(message);
                 }}
             />
         </>

@@ -81,6 +81,15 @@ export const create = mutation({
         transactionType: v.optional(v.string()), // Sale, Swap
         clientOfflineId: v.optional(v.string()), // Offline sync idempotency key
         isOfflineSync: v.optional(v.boolean()),
+        /**
+         * The payment provider's reference, when the payment was taken
+         * through a provider.
+         *
+         * A sale with a reference stays `pending_verification` until the
+         * provider confirms it. A sale without one was paid for in front
+         * of the cashier.
+         */
+        paymentReference: v.optional(v.string()),
         // Optional till-level price overrides. They are only honoured when the
         // active business profile has `allowPriceOverrides` enabled; otherwise
         // the master price always wins.

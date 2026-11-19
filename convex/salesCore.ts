@@ -87,6 +87,11 @@ export interface SaleInput {
     transactionType?: string;
     clientOfflineId?: string;
     isOfflineSync?: boolean;
+    /**
+     * The payment provider's reference, when the payment was taken
+     * through a provider.
+     */
+    paymentReference?: string;
     priceOverrides?: Array<{ stockId: Id<"stocks">; price: number }>;
 }
 
@@ -332,11 +337,21 @@ export function resolveOccurredAt(
  */
 export function resolvePaymentConfirmation(
     paymentMode: string | undefined,
-    offline: boolean
+    offline: boolean,
+    hasProviderReference = false
 ): "confirmed" | "pending_verification" | undefined {
-    if (!offline) return undefined; // an online sale is confirmed as it is taken
     if (!paymentMode) return undefined;
     if (paymentMode === "Loan") return undefined; // not a payment at all
+
+    // A sale taken through a payment provider is only confirmed when the
+    // provider says so. The cashier watching a prompt is not the same
+    // thing as the provider confirming the money.
+    if (hasProviderReference && UNCONFIRMED_PAYMENT_MODES.includes(paymentMode)) {
+        return "pending_verification";
+    }
+
+    if (!offline) return undefined; // an online sale is confirmed as it is taken
+
     if (UNCONFIRMED_PAYMENT_MODES.includes(paymentMode)) {
         return "pending_verification";
     }
@@ -697,7 +712,12 @@ export async function applySale(
         deviceId: offline?.deviceId,
         clientTransactionId: offline?.transactionId ?? args.clientOfflineId,
         clientTotal: offline && totalDiffers ? args.total : undefined,
-        paymentConfirmation: resolvePaymentConfirmation(args.paymentMode, Boolean(offline)),
+        paymentConfirmation: resolvePaymentConfirmation(
+            args.paymentMode,
+            Boolean(offline),
+            Boolean(args.paymentReference)
+        ),
+        paymentReference: args.paymentReference,
         syncSource: offline ? "offline" : "online",
         hasPriceOverride: appliedOverrides.length > 0,
         priceOverrides: appliedOverrides.length > 0 ? appliedOverrides : undefined,

@@ -233,6 +233,48 @@ export const PERMISSION_DEFINITIONS = {
     group: "Subscription",
     description: "Choose a plan, redeem a license key and manage your devices.",
   },
+
+  /* Integrations */
+  "integrations.view": {
+    label: "View integrations",
+    group: "Integrations",
+    description: "See which payment, messaging and hardware integrations are configured, and how far each has been tested.",
+  },
+  "integrations.manage": {
+    label: "Configure integrations",
+    group: "Integrations",
+    description: "Set up a provider's credentials and settings, and switch integrations on or off.",
+  },
+  "integrations.test": {
+    label: "Test integrations",
+    group: "Integrations",
+    description: "Run a live test against a provider. This makes a real call, and may cost money.",
+  },
+  "payments.verify": {
+    label: "Verify payments",
+    group: "Integrations",
+    description: "Confirm a payment the provider has reported, and record it against the sale.",
+  },
+  "messages.view": {
+    label: "View messages",
+    group: "Integrations",
+    description: "Read the log of messages the business has sent, and their delivery status.",
+  },
+  "messages.send": {
+    label: "Send messages",
+    group: "Integrations",
+    description: "Send receipts, reminders and other messages to customers.",
+  },
+  "hardware.manage": {
+    label: "Manage till hardware",
+    group: "Integrations",
+    description: "Configure the till's barcode scanner, receipt printer, cash drawer and weighing scale.",
+  },
+  "industry.manage": {
+    label: "Manage industry packages",
+    group: "Integrations",
+    description: "Switch industry packages on or off, and change their settings.",
+  },
 } as const;
 
 /** The Phase 2 permission contract. */
@@ -267,6 +309,12 @@ const WRITE_VERBS = [
   // Exporting takes data out of the business, so it is closed with the
   // writing rather than left open.
   "export",
+  // Sending a message spends the business's money with a provider, and
+  // testing an integration makes a real call — both are writes.
+  "send",
+  "test",
+  // Confirming a payment changes the books, so it is a write.
+  "verify",
 ];
 
 /**
@@ -545,6 +593,8 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "suppliers.view",
     "purchasing.view",
     "subscriptions.view",
+    "integrations.view",
+    "messages.view",
   ],
 
   /* ── Business ─────────────────────────────────────────────────────── */
@@ -577,6 +627,10 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "finance.cash.shift.manage",
     "finance.cash.manage",
     "subscriptions.self.view",
+    "integrations.view",
+    "hardware.manage",
+    "messages.send",
+    "payments.verify",
   ],
 
   supervisor: [
@@ -594,6 +648,10 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "finance.cash.shift.manage",
     "finance.cash.manage",
     "subscriptions.self.view",
+    "integrations.view",
+    "messages.view",
+    "messages.send",
+    "payments.verify",
   ],
 
   cashier: [
@@ -607,6 +665,7 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "finance.dashboard.view",
     "finance.cash.shift.manage",
     "subscriptions.self.view",
+    "messages.send",
   ],
 
   inventory_manager: [
@@ -623,6 +682,8 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "purchasing.manage",
     "purchasing.return",
     "subscriptions.self.view",
+    "integrations.view",
+    "hardware.manage",
   ],
 
   accountant: [
@@ -645,6 +706,10 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "finance.reconcile.manage",
     "finance.reports.export",
     "subscriptions.self.view",
+    "integrations.view",
+    "messages.view",
+    "messages.send",
+    "payments.verify",
   ],
 
   salesperson: [
@@ -655,6 +720,8 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "customers.view",
     "customers.manage",
     "subscriptions.self.view",
+    "messages.send",
+    "payments.verify",
   ],
 
   auditor: [
@@ -669,6 +736,8 @@ export const ROLE_CANONICAL_PERMISSIONS: Record<RoleId, Permission[]> = {
     "suppliers.view",
     "purchasing.view",
     "subscriptions.self.view",
+    "integrations.view",
+    "messages.view",
   ],
 };
 

@@ -123,6 +123,15 @@ export interface QueuedSalePayload {
     transactionType?: string;
     clientOfflineId?: string;
     isOfflineSync?: boolean;
+    /**
+     * The payment provider's reference, when the payment was taken
+     * through a provider.
+     *
+     * An offline sale taken through a provider keeps its reference, so
+     * the sale is still awaiting confirmation when it reaches the server
+     * — the provider's confirmation, not the till's.
+     */
+    paymentReference?: string;
     priceOverrides?: Array<{ stockId: string; price: number }>;
 }
 

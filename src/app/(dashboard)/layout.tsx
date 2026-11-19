@@ -15,6 +15,7 @@ import {
     CreditCard,
     ShieldCheck,
     MonitorSmartphone,
+    Plug,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -278,6 +279,20 @@ export default function DashboardLayout({
                 >
                     <MonitorSmartphone className="h-5 w-5" />
                     {!isCollapsed && <span>Devices</span>}
+                </Link>
+
+                <Link
+                    href="/integrations"
+                    onClick={() => setIsMobileOpen(false)}
+                    className={cn(
+                        "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        pathname === "/integrations" && "bg-sidebar-accent text-sidebar-accent-foreground",
+                        isCollapsed && "justify-center px-2"
+                    )}
+                    title={isCollapsed ? "Integrations" : undefined}
+                >
+                    <Plug className="h-5 w-5" />
+                    {!isCollapsed && <span>Integrations</span>}
                 </Link>
 
                 <Link

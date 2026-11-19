@@ -92,3 +92,136 @@ export function randomKeyString(
   }
   return out;
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Encryption — for provider credentials
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * A sealed secret, ready to be stored in the database.
+ *
+ * `iv` and `salt` are stored in the clear because they are not secret —
+ * they are the salt and the nonce that make the ciphertext unique. The
+ * passphrase never leaves the server environment.
+ */
+export interface SealedSecret {
+  /** Base64 ciphertext, including the GCM authentication tag. */
+  ciphertext: string;
+  /** Base64 initialisation vector. */
+  iv: string;
+  /** Base64 key-derivation salt. */
+  salt: string;
+  /** The cipher used, so an old value stays readable after a change. */
+  alg: "AES-GCM";
+}
+
+/** The number of PBKDF2 iterations used to derive the key. */
+const PBKDF2_ITERATIONS = 120_000;
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  // `btoa` is available in both the Convex runtime and the browser.
+  return btoa(binary);
+}
+
+function fromBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Derive an encryption key from a passphrase.
+ *
+ * PBKDF2 with a random salt, so the same passphrase produces a different
+ * key for every secret. That means one stolen ciphertext cannot be used to
+ * test a guess against every other stored secret at once.
+ */
+async function deriveKey(
+  passphrase: string,
+  salt: Uint8Array
+): Promise<CryptoKey> {
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(passphrase),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt as unknown as BufferSource,
+      iterations: PBKDF2_ITERATIONS,
+      hash: "SHA-256",
+    },
+    material,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+/**
+ * Encrypt a secret for storage.
+ *
+ * AES-GCM, so the ciphertext is authenticated: if anyone alters the stored
+ * value, decryption fails loudly rather than returning a wrong key.
+ */
+export async function encryptSecret(
+  plaintext: string,
+  passphrase: string
+): Promise<SealedSecret> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(passphrase, salt);
+
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv as unknown as BufferSource },
+    key,
+    new TextEncoder().encode(plaintext)
+  );
+
+  return {
+    ciphertext: toBase64(new Uint8Array(encrypted)),
+    iv: toBase64(iv),
+    salt: toBase64(salt),
+    alg: "AES-GCM",
+  };
+}
+
+/**
+ * Decrypt a stored secret.
+ *
+ * Returns `null` rather than throwing when the value cannot be read — a
+ * secret that was encrypted under a different passphrase, or that has been
+ * tampered with, is treated as "not configured" so the operator is told to
+ * re-enter it instead of the whole page failing.
+ */
+export async function decryptSecret(
+  sealed: SealedSecret | null | undefined,
+  passphrase: string
+): Promise<string | null> {
+  if (!sealed || !sealed.ciphertext || !sealed.iv || !sealed.salt) {
+    return null;
+  }
+
+  try {
+    const key = await deriveKey(passphrase, fromBase64(sealed.salt));
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromBase64(sealed.iv) as unknown as BufferSource },
+      key,
+      fromBase64(sealed.ciphertext) as unknown as BufferSource
+    );
+    return new TextDecoder().decode(decrypted);
+  } catch {
+    return null;
+  }
+}

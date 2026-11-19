@@ -72,6 +72,14 @@ const EXPECTED: Record<string, string[]> = {
     "subscriptions.payment.verify",
     "subscriptions.self.view",
     "subscriptions.self.manage",
+    "integrations.view",
+    "integrations.manage",
+    "integrations.test",
+    "payments.verify",
+    "messages.view",
+    "messages.send",
+    "hardware.manage",
+    "industry.manage",
   ],
 
   platform_support: [
@@ -85,6 +93,8 @@ const EXPECTED: Record<string, string[]> = {
     "finance.reports.view",
     "finance.dashboard.view",
     "subscriptions.view",
+    "integrations.view",
+    "messages.view",
   ],
 
   /* ── Business ─────────────────────────────────────────────────────── */
@@ -122,6 +132,14 @@ const EXPECTED: Record<string, string[]> = {
     "branches.manage",
     "subscriptions.self.view",
     "subscriptions.self.manage",
+    "integrations.view",
+    "integrations.manage",
+    "integrations.test",
+    "payments.verify",
+    "messages.view",
+    "messages.send",
+    "hardware.manage",
+    "industry.manage",
   ],
 
   business_admin: [
@@ -157,6 +175,14 @@ const EXPECTED: Record<string, string[]> = {
     "branches.manage",
     "subscriptions.self.view",
     "subscriptions.self.manage",
+    "integrations.view",
+    "integrations.manage",
+    "integrations.test",
+    "payments.verify",
+    "messages.view",
+    "messages.send",
+    "hardware.manage",
+    "industry.manage",
   ],
 
   branch_manager: [
@@ -179,6 +205,10 @@ const EXPECTED: Record<string, string[]> = {
     "finance.cash.shift.manage",
     "finance.cash.manage",
     "subscriptions.self.view",
+    "integrations.view",
+    "hardware.manage",
+    "messages.send",
+    "payments.verify",
   ],
 
   supervisor: [
@@ -196,6 +226,10 @@ const EXPECTED: Record<string, string[]> = {
     "finance.cash.shift.manage",
     "finance.cash.manage",
     "subscriptions.self.view",
+    "integrations.view",
+    "messages.view",
+    "messages.send",
+    "payments.verify",
   ],
 
   cashier: [
@@ -209,6 +243,7 @@ const EXPECTED: Record<string, string[]> = {
     "finance.dashboard.view",
     "finance.cash.shift.manage",
     "subscriptions.self.view",
+    "messages.send",
   ],
 
   inventory_manager: [
@@ -225,6 +260,8 @@ const EXPECTED: Record<string, string[]> = {
     "purchasing.manage",
     "purchasing.return",
     "subscriptions.self.view",
+    "integrations.view",
+    "hardware.manage",
   ],
 
   accountant: [
@@ -247,6 +284,10 @@ const EXPECTED: Record<string, string[]> = {
     "finance.reconcile.manage",
     "finance.reports.export",
     "subscriptions.self.view",
+    "integrations.view",
+    "messages.view",
+    "messages.send",
+    "payments.verify",
   ],
 
   salesperson: [
@@ -257,26 +298,30 @@ const EXPECTED: Record<string, string[]> = {
     "customers.view",
     "customers.manage",
     "subscriptions.self.view",
+    "messages.send",
+    "payments.verify",
   ],
 
   auditor: [
     "sales.view",
     "products.view",
     "inventory.view",
-    "customers.view",
-    "suppliers.view",
-    "purchasing.view",
     "finance.view",
     "finance.reports.view",
     "finance.dashboard.view",
     "finance.reports.export",
+    "customers.view",
+    "suppliers.view",
+    "purchasing.view",
     "subscriptions.self.view",
+    "integrations.view",
+    "messages.view",
   ],
 };
 
 describe("the permission catalogue", () => {
-  it("defines the eighteen Phase 2 permissions plus the seven Phase 4 and eleven later ones", () => {
-    assert.equal(ALL_PERMISSIONS.length, 36);
+  it("defines the eighteen Phase 2 permissions plus the seven Phase 4, eleven later and eight Phase 9 ones", () => {
+    assert.equal(ALL_PERMISSIONS.length, 44);
 
     // The Phase 2 contract.
     const phase2 = [
@@ -354,9 +399,27 @@ describe("the permission catalogue", () => {
       );
     }
 
+    // The Phase 9 additions — integrations and industry packages.
+    const phase9 = [
+      "integrations.view",
+      "integrations.manage",
+      "integrations.test",
+      "payments.verify",
+      "messages.view",
+      "messages.send",
+      "hardware.manage",
+      "industry.manage",
+    ];
+    for (const permission of phase9) {
+      assert.ok(
+        ALL_PERMISSIONS.includes(permission as never),
+        `the Phase 9 permission ${permission} must exist`
+      );
+    }
+
     assert.deepEqual(
       [...ALL_PERMISSIONS].sort(),
-      [...phase2, ...phase4, ...phase5, ...phase6].sort()
+      [...phase2, ...phase4, ...phase5, ...phase6, ...phase9].sort()
     );
   });
 
