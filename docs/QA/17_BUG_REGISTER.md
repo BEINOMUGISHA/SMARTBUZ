@@ -24,6 +24,7 @@ published to the deployment the application uses (`affable-panda-681`) on
 
 | Entry | What changed |
 |---|---|
+| BUG-006 | A price that moved between the basket being filled and the sale being rung up is detected. The live sale is held until the seller has put the new price to the customer; the difference is written on the sale. An offline sale is recorded at the catalogue's price, with the difference recorded. |
 | BUG-010 | Every movement of goods now writes a ledger row — the opening balance, a restock, an issue to a counter, a transfer, an adjustment and a refund. The ledger is read for the first time: `stocks.getReconciliation` compares the balances against the history, and `stocks.recordOpeningBalances` gives the products that predate the ledger the opening balance they need to be reconciled. |
 | BUG-011 | The reports summary and the P&L now come from the same `financeCore` helpers, so refunds net off and cost is the price the goods were bought at. |
 | BUG-012 | A conflict resolved as "rejected" now reverses the sale — the goods go back, the money comes off, the ledger is written — through the same compensation path a refund uses. |
@@ -42,7 +43,10 @@ published to the deployment the application uses (`affable-panda-681`) on
 | BUG-044 | Each product is compared against its own reorder point, and the business's default is stored rather than typed into the browser. |
 | BUG-045 | The cost price is withheld from the till and from everyone without a cost-visible role. |
 | BUG-046 | Issuing stock to a counter takes it out of the warehouse and writes both halves of the movement to the ledger. |
+| BUG-047 | The goods are valued on one basis. The counter no longer keeps a copy of the product, so the stock report and the inventory summary value the same goods at the catalogue's price, and the cost is reported beside the value rather than confused with it. |
+| BUG-048 | `getSyncStatus` reads the fifty newest synchronisation rows rather than every row the till has ever written. |
 | BUG-061 | The promotion engine evaluates the server's own cost figures, not the browser's. |
+| BUG-060 | The counter's row is a quantity and nothing else. The name, the price and the cost are read from the catalogue, so a price change reaches every counter at once and nothing can be valued on a stale copy. |
 | BUG-068 | `mySales` shows the business's sales to someone who may read the financial reports, and a caller's own sales to everyone else, instead of silently showing nothing. |
 | BUG-069 | The product's name and code on a receipt come from the server's catalogue. |
 | BUG-071 | A sale's total is a figure in the currency, and the lines add up to it. |
@@ -53,22 +57,18 @@ These are the remaining entries. None of them is a P0.
 
 | Entry | Priority | What is left |
 |---|---|---|
-| BUG-006 | P1 | A price changed between the basket being filled and the sale being rung up is not detected; the sale takes the new price silently. |
 | BUG-026 | P2 | Barcode scanning is not wired to the till. |
 | BUG-027 | P2 | The mobile app does not exist. The application is an installable PWA; the register's recommendation was to commit the Expo project or record the work as roadmap, and the latter has been done. |
 | BUG-029 | P2 | Some queries read a whole table with no bound. The synchronisation log is bounded; the rest are not. |
-| BUG-047 | P1 | Two valuation bases are still in use for the same goods: the inventory summary values the goods at cost and the stock report values the counter's copy at the issue price. |
-| BUG-048 | P2 | `getSyncStatus` still reads every synchronisation log for the business. |
 | BUG-050 | P1 | A payment that fails after the customer was charged is not repaired automatically. |
 | BUG-051 | P1 | There is still no backup or restore path for a business's data. |
 | BUG-057 | P2 | 227 KB of JavaScript is still downloaded before the operator has signed in. |
 | BUG-058 | P1 | Convex has no multi-document transactions, so a failure part-way through a write can still leave partial state. The compensation paths above are the mitigation, not the cure. |
-| BUG-060 | P1 | The counter's stock still carries its own copy of the price and cost. |
 | BUG-064 | LOW | Legacy plaintext reset codes are still accepted. |
 | BUG-065 | LOW | Backend errors still leak internal source paths in some places. |
 | BUG-066 | LOW | The offline queue still has no upper bound. |
 | BUG-067 | LOW | The service worker cache is still invalidated by a hand-maintained constant. |
-| BUG-070 | LOW | An offline price difference is still recorded but not surfaced. |
+| BUG-070 | LOW | An offline price difference is now written on the sale, but it is not yet shown on a report. |
 | BUG-072 | LOW | The currency is still hardcoded as "UGX" in some screens. |
 | BUG-073 | LOW | `convex/whoami.ts` is a deliberate diagnostic used by `scripts/verify-identity.mjs`, and it returns no session claims. Kept, and the reasoning is in the file. |
 | BUG-075 | LOW | Accessibility is still handled inconsistently. |

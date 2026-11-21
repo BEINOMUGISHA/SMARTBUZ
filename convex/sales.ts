@@ -12,6 +12,7 @@ import {
 } from "./salesCore";
 import { salePaymentModeToMethod } from "./paymentRules";
 import { restateLoanPaymentBalances, reverseSaleLines } from "./saleCompensation";
+import { stripIssuedStockCopies } from "./counterStock";
 
 /**
 
@@ -111,6 +112,15 @@ export const create = mutation({
             stockId: v.id("stocks"),
             price: v.number(),
         }))),
+        /**
+         * The seller has put the new price to the customer and the customer
+         * has agreed to it.
+         *
+         * A live sale whose price moved between filling the basket and
+         * ringing it up is refused until this is set, because a customer
+         * cannot be charged a figure they did not agree to.
+         */
+        acceptPriceChanges: v.optional(v.boolean()),
         businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
@@ -234,26 +244,19 @@ export const editSale = mutation({
         // 1) REVERSE original stock deductions
         // -----------------------------------------------------------------
         if (shop) {
-            const updatedShopStocks = [...shop.issuedStocks];
+            const updatedShopStocks = stripIssuedStockCopies(shop.issuedStocks);
             for (const item of existingSale.items) {
                 const idx = updatedShopStocks.findIndex(s => s.stockId === item.stockId);
                 if (idx !== -1) {
                     updatedShopStocks[idx] = {
-                        ...updatedShopStocks[idx],
+                        stockId: updatedShopStocks[idx].stockId,
                         qty: updatedShopStocks[idx].qty + item.quantity,
                     };
                 } else {
                     // Item no longer present in shop list; add it back
-                    const originalStock = await ctx.db.get(item.stockId);
                     updatedShopStocks.push({
                         stockId: item.stockId,
-                        name: item.name,
-                        productCode: item.productCode || "",
                         qty: item.quantity,
-                        price: item.price,
-                        pv: item.pv,
-                        bv: item.bv,
-                        halfPrice: originalStock?.halfPrice ?? false,
                     });
                 }
             }
@@ -338,14 +341,14 @@ export const editSale = mutation({
         // -----------------------------------------------------------------
         const refreshedShop = shopId ? await ctx.db.get(shopId) : null;
         if (refreshedShop) {
-            const updatedStocks = [...refreshedShop.issuedStocks];
+            const updatedStocks = stripIssuedStockCopies(refreshedShop.issuedStocks);
             for (const item of editTrustedItems) {
                 const idx = updatedStocks.findIndex(s => s.stockId === item.stockId);
                 if (idx === -1) {
                     throw new Error(`Item ${item.name} not found in shop stock`);
                 }
                 updatedStocks[idx] = {
-                    ...updatedStocks[idx],
+                    stockId: updatedStocks[idx].stockId,
                     qty: updatedStocks[idx].qty - item.quantity,
                 };
             }
@@ -1054,23 +1057,20 @@ export const swap = mutation({
 
         // 2. Handle Returned Items (Increase Stock)
         if (shop) {
-            const updatedShopStocks = [...shop.issuedStocks];
+            const updatedShopStocks = stripIssuedStockCopies(shop.issuedStocks);
             for (const item of args.returnedItems) {
                 const idx = updatedShopStocks.findIndex(s => s.stockId === item.stockId);
                 if (idx !== -1) {
-                    updatedShopStocks[idx] = { ...updatedShopStocks[idx], qty: updatedShopStocks[idx].qty + item.quantity };
+                    updatedShopStocks[idx] = {
+                        stockId: updatedShopStocks[idx].stockId,
+                        qty: updatedShopStocks[idx].qty + item.quantity,
+                    };
                 } else {
                     const masterStock = await ctx.db.get(item.stockId);
                     if (masterStock) {
                         updatedShopStocks.push({
                             stockId: item.stockId,
-                            name: masterStock.name,
                             qty: item.quantity,
-                            price: masterStock.price,
-                            productCode: masterStock.productCode,
-                            pv: masterStock.pv,
-                            bv: masterStock.bv,
-                            halfPrice: masterStock.halfPrice || false,
                         });
                     }
                 }
@@ -1087,11 +1087,14 @@ export const swap = mutation({
 
         // 3. Handle Taken Items (Decrease Stock)
         if (shop) {
-            const updatedShopStocks = [...shop.issuedStocks];
+            const updatedShopStocks = stripIssuedStockCopies(shop.issuedStocks);
             for (const item of args.takenItems) {
                 const idx = updatedShopStocks.findIndex(s => s.stockId === item.stockId);
                 if (idx !== -1) {
-                    updatedShopStocks[idx] = { ...updatedShopStocks[idx], qty: updatedShopStocks[idx].qty - item.quantity };
+                    updatedShopStocks[idx] = {
+                        stockId: updatedShopStocks[idx].stockId,
+                        qty: updatedShopStocks[idx].qty - item.quantity,
+                    };
                 }
             }
             await ctx.db.patch(shop._id, { issuedStocks: updatedShopStocks });

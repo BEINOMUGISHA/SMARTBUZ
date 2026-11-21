@@ -559,3 +559,68 @@ export const migrationStatus = query({
     };
   },
 });
+
+/**
+ * Remove the legacy copies of the products a counter holds.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * Why this exists
+ *
+ * A counter used to keep a copy of each product it held: the name, the
+ * code, the selling price, the profit value and the book value, frozen at
+ * the moment the goods were issued. The counter now keeps only a quantity,
+ * and reads the product from the master catalogue.
+ *
+ * The old copies are ignored when they are read, so nothing is wrong with
+ * them while they sit there. But they are still there: they are dead
+ * weight on every row, and they are a trap for the next person who reads
+ * them and believes them. This removes them.
+ *
+ * It is safe to run more than once — a counter whose rows are already
+ * clean is left exactly as it is.
+ * ────────────────────────────────────────────────────────────────────────
+ */
+export const stripCounterStockCopies = mutation({
+  args: {
+    businessId: v.id("businesses"),
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireMigrationOperator(ctx, args.serverSecret);
+
+    const shops = await ctx.db
+      .query("shops")
+      .withIndex("by_businessId", (q) => q.eq("businessId", args.businessId))
+      .collect();
+
+    let countersTouched = 0;
+    let rowsCleaned = 0;
+
+    for (const shop of shops) {
+      const issued = shop.issuedStocks ?? [];
+      const dirty = issued.filter(
+        (item) =>
+          item.name !== undefined ||
+          item.price !== undefined ||
+          item.productCode !== undefined ||
+          item.pv !== undefined ||
+          item.bv !== undefined ||
+          item.halfPrice !== undefined
+      );
+      if (dirty.length === 0) continue;
+
+      await ctx.db.patch(shop._id, {
+        issuedStocks: issued.map((item) => ({
+          stockId: item.stockId,
+          qty: item.qty,
+        })),
+      });
+
+      countersTouched += 1;
+      rowsCleaned += dirty.length;
+    }
+
+    return { countersTouched, rowsCleaned, countersChecked: shops.length };
+  },
+});

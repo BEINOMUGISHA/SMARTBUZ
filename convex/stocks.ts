@@ -8,6 +8,7 @@ import { Id } from "./_generated/dataModel";
 import { hasPermission, logActivity, requirePermission, requireTenant } from "./tenancy";
 import type { Ctx } from "./tenancy";
 import { DEFAULT_REORDER_POINT } from "./defaults";
+import { hydrateCounterLines, stripIssuedStockCopies } from "./counterStock";
 
 /**
  * SMART_BUZ — products (stock).
@@ -775,7 +776,19 @@ export const getShopStock = query({
         // If no shop, user is HQ or unassigned
         if (!shop) return { shop: null, stocks: [] };
 
-        let stocks = shop.issuedStocks || [];
+        // -----------------------------------------------------------------
+        // THE TILL'S CATALOGUE
+        //
+        // The counter's row says how much of each product it holds. The
+        // product itself is read from the master catalogue now.
+        //
+        // It used to be read from the copy the counter took when the goods
+        // were issued, which meant the till showed yesterday's price for a
+        // product whose price had since changed: the customer was quoted one
+        // figure and charged another, and the till's own list disagreed with
+        // the warehouse's. One catalogue, one price.
+        // -----------------------------------------------------------------
+        let stocks = await hydrateCounterLines(ctx, shop.issuedStocks ?? []);
 
         // Filter by text
         if (args.searchTerm) {
@@ -803,9 +816,8 @@ export const getShopStock = query({
             stocks = stocks.slice(args.offset, args.offset + args.limit);
         }
 
-        // The counter's snapshot carries the cost of each product as well as
-        // its selling price. The till is not shown the cost, so it is not
-        // sent either.
+        // What the goods cost is removed unless the caller is allowed to
+        // see it. The till is not shown the cost, so it is not sent either.
         const canCost = await canSeeCost(ctx, businessId);
         const visible = stocks.map((s) => withoutCost(s, canCost));
 
@@ -1052,30 +1064,19 @@ export const update = mutation({
 
         await ctx.db.patch(id, rest);
 
-        const priceChanged = rest.price !== undefined && rest.price !== oldStock.price;
-        const halfPriceChanged = rest.halfPrice !== undefined && rest.halfPrice !== oldStock.halfPrice;
-
-        if (priceChanged || halfPriceChanged || rest.pv !== undefined || rest.bv !== undefined) {
-            const shops = await ctx.db
-                .query("shops")
-                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
-                .collect();
-            for (const shop of shops) {
-                const issuedStocks = shop.issuedStocks.map(item => {
-                    if (item.stockId === id) {
-                        return {
-                            ...item,
-                            price: rest.price ?? item.price,
-                            pv: rest.pv ?? item.pv,
-                            bv: rest.bv ?? item.bv,
-                            halfPrice: rest.halfPrice ?? item.halfPrice
-                        };
-                    }
-                    return item;
-                });
-                await ctx.db.patch(shop._id, { issuedStocks });
-            }
-        }
+        // -----------------------------------------------------------------
+        // THE COUNTERS DO NOT NEED TELLING
+        //
+        // This used to walk every counter in the business and copy the new
+        // price into the row the counter held — because the counter kept a
+        // copy of the product. A price change in one place now reaches
+        // every counter for free, because the counter does not keep one.
+        //
+        // The copy-back also had a cost: it was a second write path for the
+        // same fact, and it only ran for price changes, so a renamed
+        // product or a re-coded one stayed wrong on every counter that had
+        // ever been issued it.
+        // -----------------------------------------------------------------
 
         // Log activity
         const changes = Object.keys(rest).map(key => `${key}: ${rest[key as keyof typeof rest]}`).join(", ");
@@ -1124,7 +1125,7 @@ export const remove = mutation({
             .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
             .collect();
         for (const shop of shops) {
-            const issuedStocks = shop.issuedStocks.filter(item => item.stockId !== args.id);
+            const issuedStocks = stripIssuedStockCopies(shop.issuedStocks).filter(item => item.stockId !== args.id);
             if (issuedStocks.length !== shop.issuedStocks.length) {
                 await ctx.db.patch(shop._id, { issuedStocks });
             }
@@ -1275,25 +1276,10 @@ export const restock = mutation({
             `Restocked ${stock.name} (${stock.productCode}) - Added: ${args.quantityToAdd}, New Qty: ${stock.qty + args.quantityToAdd}, Supplier: ${supplier || stock.supplier || 'N/A'}`
         );
 
-        const shops = await ctx.db
-            .query("shops")
-            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
-            .collect();
-        for (const shop of shops) {
-            const issuedStocks = shop.issuedStocks.map(item => {
-                if (item.stockId === args.id) {
-                    return {
-                        ...item,
-                        price: args.price,
-                        pv: args.pv,
-                        bv: args.bv,
-                        halfPrice: args.halfPrice
-                    };
-                }
-                return item;
-            });
-            await ctx.db.patch(shop._id, { issuedStocks });
-        }
+        // The counters do not need to be told: they hold a quantity, and
+        // the product's price is read from the catalogue. Copying the new
+        // price into every counter's row is what used to keep two versions
+        // of the truth alive.
     },
 });
 

@@ -40,6 +40,19 @@ import {
 import { MobileMoneyModal } from "@/components/mobile-money-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedNumber } from "@/components/animated-number";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
+    isNetworkFailure,
+    readPriceChange,
+    type PriceChangeNotice,
+} from "@/lib/price-change";
 // Types
 type CartItem = {
     stockId: Id<"stocks">;
@@ -52,6 +65,46 @@ type CartItem = {
     maxQty: number;
     pv: number;
     bv: number;
+};
+
+/**
+ * What the till sends when it rings a sale up.
+ *
+ * It mirrors the arguments of the `sales.create` mutation. The till is not
+ * trusted for any of it — the server re-reads the prices, the stock and the
+ * customer — but it has to be able to *send* it, and a sale that is held
+ * for a price change is sent again with a corrected copy of the same
+ * shape.
+ */
+type SalePayload = {
+    userId: Id<"users">;
+    total: number;
+    clientType: string;
+    paymentMode: string;
+    items: Array<{
+        stockId: Id<"stocks">;
+        name: string;
+        productCode: string;
+        price: number;
+        quantity: number;
+        pv: number;
+        bv: number;
+        expectedQty?: number;
+    }>;
+    manualCustomerName?: string;
+    priceOverrides?: Array<{ stockId: Id<"stocks">; price: number }>;
+    customerId?: Id<"customers">;
+    isLoan?: boolean;
+    paymentDueDate?: string;
+    initialDeposit?: number;
+    packageType?: string;
+    deliveryStatus?: string;
+    customerPhone?: string;
+    customerLocation?: string;
+    transactionType?: string;
+    paymentReference?: string;
+    /** The customer has been told the price changed and has agreed to it. */
+    acceptPriceChanges?: boolean;
 };
 
 export default function SalesPage() {
@@ -163,6 +216,18 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [packageType, setPackageType] = useState<"Bronze" | "Silver" | "Gold">("Bronze");
     const [isLoading, setIsLoading] = useState(false);
     const [receiptData, setReceiptData] = useState<any | null>(null);
+    /**
+     * A sale the server refused because a price had moved under the basket.
+     *
+     * The sale is held here until somebody at the till has put the new
+     * price to the customer. It is not queued and it is not forgotten: it
+     * is waiting for a person to answer a question only a person can
+     * answer.
+     */
+    const [pendingPriceChange, setPendingPriceChange] = useState<{
+        notice: PriceChangeNotice;
+        payload: SalePayload;
+    } | null>(null);
     const [isMoMoModalOpen, setIsMoMoModalOpen] = useState(false);
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
 
@@ -633,6 +698,22 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 paymentReference: paymentReference || undefined,
             };
 
+        await submitSale(salePayload, cart);
+    };
+
+    /**
+     * Send the sale, and deal with whatever the server says.
+     *
+     * The cart that is handed in is the one the receipt is built from, so
+     * that a sale whose price was corrected is receipted at the price the
+     * customer actually agreed to — not at the price the till happened to
+     * be showing when the basket was filled.
+     */
+    const submitSale = async (payload: SalePayload, effectiveCart: CartItem[]) => {
+        const effectiveTotal = effectiveCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const effectivePV = effectiveCart.reduce((sum, item) => sum + (item.pv * item.qty), 0);
+        const effectiveBV = effectiveCart.reduce((sum, item) => sum + (item.bv * item.qty), 0);
+
         try {
             setIsLoading(true);
             submittingRef.current = true;
@@ -645,7 +726,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 // application being closed, and the sync engine sends it when
                 // the network comes back. Nothing is lost.
                 const deviceId = await getDeviceId();
-                const queued = await queueSale(salePayload, {
+                const queued = await queueSale(payload, {
                     deviceId,
                     shopId: shopData?.shop?._id,
                     occurredAt: new Date().toISOString(),
@@ -661,7 +742,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     "Working offline: the sale is saved on this till and will be sent when the network returns."
                 );
             } else {
-                result = await createSale(salePayload);
+                result = await createSale(payload);
             }
 
             // Handle both legacy (string ID) and new (object) return types for safety
@@ -670,10 +751,16 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
             // Prepare Receipt Data
             const selectedCustomer = customers?.find(c => c._id === selectedCustomerId);
-            const fullName = `${user.first_name} ${user.last_name}${user.middle_name ? ` ${user.middle_name}` : ""}`;
+            // The operator was checked before the sale was sent; the receipt
+            // needs their name on it.
+            const operator = user;
+            const fullName = operator
+                ? `${operator.first_name} ${operator.last_name}${operator.middle_name ? ` ${operator.middle_name}` : ""}`
+                : "";
+            const depositValue = initialDeposit ? parseInt(initialDeposit.replace(/,/g, ""), 10) : 0;
 
             const vatFigures = computeVat(
-                cartTotal,
+                effectiveTotal,
                 vatProfile?.taxEnabled ?? false,
                 vatProfile?.taxRate ?? 18,
                 vatProfile?.taxInclusive ?? true
@@ -697,8 +784,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 },
                 operator: {
                     name: fullName,
-                    email: user?.email,
-                    phone: user?.phone_number
+                    email: operator?.email,
+                    phone: operator?.phone_number
                 },
                 clientType,
                 // A payment that nobody else has seen is not a confirmed
@@ -719,17 +806,17 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 date: new Date().toISOString(),
                 paymentDueDate: isLoan ? paymentDate : undefined,
                 invoiceNumber: (result as any).invoiceNumber || `INV-${Date.now()}`,
-                items: cart.map(item => ({
+                items: effectiveCart.map(item => ({
                     ...item,
                     // The receipt renderers read `quantity`; the cart stores `qty`.
                     quantity: item.qty,
                     price: item.price
                 })),
-                total: cartTotal,
-                totalPV: totalPV,
-                totalBV: totalBV,
+                total: effectiveTotal,
+                totalPV: effectivePV,
+                totalBV: effectiveBV,
                 initialDeposit: isLoan ? depositValue : undefined,
-                balance: isLoan ? (cartTotal - depositValue) : undefined,
+                balance: isLoan ? (effectiveTotal - depositValue) : undefined,
                 promotions,
                 packageType: isPackageSale ? packageType : undefined,
                 deliveryStatus,
@@ -749,7 +836,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
             setReceiptData(receipt);
             toast.success("Sale completed successfully", {
-                description: `${receipt.invoiceNumber} · UGX ${cartTotal.toLocaleString()}`,
+                description: `${receipt.invoiceNumber} · UGX ${effectiveTotal.toLocaleString()}`,
                 icon: <Check className="h-4 w-4" />,
             });
 
@@ -768,10 +855,41 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
         } catch (error) {
             console.error(error);
 
+            // -----------------------------------------------------------------
+            // THE PRICE MOVED UNDER THE BASKET
+            //
+            // The server will not charge a price the customer has not agreed
+            // to. The sale is held, and the person at the till is asked to
+            // put the new figure to the customer.
+            //
+            // It is deliberately *not* put in the queue: a queued sale goes
+            // back later as an offline sale, and the offline path is the
+            // forgiving one. A sale the server has just refused must not be
+            // retried in a way that lets it through.
+            // -----------------------------------------------------------------
+            const priceChange = readPriceChange(error);
+            if (priceChange) {
+                setPendingPriceChange({ notice: priceChange, payload });
+                return;
+            }
+
+            // -----------------------------------------------------------------
+            // THE SERVER REFUSED THE SALE
+            //
+            // Not enough stock, over the credit limit, a price below the
+            // floor — the server has said no, and the reason is on the
+            // screen. Queuing it would try again later, offline, where the
+            // rules are looser, and would record a sale that was refused.
+            // -----------------------------------------------------------------
+            if (!isNetworkFailure(error)) {
+                toast.error(formatError(error));
+                return;
+            }
+
             // The network may have failed between the check above and the
             // call. The sale has not reached the server, so it goes into the
             // queue rather than being lost with the cart.
-            const queuedAnyway = await queueSaleQuietly(salePayload);
+            const queuedAnyway = await queueSaleQuietly(payload);
             if (queuedAnyway) {
                 setCart([]);
                 setManualName("");
@@ -791,6 +909,41 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             setIsLoading(false);
             submittingRef.current = false;
         }
+    };
+
+    /**
+     * The customer has agreed to the new price: the cart is brought up to
+     * it and the sale is sent again, this time saying that the change was
+     * accepted.
+     */
+    const acceptPriceChange = async () => {
+        if (!pendingPriceChange) return;
+        const { notice, payload } = pendingPriceChange;
+        setPendingPriceChange(null);
+
+        const chargedByStock = new Map(
+            notice.changes.map((change) => [change.stockId, change.chargedPrice])
+        );
+
+        // The cart is brought up to the prices the customer has now agreed
+        // to, so that the screen, the receipt and the books all say the
+        // same thing.
+        const updatedCart = cart.map((item) => {
+            const charged = chargedByStock.get(item.stockId);
+            if (charged === undefined) return item;
+            return { ...item, price: charged, listPrice: item.listPrice ?? charged };
+        });
+        setCart(updatedCart);
+
+        const items = payload.items.map((item) => {
+            const charged = chargedByStock.get(item.stockId);
+            return charged === undefined ? item : { ...item, price: charged };
+        });
+
+        await submitSale(
+            { ...payload, items, total: notice.total, acceptPriceChanges: true },
+            updatedCart
+        );
     };
 
     return (
@@ -1410,6 +1563,57 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 onClose={() => setReceiptData(null)}
                 data={receiptData}
             />
+
+            {/* A price that moved while the sale was being rung up */}
+            <Dialog
+                open={!!pendingPriceChange}
+                onOpenChange={(open) => {
+                    if (!open) setPendingPriceChange(null);
+                }}
+            >
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>The price has changed</DialogTitle>
+                        <DialogDescription>
+                            The price of {pendingPriceChange?.notice.changes.length === 1 ? "a product" : "some products"}
+                            {" "}changed while this sale was being rung up. Check the new price with the customer
+                            before charging it.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-2">
+                        {pendingPriceChange?.notice.changes.map((change) => (
+                            <div
+                                key={change.stockId}
+                                className="flex items-center justify-between rounded-lg border border-orange-200 bg-orange-50 px-3 py-2"
+                            >
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold">{change.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        was {change.quotedPrice.toLocaleString()} × {change.quantity}
+                                    </p>
+                                </div>
+                                <div className="ml-3 text-right">
+                                    <p className="text-sm font-black text-orange-700">
+                                        {change.chargedPrice.toLocaleString()}
+                                    </p>
+                                    <p className="text-[10px] uppercase text-muted-foreground">new price</p>
+                                </div>
+                            </div>
+                        ))}
+                        <p className="pt-1 text-xs text-muted-foreground">
+                            New total: UGX {pendingPriceChange?.notice.total.toLocaleString()}
+                        </p>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setPendingPriceChange(null)}>
+                            Cancel the sale
+                        </Button>
+                        <Button onClick={acceptPriceChange}>Charge the new price</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Mobile Money Prompt Modal */}
             <MobileMoneyModal

@@ -32,6 +32,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { logActivity } from "./tenancy";
 import { outstandingBalance } from "./customers";
 import { salePaymentModeToMethod } from "./paymentRules";
+import { stripIssuedStockCopies } from "./counterStock";
 
 /**
  * How far back a till may date an offline sale.
@@ -95,6 +96,16 @@ export interface SaleInput {
      */
     paymentReference?: string;
     priceOverrides?: Array<{ stockId: Id<"stocks">; price: number }>;
+    /**
+     * The seller has seen that a price changed and has agreed to the new one.
+     *
+     * Without this, a live sale whose price moved between filling the basket
+     * and ringing it up is refused: the customer agreed to one figure and
+     * cannot be charged another without being told. With it, the sale goes
+     * through at the catalogue's price and the change is recorded on the
+     * sale.
+     */
+    acceptPriceChanges?: boolean;
 }
 
 export interface OfflineContext {
@@ -830,6 +841,17 @@ export async function applySale(
     // client that summed the basket at full precision is not refused over a
     // fraction of a cent.
     let rawTotal = 0;
+    // The lines whose price had moved since the till showed the basket.
+    // Collected here, because this is the one place where the price the
+    // customer was quoted and the price the catalogue holds are both to
+    // hand.
+    const priceChanges: {
+        stockId: Id<"stocks">;
+        name: string;
+        quotedPrice: number;
+        chargedPrice: number;
+        quantity: number;
+    }[] = [];
     const trustedItems = args.items.map((item) => {
         const stock = pricingMap.get(item.stockId);
         if (!stock) {
@@ -895,6 +917,32 @@ export async function applySale(
         // the rounded lines, so the figure on the receipt is the figure in
         // the ledger, to the cent.
         computedTotal += round2(lineAmount);
+
+        // -----------------------------------------------------------------
+        // HAS THE PRICE MOVED SINCE THE TILL SHOWED IT?
+        //
+        // The till showed the customer a price and the customer agreed to
+        // it. The catalogue may have been changed since — by somebody in the
+        // office, by another till, or by a price list that was updated while
+        // this basket was being filled.
+        //
+        // When that happens, the sale does not quietly take the new price.
+        // The difference is noticed, and a live sale is held until the
+        // seller has put the new price to the customer. A customer who was
+        // quoted 5,000 and is charged 5,500 has been short-changed, and the
+        // person who can be asked about it is the one at the till.
+        // -----------------------------------------------------------------
+        const quotedPrice = Number.isFinite(item.price) ? item.price : unitPrice;
+        if (Math.abs(quotedPrice - unitPrice) > 0.005) {
+            priceChanges.push({
+                stockId: item.stockId,
+                name: stock.name,
+                quotedPrice,
+                chargedPrice: unitPrice,
+                quantity: item.quantity,
+            });
+        }
+
         return {
             ...item,
             // The product's identity comes from the server's catalogue, not
@@ -911,6 +959,35 @@ export async function applySale(
     });
     computedTotal = round2(computedTotal);
 
+    // -----------------------------------------------------------------
+    // A PRICE THAT MOVED UNDER THE BASKET
+    //
+    // A live sale is held: the customer agreed to a price, and the only
+    // person who can agree to a different one is the seller standing in
+    // front of them. The error carries the new figures so the till can put
+    // them to the customer and re-send the sale once the customer has been
+    // told.
+    //
+    // An offline sale cannot be held. The goods have gone and the customer
+    // has paid what the till's price list said. Refusing to record it now
+    // would lose a real sale and leave the books short, so the catalogue's
+    // price wins and the difference is recorded on the sale, where it can
+    // be seen and explained.
+    // -----------------------------------------------------------------
+    if (priceChanges.length > 0 && !offline && !args.acceptPriceChanges) {
+        throw new ConvexError({
+            code: "PRICE_CHANGED",
+            message:
+                "The price of " +
+                priceChanges
+                    .map((c) => `${c.name} (was ${c.quotedPrice}, now ${c.chargedPrice})`)
+                    .join(", ") +
+                " changed while the sale was being rung up. Confirm the new price with the customer and try again.",
+            changes: priceChanges,
+            total: computedTotal,
+        });
+    }
+
     // Guard against a client submitting a mismatched total (e.g. 0).
     //
     // A live sale that does not add up is refused: the cashier can be told
@@ -924,7 +1001,9 @@ export async function applySale(
     const totalDiffers = Math.abs(rawTotal - args.total) > 0.01;
     if (totalDiffers && !offline) {
         throw new Error(
-            `Sale total mismatch: client sent ${args.total} but the server computed ${rawTotal}.`
+            priceChanges.length > 0
+                ? `Sale total mismatch: the client sent ${args.total} but the server computed ${rawTotal}. The prices changed, so the total has to be re-sent at the new prices.`
+                : `Sale total mismatch: client sent ${args.total} but the server computed ${rawTotal}.`
         );
     }
 
@@ -982,7 +1061,7 @@ export async function applySale(
     // Deduct Stock
     if (shop) {
         // SHOP SALE: Deduct from shop.issuedStocks (ALLOW NEGATIVE)
-        const updatedStocks = [...shop.issuedStocks];
+        const updatedStocks = stripIssuedStockCopies(shop.issuedStocks);
 
         for (const item of trustedItems) {
             const stockIndex = updatedStocks.findIndex(s => s.stockId === item.stockId);
@@ -1017,7 +1096,7 @@ export async function applySale(
             }
 
             updatedStocks[stockIndex] = {
-                ...updatedStocks[stockIndex],
+                stockId: updatedStocks[stockIndex].stockId,
                 qty: currentQty - item.quantity
             };
         }
@@ -1119,6 +1198,10 @@ export async function applySale(
         syncSource: offline ? "offline" : "online",
         hasPriceOverride: appliedOverrides.length > 0,
         priceOverrides: appliedOverrides.length > 0 ? appliedOverrides : undefined,
+        // The lines whose price had moved between the basket being filled
+        // and the sale being rung up. Written on the sale so that the
+        // difference is a fact in the books and not a mystery on a till.
+        priceChanges: priceChanges.length > 0 ? priceChanges : undefined,
     });
 
     const invoiceNumberValue = (await ctx.db.get(saleId))?.invoiceNumber;

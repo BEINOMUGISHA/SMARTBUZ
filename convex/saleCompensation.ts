@@ -19,6 +19,7 @@
 import { ConvexError } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { stripIssuedStockCopies } from "./counterStock";
 
 /** One line of a reversal. */
 export interface CompensationLine {
@@ -159,11 +160,11 @@ export async function reverseSaleLines(
             if (!shop || shop.businessId !== businessId) {
                 throw new ConvexError("Forbidden: that shop belongs to another business.");
             }
-            const shopStocks = [...(shop.issuedStocks ?? [])];
+            const shopStocks = stripIssuedStockCopies(shop.issuedStocks ?? []);
             const index = shopStocks.findIndex((s) => s.stockId === line.stockId);
             if (index >= 0) {
                 shopStocks[index] = {
-                    ...shopStocks[index],
+                    stockId: shopStocks[index].stockId,
                     qty: shopStocks[index].qty + line.quantity,
                 };
             } else {
@@ -172,13 +173,7 @@ export async function reverseSaleLines(
                 // back on its list.
                 shopStocks.push({
                     stockId: line.stockId,
-                    name: soldLine.name,
                     qty: line.quantity,
-                    price: stock.price,
-                    productCode: stock.productCode,
-                    pv: stock.pv,
-                    bv: stock.bv,
-                    halfPrice: stock.halfPrice ?? false,
                 });
             }
             await ctx.db.patch(shop._id, { issuedStocks: shopStocks });

@@ -1,5 +1,6 @@
 ﻿import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { issuedStockValidator } from "./counterStock";
 
 export default defineSchema({
     /* ────────────────────────────────────────────────────────────────
@@ -768,6 +769,34 @@ export default defineSchema({
                 price: v.number(),
             })
         )),
+        /**
+         * The lines whose price had moved between the moment the basket was
+         * filled and the moment it was rung up.
+         *
+         * The till shows a price, the customer agrees to it, and the sale is
+         * rung up against whatever the catalogue says *now*. When those two
+         * figures differ, the difference is written here — on the sale, where
+         * the books and the owner can both find it — instead of being
+         * swallowed.
+         *
+         * A live sale with a price change is refused until the cashier has
+         * confirmed the new price with the customer, so the customer is
+         * never charged a figure they did not agree to. An offline sale
+         * cannot be refused: the goods have gone and the money has been
+         * taken. The server's price wins, and the difference is recorded
+         * here so it can be explained.
+         */
+        priceChanges: v.optional(v.array(
+            v.object({
+                stockId: v.id("stocks"),
+                name: v.string(),
+                /** The price the till showed. */
+                quotedPrice: v.number(),
+                /** The price the catalogue held when the sale arrived. */
+                chargedPrice: v.number(),
+                quantity: v.number(),
+            })
+        )),
     }).index("by_businessId", ["businessId"])
         .index("by_businessId_date", ["businessId", "date"])
         .index("by_businessId_shop_date", ["businessId", "shopId", "date"])
@@ -891,18 +920,21 @@ export default defineSchema({
         location: v.string(),
         contact: v.string(),
         userId: v.id("users"),
-        issuedStocks: v.array(
-            v.object({
-                stockId: v.id("stocks"),
-                name: v.string(),
-                qty: v.number(),
-                price: v.number(),
-                productCode: v.optional(v.string()),
-                pv: v.number(),
-                bv: v.number(),
-                halfPrice: v.boolean(),
-            })
-        ),
+        /**
+         * What this counter holds.
+         *
+         * A counter row is a quantity, not a copy of the product. The
+         * product's name, price and cost all live in `stocks` and are read
+         * from there, so a price change reaches every counter at once and
+         * the goods are valued on one basis everywhere.
+         *
+         * The `name`, `price`, `productCode`, `pv`, `bv` and `halfPrice`
+         * fields are the legacy copies of that data, frozen when the goods
+         * were issued. They are optional so that rows written before this
+         * change still validate; they are ignored when a row is read and
+         * dropped when it is written again.
+         */
+        issuedStocks: v.array(issuedStockValidator),
     })
         .index("by_businessId", ["businessId"])
         .index("by_user", ["userId"]),

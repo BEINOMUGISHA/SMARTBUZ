@@ -253,7 +253,7 @@ async function runSeedShops(ctx: any, businessId: Id<"businesses">) {
                 businessId,
                 ...shop,
                 userId: manager._id,
-                issuedStocks: stocks.map((s: any) => ({ stockId: s._id, name: s.name, qty: 50, price: s.price, productCode: s.productCode, pv: s.pv, bv: s.bv, halfPrice: false })),
+                issuedStocks: stocks.map((s: any) => ({ stockId: s._id, qty: 50 })),
             });
         }
     }

@@ -5,6 +5,7 @@ import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { logActivity, requirePermission, requireTenant } from "./tenancy";
+import { counterStockValue, hydrateCounterLines, stripIssuedStockCopies } from "./counterStock";
 
 /**
  * SMART_BUZ — shops (counters that stock has been issued to).
@@ -105,17 +106,32 @@ export const getPaginatedShopStock = query({
         await requirePermission(ctx, tenant.businessId, "products.view");
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) return { page: [], totalCount: 0, stats: { totalValue: 0, totalPV: 0, totalBV: 0, totalItems: 0 } };
+        if (!shop) return { page: [], totalCount: 0, stats: { totalValue: 0, totalCostValue: 0, totalPV: 0, totalBV: 0, totalItems: 0 } };
         if (shop.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
 
-        let stocks = shop.issuedStocks || [];
+        // -----------------------------------------------------------------
+        // THE COUNTER'S GOODS, DESCRIBED BY THE CATALOGUE
+        //
+        // The counter's row says how much it holds. Everything else — the
+        // name, the price, the cost — is the product's, and is read from the
+        // master catalogue now, not from a copy frozen when the goods were
+        // issued.
+        //
+        // That is what makes the stock report agree with the inventory
+        // summary: both value the same goods at the catalogue's current
+        // price. Before, this screen valued the counter's goods at the
+        // issue price while the summary valued them at today's, so the
+        // business had two stock valuations and no way to tell which was
+        // true.
+        // -----------------------------------------------------------------
+        let lines = await hydrateCounterLines(ctx, shop.issuedStocks ?? []);
 
         // Apply Search
         if (args.searchTerm) {
             const search = args.searchTerm.toLowerCase();
-            stocks = stocks.filter(s =>
+            lines = lines.filter(s =>
                 s.name.toLowerCase().includes(search) ||
                 (s.productCode && s.productCode.toLowerCase().includes(search))
             );
@@ -123,21 +139,28 @@ export const getPaginatedShopStock = query({
 
         // Apply HP Filter
         if (args.halfPrice !== undefined) {
-            stocks = stocks.filter(s => !!s.halfPrice === args.halfPrice);
+            lines = lines.filter(s => !!s.halfPrice === args.halfPrice);
         }
 
-        const totalCount = stocks.length;
+        const totalCount = lines.length;
 
         // Calculate Stats for the ENTIRE filtered list (pre-pagination)
-        const stats = stocks.reduce((acc, s) => ({
-            totalValue: acc.totalValue + (s.qty * s.price),
-            totalPV: acc.totalPV + (s.qty * (s.pv || 0)),
-            totalBV: acc.totalBV + (s.qty * (s.bv || 0)),
-            totalItems: acc.totalItems + s.qty
-        }), { totalValue: 0, totalPV: 0, totalBV: 0, totalItems: 0 });
+        const totals = counterStockValue(lines);
+        const stats = {
+            // The goods at today's selling price — the same basis the
+            // inventory summary uses.
+            totalValue: totals.retailValue,
+            // What the goods cost the business. Kept next to the value so
+            // the margin is visible, and so the two are never confused for
+            // one figure.
+            totalCostValue: totals.costValue,
+            totalPV: totals.totalPV,
+            totalBV: totals.totalBV,
+            totalItems: totals.totalItems,
+        };
 
         // Paginate
-        const page = stocks.slice(args.offset, args.offset + args.limit);
+        const page = lines.slice(args.offset, args.offset + args.limit);
 
         return { page, totalCount, stats };
     },
@@ -254,15 +277,12 @@ export const remove = mutation({
 export const issueStock = mutation({
     args: {
         shopId: v.id("shops"),
+        // Only the product and the quantity. The counter does not take a
+        // copy of the product, so there is nothing for a client to send
+        // about it — and nothing for a client to get wrong.
         items: v.array(v.object({
             stockId: v.id("stocks"),
-            name: v.string(),
             qty: v.number(),
-            price: v.number(),
-            productCode: v.string(),
-            pv: v.number(),
-            bv: v.number(),
-            halfPrice: v.boolean(),
         })),
         userId: v.id("users"), // @deprecated — the caller is derived from the session
         businessId: v.optional(v.id("businesses")),
@@ -323,29 +343,24 @@ export const issueStock = mutation({
         // Merge by product instead of appending: appending created a second
         // row for the same product and made the shop's inventory disagree
         // with the warehouse.
-        const issued = [...shop.issuedStocks];
+        //
+        // The row written is a quantity and nothing else. The counter does
+        // not keep a copy of the product's name or price — it reads those
+        // from the catalogue — so a price change reaches the counter the
+        // moment it is made, and the stock report cannot end up valuing the
+        // same goods at a different price from the inventory summary.
+        const issued = stripIssuedStockCopies(shop.issuedStocks);
         for (const item of args.items) {
-            const stock = warehouseStock.get(item.stockId)!;
             const index = issued.findIndex(s => s.stockId === item.stockId);
             if (index >= 0) {
                 issued[index] = {
-                    ...issued[index],
+                    stockId: issued[index].stockId,
                     qty: issued[index].qty + item.qty,
-                    price: stock.price,
-                    pv: stock.pv,
-                    bv: stock.bv,
-                    halfPrice: stock.halfPrice ?? false,
                 };
             } else {
                 issued.push({
                     stockId: item.stockId,
-                    name: stock.name,
                     qty: item.qty,
-                    price: stock.price,
-                    productCode: stock.productCode,
-                    pv: stock.pv,
-                    bv: stock.bv,
-                    halfPrice: stock.halfPrice ?? false,
                 });
             }
         }
@@ -396,7 +411,13 @@ export const issueStock = mutation({
         }
 
         // Log activity
-        const itemSummary = args.items.map(i => `${i.name} (${i.qty})`).join(", ");
+        //
+        // The names come from the catalogue: the counter's row is a
+        // quantity, and the issue request does not carry a copy of the
+        // product to name it by.
+        const itemSummary = args.items
+            .map(i => `${warehouseStock.get(i.stockId)?.name ?? "product"} (${i.qty})`)
+            .join(", ");
         await logActivity(
             ctx,
             businessId,
@@ -424,17 +445,17 @@ export const removeStock = mutation({
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
 
-        const stockItem = shop.issuedStocks.find(s => s.stockId === args.stockId);
-        const updatedStock = shop.issuedStocks.filter(s => s.stockId !== args.stockId);
+        const updatedStock = stripIssuedStockCopies(shop.issuedStocks).filter(s => s.stockId !== args.stockId);
         await ctx.db.patch(args.shopId, { issuedStocks: updatedStock });
 
         // Log activity
+        const removedName = (await ctx.db.get(args.stockId))?.name ?? "stock";
         await logActivity(
             ctx,
             tenant.businessId,
             tenant.user._id,
             "Remove Stock from Shop",
-            `Removed ${stockItem?.name || 'stock'} from ${shop.name}`
+            `Removed ${removedName} from ${shop.name}`
         );
     },
 });
@@ -494,7 +515,10 @@ export const adjustShopStock = mutation({
 
         const currentQty = shop.issuedStocks[stockIndex].qty;
         const delta = args.newQty - currentQty;
-        const stockName = shop.issuedStocks[stockIndex].name;
+        // The name comes from the catalogue, not from the counter's row:
+        // the counter does not keep a copy of the product any more.
+        const masterProduct = await ctx.db.get(args.stockId);
+        const stockName = masterProduct?.name ?? "this product";
 
         if (delta === 0) return; // No change
 
@@ -526,9 +550,9 @@ export const adjustShopStock = mutation({
         }
 
         // Update Shop Stock
-        const updatedStocks = [...shop.issuedStocks];
+        const updatedStocks = stripIssuedStockCopies(shop.issuedStocks);
         updatedStocks[stockIndex] = {
-            ...updatedStocks[stockIndex],
+            stockId: updatedStocks[stockIndex].stockId,
             qty: args.newQty
         };
 
@@ -618,7 +642,7 @@ export const returnShopStock = mutation({
         }
 
         // Remove from shop
-        const updatedStocks = shop.issuedStocks.filter(s => s.stockId !== args.stockId);
+        const updatedStocks = stripIssuedStockCopies(shop.issuedStocks).filter(s => s.stockId !== args.stockId);
         await ctx.db.patch(args.shopId, {
             issuedStocks: updatedStocks
         });
@@ -696,31 +720,21 @@ export const transferStock = mutation({
 
         // 3. Add to Shop Inventory
         const existingItemIndex = shop.issuedStocks.findIndex(s => s.stockId === args.stockId);
-        let newIssuedStocks = [...shop.issuedStocks];
+        let newIssuedStocks = stripIssuedStockCopies(shop.issuedStocks);
 
         if (existingItemIndex >= 0) {
-            // Update existing item
+            // Update existing item. Only the quantity changes — the price
+            // and the cost are the catalogue's, and are read from there.
             const item = newIssuedStocks[existingItemIndex];
             newIssuedStocks[existingItemIndex] = {
-                ...item,
+                stockId: item.stockId,
                 qty: item.qty + args.quantity,
-                // Update details in case they changed in master stock
-                price: stock.price,
-                pv: stock.pv,
-                bv: stock.bv,
-                halfPrice: stock.halfPrice || false,
             };
         } else {
             // Add new item
             newIssuedStocks.push({
                 stockId: stock._id,
-                name: stock.name,
-                productCode: stock.productCode,
                 qty: args.quantity,
-                price: stock.price,
-                pv: stock.pv,
-                bv: stock.bv,
-                halfPrice: stock.halfPrice || false,
             });
         }
 
@@ -798,7 +812,7 @@ export const batchTransferStock = mutation({
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
 
-        let newIssuedStocks = [...shop.issuedStocks];
+        let newIssuedStocks = stripIssuedStockCopies(shop.issuedStocks);
         let logs: string[] = [];
 
         for (const itemRequest of args.items) {
@@ -817,23 +831,13 @@ export const batchTransferStock = mutation({
             const existingIndex = newIssuedStocks.findIndex(s => s.stockId === itemRequest.stockId);
             if (existingIndex >= 0) {
                 newIssuedStocks[existingIndex] = {
-                    ...newIssuedStocks[existingIndex],
+                    stockId: newIssuedStocks[existingIndex].stockId,
                     qty: newIssuedStocks[existingIndex].qty + itemRequest.quantity,
-                    price: stock.price,
-                    pv: stock.pv,
-                    bv: stock.bv,
-                    halfPrice: stock.halfPrice || false,
                 };
             } else {
                 newIssuedStocks.push({
                     stockId: stock._id,
-                    name: stock.name,
-                    productCode: stock.productCode,
                     qty: itemRequest.quantity,
-                    price: stock.price,
-                    pv: stock.pv,
-                    bv: stock.bv,
-                    halfPrice: stock.halfPrice || false,
                 });
             }
             logs.push(`${itemRequest.quantity}x ${stock.name}`);
