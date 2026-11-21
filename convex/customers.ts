@@ -14,6 +14,7 @@ import {
 } from "./tenancy";
 import { writeAudit } from "./audit";
 import { requireEntitlement } from "./entitlements";
+import { assertPaymentMethod, resolvePaymentDates } from "./paymentRules";
 
 /**
  * SMARTBUZ — customers: profiles, credit accounts and statements.
@@ -960,7 +961,17 @@ export const recordPayment = mutation({
       );
     }
 
-    const date = args.date ?? new Date().toISOString();
+    // The money is dated by the server, and the operator's own date is kept
+    // beside it when it is close enough to the server's clock to be
+    // believable. A payment that can be dated anywhere in the past can be
+    // placed in a reporting period that has already been closed.
+    const { date, paymentDate } = resolvePaymentDates(args.date);
+
+    // A repayment that does not say how it was paid cannot be matched
+    // against a provider's statement, so it never reaches the
+    // reconciliation. The method is required rather than guessed.
+    const method = assertPaymentMethod(args.method);
+
     const paymentIds: Id<"payments">[] = [];
 
     // Apply the money to the oldest open credit sales first.
@@ -978,8 +989,9 @@ export const recordPayment = mutation({
         customerId: customer._id,
         amount: applied,
         date,
+        paymentDate,
         balance: newLoanBalance,
-        method: args.method,
+        method,
         reference,
         branchId: customer.branchId,
         userId: tenant.user._id,

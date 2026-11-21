@@ -536,10 +536,29 @@ export async function requirePermission(
   return membership;
 }
 
+/**
+ * Does the caller hold this permission?
+ *
+ * The same question as `requirePermission`, but the answer does not end the
+ * request. It is for the cases where what a caller may *see* depends on
+ * their role: the cost price of a product is shown to the people who manage
+ * stock and to finance, and withheld from the till — because a till that
+ * can read every product's margin is a till that can be talked into
+ * discounting it.
+ */
+export async function hasPermission(
+  ctx: Ctx,
+  businessId: BusinessId,
+  permission: Permission
+): Promise<boolean> {
+  const membership = await requireMembership(ctx, businessId);
+  const effective = await resolveMemberPermissions(ctx, businessId, membership);
+  return effective.has(permission);
+}
+
 /* ────────────────────────────────────────────────────────────────────────
  * Tenant resolution
  * ──────────────────────────────────────────────────────────────────────── */
-
 /**
  * Work out which business the caller is operating in.
  *

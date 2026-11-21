@@ -1,10 +1,9 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import {
   type BusinessId,
-  type BranchId,
   allowedBranchIds,
   logActivity,
   requireBranchAccess,
@@ -15,7 +14,7 @@ import { writeAudit } from "./audit";
 import { requireEntitlement } from "./entitlements";
 import {
   buildCostIndex,
-  dayBounds,
+  businessDayBounds,
   displayName,
   loadExpenses,
   loadIncome,
@@ -390,7 +389,7 @@ export const listShifts = query({
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "finance.cash.shift.manage");
 
-    const { start, end } = dayBounds(args.from, args.to);
+    const { start, end } = await businessDayBounds(ctx, tenant.businessId, args.from, args.to);
 
     const shifts = await ctx.db
       .query("cashShifts")
@@ -623,7 +622,7 @@ export const listCashMovements = query({
     const tenant = await requireTenant(ctx, args.businessId);
     await requirePermission(ctx, tenant.businessId, "finance.cash.manage");
 
-    const { start, end } = dayBounds(args.from, args.to);
+    const { start, end } = await businessDayBounds(ctx, tenant.businessId, args.from, args.to);
 
     const movements = await ctx.db
       .query("cashMovements")
@@ -726,7 +725,7 @@ export const getCashDrawer = query({
     }
 
     // ── A period ────────────────────────────────────────────────────────
-    const { start, end } = dayBounds(args.from, args.to);
+    const { start, end } = await businessDayBounds(ctx, tenant.businessId, args.from, args.to);
 
     const shifts = await ctx.db
       .query("cashShifts")
@@ -1201,7 +1200,7 @@ export const getFinancialSummary = query({
     );
 
     // ── Cash movements over the period ─────────────────────────────────
-    const { start, end } = dayBounds(args.from, args.to);
+    const { start, end } = await businessDayBounds(ctx, tenant.businessId, args.from, args.to);
     const movements = await ctx.db
       .query("cashMovements")
       .withIndex("by_businessId_date", (q: any) =>

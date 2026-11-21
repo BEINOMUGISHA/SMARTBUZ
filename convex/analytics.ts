@@ -1,15 +1,12 @@
 import { v } from "convex/values";
-import { ConvexError } from "convex/values";
 import { query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { allowedBranchIds, requirePermission, requireTenant } from "./tenancy";
 import { requireEntitlement } from "./entitlements";
 import {
   buildCostIndex,
-  dayBounds,
   dayKey,
   displayName,
-  isCreditSale,
   loadExpenses,
   loadSales,
   money,
@@ -868,24 +865,61 @@ export const getCustomerDebtReport = query({
 
     const byCustomer = new Map<
       string,
-      { balance: number; oldest: string; buckets: { current: number; d30: number; d60: number; d90: number } }
+      {
+        balance: number;
+        oldest: string;
+        lastActivity: string;
+        buckets: { current: number; d30: number; d60: number; d90: number };
+      }
     >();
+
+    // -----------------------------------------------------------------
+    // WHEN WAS THE ACCOUNT LAST TOUCHED?
+    //
+    // Ageing a debtor account measures the time since the **last payment**
+    // on it, not the time since the oldest invoice. A customer who bought
+    // on 1 January and paid yesterday is not a 90-day debtor: they are
+    // someone who pays. Ageing from the origination date instead puts
+    // every regular payer in the oldest bucket and hides the debts that
+    // genuinely have gone stale.
+    //
+    // The payments are read once for the whole business and grouped by the
+    // loan they belong to, rather than queried per loan.
+    // -----------------------------------------------------------------
+    const payments = await ctx.db
+      .query("payments")
+      .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+      .collect();
+
+    const lastPaymentByLoan = new Map<string, string>();
+    for (const payment of payments) {
+      const loanId = payment.loanId as string;
+      const current = lastPaymentByLoan.get(loanId);
+      const paymentDate = String(payment.date ?? "");
+      if (!current || paymentDate > current) {
+        lastPaymentByLoan.set(loanId, paymentDate);
+      }
+    }
 
     for (const loan of loans) {
       const balance = loan.balance ?? 0;
       if (balance <= 0) continue;
       const key = loan.customerId as string;
+      const lastActivity =
+        lastPaymentByLoan.get(loan._id as string) ?? String(loan.date);
       const row = byCustomer.get(key) ?? {
         balance: 0,
         oldest: loan.date,
+        lastActivity,
         buckets: { current: 0, d30: 0, d60: 0, d90: 0 },
       };
 
       row.balance += balance;
       if (loan.date < row.oldest) row.oldest = loan.date;
+      if (lastActivity > row.lastActivity) row.lastActivity = lastActivity;
 
       const ageDays = Math.floor(
-        (now - new Date(loan.date).getTime()) / (1000 * 60 * 60 * 24)
+        (now - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)
       );
       if (ageDays <= 30) row.buckets.current += balance;
       else if (ageDays <= 60) row.buckets.d30 += balance;
@@ -929,8 +963,10 @@ export const getCustomerDebtReport = query({
               : false,
           balance: money(row.balance),
           oldestDate: row.oldest,
+          // The age of the **account**, not of its oldest invoice: the time
+          // since the customer last paid. See the note above the buckets.
           ageDays: Math.floor(
-            (now - new Date(row.oldest).getTime()) / (1000 * 60 * 60 * 24)
+            (now - new Date(row.lastActivity).getTime()) / (1000 * 60 * 60 * 24)
           ),
           buckets: {
             current: money(row.buckets.current),

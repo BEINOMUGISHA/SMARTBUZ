@@ -3,6 +3,7 @@ import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 // Trigger sync
 import { paginationOptsValidator } from "convex/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { logActivity, requirePermission, requireTenant } from "./tenancy";
 
 /**
@@ -270,6 +271,9 @@ export const issueStock = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "inventory.transfer");
         const businessId = tenant.businessId;
+        // One timestamp for the whole issue, so every row of it carries the
+        // same moment and the ledger can be ordered against it.
+        const now = new Date().toISOString();
 
         const shop = await ctx.db.get(args.shopId);
         if (!shop) throw new Error("Shop not found");
@@ -284,29 +288,102 @@ export const issueStock = mutation({
             }
         }
 
+        // -----------------------------------------------------------------
+        // TAKE THE GOODS OUT OF THE WAREHOUSE
+        //
+        // Issuing stock used to *copy* the goods to the counter and leave
+        // them in the warehouse as well: the shop's inventory and the
+        // warehouse's inventory both claimed to hold them, so the business
+        // looked like it had twice the stock it really had, and the goods
+        // that were sold from the counter were never deducted from
+        // anywhere.
+        //
+        // A transfer moves goods, so it is written as one: the quantity
+        // leaves the warehouse and arrives at the counter. The stock is
+        // checked before anything is written, so a counter cannot be given
+        // more than the business owns.
+        // -----------------------------------------------------------------
+        const warehouseStock = new Map<Id<"stocks">, Doc<"stocks">>();
+        for (const item of args.items) {
+            const stock = await ctx.db.get(item.stockId);
+            if (!stock) {
+                throw new ConvexError(`Product not found.`);
+            }
+            if (!Number.isFinite(item.qty) || item.qty <= 0) {
+                throw new ConvexError("Issue quantities must be positive.");
+            }
+            if (stock.qty < item.qty) {
+                throw new ConvexError(
+                    `Cannot issue ${item.qty} of ${stock.name}: only ${stock.qty} in stock.`
+                );
+            }
+            warehouseStock.set(stock._id, stock);
+        }
+
         // Merge by product instead of appending: appending created a second
         // row for the same product and made the shop's inventory disagree
         // with the warehouse.
         const issued = [...shop.issuedStocks];
         for (const item of args.items) {
+            const stock = warehouseStock.get(item.stockId)!;
             const index = issued.findIndex(s => s.stockId === item.stockId);
             if (index >= 0) {
                 issued[index] = {
                     ...issued[index],
                     qty: issued[index].qty + item.qty,
-                    price: item.price,
-                    pv: item.pv,
-                    bv: item.bv,
-                    halfPrice: item.halfPrice,
+                    price: stock.price,
+                    pv: stock.pv,
+                    bv: stock.bv,
+                    halfPrice: stock.halfPrice ?? false,
                 };
             } else {
-                issued.push(item);
+                issued.push({
+                    stockId: item.stockId,
+                    name: stock.name,
+                    qty: item.qty,
+                    price: stock.price,
+                    productCode: stock.productCode,
+                    pv: stock.pv,
+                    bv: stock.bv,
+                    halfPrice: stock.halfPrice ?? false,
+                });
             }
         }
         await ctx.db.patch(args.shopId, { issuedStocks: issued });
 
+        // The goods have left the warehouse…
+        for (const item of args.items) {
+            const stock = warehouseStock.get(item.stockId)!;
+            await ctx.db.patch(stock._id, { qty: stock.qty - item.qty });
+
+            // …so the ledger records both halves of the movement. The row
+            // without a shop is the warehouse; the row with one is the
+            // counter. Together they reconcile with both positions.
+            await ctx.db.insert("stockLedger", {
+                businessId,
+                stockId: item.stockId,
+                shopId: undefined,
+                deltaQty: -item.qty,
+                eventType: "SHOP_ISSUE",
+                referenceId: shop.serialNumber || shop.name,
+                userId: tenant.user._id,
+                timestamp: now,
+                notes: `Issued to ${shop.name}`,
+            });
+            await ctx.db.insert("stockLedger", {
+                businessId,
+                stockId: item.stockId,
+                shopId: args.shopId,
+                deltaQty: item.qty,
+                eventType: "SHOP_ISSUE",
+                referenceId: shop.serialNumber || shop.name,
+                userId: tenant.user._id,
+                timestamp: now,
+                notes: `Received from the warehouse at ${shop.name}`,
+            });
+        }
+
         // Record Issue History for every item
-        const now = new Date().toISOString();
         for (const item of args.items) {
             await ctx.db.insert("shopIssueRecords", {
                 businessId,
@@ -459,6 +536,46 @@ export const adjustShopStock = mutation({
             issuedStocks: updatedStocks
         });
 
+        // Record the movement in the ledger, so the stock position can be
+        // reconciled against the history that produced it. An adjustment
+        // that is not in the ledger is a difference nobody can explain.
+        await ctx.db.insert("stockLedger", {
+            businessId,
+            stockId: args.stockId,
+            shopId: args.shopId,
+            deltaQty: delta,
+            eventType: "ADJUSTMENT",
+            referenceId: shop.serialNumber || shop.name,
+            userId: tenant.user._id,
+            timestamp: new Date().toISOString(),
+            notes: `Stock count at ${shop.name}: ${currentQty} -> ${args.newQty}`,
+        });
+        if (delta > 0 && warehouseStock) {
+            await ctx.db.insert("stockLedger", {
+                businessId,
+                stockId: args.stockId,
+                shopId: undefined,
+                deltaQty: -delta,
+                eventType: "ADJUSTMENT",
+                referenceId: shop.serialNumber || shop.name,
+                userId: tenant.user._id,
+                timestamp: new Date().toISOString(),
+                notes: `Sent to ${shop.name} to correct the stock count`,
+            });
+        } else if (delta < 0 && warehouseStock) {
+            await ctx.db.insert("stockLedger", {
+                businessId,
+                stockId: args.stockId,
+                shopId: undefined,
+                deltaQty: Math.abs(delta),
+                eventType: "ADJUSTMENT",
+                referenceId: shop.serialNumber || shop.name,
+                userId: tenant.user._id,
+                timestamp: new Date().toISOString(),
+                notes: `Returned from ${shop.name} to correct the stock count`,
+            });
+        }
+
         // Log activity
         await logActivity(
             ctx,
@@ -504,6 +621,32 @@ export const returnShopStock = mutation({
         const updatedStocks = shop.issuedStocks.filter(s => s.stockId !== args.stockId);
         await ctx.db.patch(args.shopId, {
             issuedStocks: updatedStocks
+        });
+
+        // The goods came back to the warehouse, so the ledger records both
+        // halves of the move.
+        const returnTime = new Date().toISOString();
+        await ctx.db.insert("stockLedger", {
+            businessId,
+            stockId: args.stockId,
+            shopId: args.shopId,
+            deltaQty: -stockItem.qty,
+            eventType: "ADJUSTMENT",
+            referenceId: shop.serialNumber || shop.name,
+            userId: tenant.user._id,
+            timestamp: returnTime,
+            notes: `Returned to the warehouse from ${shop.name}`,
+        });
+        await ctx.db.insert("stockLedger", {
+            businessId,
+            stockId: args.stockId,
+            shopId: undefined,
+            deltaQty: stockItem.qty,
+            eventType: "ADJUSTMENT",
+            referenceId: shop.serialNumber || shop.name,
+            userId: tenant.user._id,
+            timestamp: returnTime,
+            notes: `Returned to the warehouse from ${shop.name}`,
         });
 
         // Log activity
@@ -583,17 +726,47 @@ export const transferStock = mutation({
 
         await ctx.db.patch(args.shopId, { issuedStocks: newIssuedStocks });
 
-        // 4. Record Issue History
+        // 4. Record the movement in the ledger.
+        //
+        // A transfer moves goods from the warehouse to the counter, and the
+        // ledger has to show both halves of it — otherwise the warehouse
+        // balance and the counter's holding cannot be reconciled against
+        // the history that produced them.
+        const transferTime = new Date().toISOString();
+        await ctx.db.insert("stockLedger", {
+            businessId,
+            stockId: args.stockId,
+            shopId: undefined,
+            deltaQty: -args.quantity,
+            eventType: "SHOP_ISSUE",
+            referenceId: shop.serialNumber || shop.name,
+            userId: tenant.user._id,
+            timestamp: transferTime,
+            notes: `Transferred to ${shop.name}`,
+        });
+        await ctx.db.insert("stockLedger", {
+            businessId,
+            stockId: args.stockId,
+            shopId: args.shopId,
+            deltaQty: args.quantity,
+            eventType: "SHOP_ISSUE",
+            referenceId: shop.serialNumber || shop.name,
+            userId: tenant.user._id,
+            timestamp: transferTime,
+            notes: `Received from the warehouse at ${shop.name}`,
+        });
+
+        // 5. Record Issue History
         await ctx.db.insert("shopIssueRecords", {
             businessId,
             shopId: args.shopId,
             stockId: args.stockId,
             quantity: args.quantity,
-            date: new Date().toISOString(),
+            date: transferTime,
             userId: tenant.user._id,
         });
 
-        // 5. Log Activity
+        // 6. Log Activity
         await logActivity(
             ctx,
             businessId,

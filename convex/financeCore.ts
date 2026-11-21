@@ -1,4 +1,5 @@
 import { Id } from "./_generated/dataModel";
+import { DEFAULT_TIMEZONE } from "./defaults";
 
 /**
  * SMARTBUZ — the finance calculation core.
@@ -57,14 +58,138 @@ export type DocId = string;
  * The lower bound is the bare date (`2026-01-01`) so that a record stored
  * as `2026-01-01T09:00:00.000Z` is included, and the upper bound runs to
  * the last millisecond of the day.
+ *
+ * When the business's time zone is known, the bounds are the *local* day in
+ * that zone rather than the UTC day. A shop in Kampala closes its books at
+ * midnight its own time, so "today's sales" has to mean from 00:00 in
+ * Kampala — which is 21:00 UTC the previous day — to 23:59 in Kampala.
+ * Without this, the last three hours of every trading day fall into
+ * tomorrow's report and the first three hours of the next day fall into
+ * this one's.
  */
 export function dayBounds(
   from?: string,
-  to?: string
+  to?: string,
+  timeZone?: string
 ): { start: string; end: string } {
-  const start = from ? from.slice(0, 10) : "";
-  const end = to ? `${to.slice(0, 10)}T23:59:59.999Z` : "9999-12-31T23:59:59.999Z";
+  const zone = timeZone?.trim() || undefined;
+
+  if (!zone || !isKnownTimeZone(zone)) {
+    const start = from ? from.slice(0, 10) : "";
+    const end = to ? `${to.slice(0, 10)}T23:59:59.999Z` : "9999-12-31T23:59:59.999Z";
+    return { start, end };
+  }
+
+  const start = from ? localDayStartUtc(from.slice(0, 10), zone) : "";
+  const end = to ? localDayEndUtc(to.slice(0, 10), zone) : "9999-12-31T23:59:59.999Z";
   return { start, end };
+}
+
+/** True when the runtime recognises the zone as a time zone. */
+function isKnownTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * How far ahead of UTC the zone is at a given instant, in milliseconds.
+ *
+ * The offset is read back out of the zone itself rather than from a table,
+ * so a zone that changes its offset (a daylight-saving country) is
+ * correct on the day it changes and not only on the other 364.
+ */
+function zoneOffsetMs(instant: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(instant);
+
+  const read = (type: string): number => {
+    const found = parts.find((p) => p.type === type);
+    return found ? Number(found.value) : 0;
+  };
+
+  const asUtc = Date.UTC(
+    read("year"),
+    read("month") - 1,
+    read("day"),
+    read("hour") % 24,
+    read("minute"),
+    read("second")
+  );
+
+  return asUtc - instant.getTime();
+}
+
+/**
+ * The instant a local calendar day begins, as a UTC ISO string.
+ *
+ * The offset is applied twice, because the offset in force at midnight may
+ * not be the offset in force at the instant we are converting — the two
+ * differ on the day a zone changes its clocks.
+ */
+function localDayStartUtc(day: string, timeZone: string): string {
+  const naive = Date.parse(`${day}T00:00:00.000Z`);
+  if (!Number.isFinite(naive)) return `${day}T00:00:00.000Z`;
+
+  let guess = naive - zoneOffsetMs(new Date(naive), timeZone);
+  guess = naive - zoneOffsetMs(new Date(guess), timeZone);
+  return new Date(guess).toISOString();
+}
+
+/**
+ * The instant a local calendar day ends — the last millisecond before the
+ * next local day begins.
+ */
+function localDayEndUtc(day: string, timeZone: string): string {
+  const nextDay = new Date(
+    Date.UTC(
+      Number(day.slice(0, 4)),
+      Number(day.slice(5, 7)) - 1,
+      Number(day.slice(8, 10))
+    ) +
+      24 * 60 * 60 * 1000
+  );
+  const next = nextDay.toISOString().slice(0, 10);
+  const startOfNext = Date.parse(localDayStartUtc(next, timeZone));
+  return new Date(startOfNext - 1).toISOString();
+}
+
+/**
+ * The bounds of a date range for a particular business, in that business's
+ * own time zone.
+ *
+ * Every report that reads a period of time goes through here, so that the
+ * same range can never be interpreted two ways — once in UTC and once in
+ * local time, which is how a day's sales end up split between two reports.
+ */
+export async function businessDayBounds(
+  ctx: AnyCtx,
+  businessId: DocId,
+  from?: string,
+  to?: string
+): Promise<{ start: string; end: string }> {
+  let timeZone: string | undefined;
+  try {
+    const business = await ctx.db.get(businessId);
+    if (business) {
+      timeZone = business.timezone ?? business.timeZone ?? DEFAULT_TIMEZONE;
+    }
+  } catch {
+    // A business that cannot be read simply gets UTC bounds, which is the
+    // behaviour the reports had before this was fixed.
+  }
+  return dayBounds(from, to, timeZone);
 }
 
 /** `2026-01-31T09:00:00.000Z` → `2026-01-31`. */
@@ -115,7 +240,7 @@ export async function loadSales(
   to?: string,
   branchId?: DocId
 ): Promise<any[]> {
-  const { start, end } = dayBounds(from, to);
+  const { start, end } = await businessDayBounds(ctx, businessId, from, to);
 
   if (branchId) {
     return await ctx.db
@@ -152,7 +277,7 @@ export async function loadExpenses(
   to?: string,
   branchId?: DocId
 ): Promise<any[]> {
-  const { start, end } = dayBounds(from, to);
+  const { start, end } = await businessDayBounds(ctx, businessId, from, to);
 
   const expenses = await ctx.db
     .query("expenses")
@@ -174,7 +299,7 @@ export async function loadIncome(
   to?: string,
   branchId?: DocId
 ): Promise<any[]> {
-  const { start, end } = dayBounds(from, to);
+  const { start, end } = await businessDayBounds(ctx, businessId, from, to);
 
   const records = await ctx.db
     .query("incomeRecords")

@@ -85,6 +85,15 @@ export const SUPPORTED_CURRENCIES = [
 
 export const DEFAULT_CURRENCY = "UGX";
 export const DEFAULT_TIMEZONE = "Africa/Kampala";
+
+/**
+ * The reorder point used for a product that has none of its own, and for a
+ * business that has not set a default.
+ *
+ * It is a constant rather than a number typed into the browser so that the
+ * low-stock alert means the same thing every time it is run.
+ */
+export const DEFAULT_REORDER_POINT = 10;
 export const DEFAULT_COUNTRY = "Uganda";
 export const DEFAULT_LOCALE = "en-UG";
 export const DEFAULT_DATE_FORMAT = "dd/MM/yyyy";

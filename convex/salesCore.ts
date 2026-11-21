@@ -28,8 +28,10 @@
 
 import { ConvexError } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { logActivity } from "./tenancy";
+import { outstandingBalance } from "./customers";
+import { salePaymentModeToMethod } from "./paymentRules";
 
 /**
  * How far back a till may date an offline sale.
@@ -666,6 +668,23 @@ function round2(value: number): number {
 }
 
 /**
+ * Is this sale one the customer is going to owe for?
+ *
+ * Two things mark it: the till saying it is a loan, and the till naming
+ * `Loan` as the payment mode. They are recorded separately — a sale can be
+ * a loan without a due date, and a payment mode can be `Loan` on a sale that
+ * was paid in full — so both are checked.
+ */
+function isCreditSale(args: {
+    isLoan?: boolean;
+    paymentMode?: string;
+}): boolean {
+    if (args.isLoan === true) return true;
+    const mode = (args.paymentMode ?? "").trim().toLowerCase();
+    return mode === "loan" || mode === "credit";
+}
+
+/**
  * Record a sale.
  *
  * The client is never trusted for money: prices are re-read from the
@@ -688,11 +707,13 @@ export async function applySale(
     } = options;
 
     // Everything the sale refers to must belong to this business.
+    let saleCustomer: Doc<"customers"> | null = null;
     if (args.customerId) {
         const customer = await ctx.db.get(args.customerId);
         if (!customer || customer.businessId !== businessId) {
             throw new ConvexError("Forbidden: that customer belongs to another business.");
         }
+        saleCustomer = customer;
     }
     if (args.shopId) {
         const shop = await ctx.db.get(args.shopId);
@@ -804,6 +825,11 @@ export async function applySale(
     }[] = [];
 
     let computedTotal = 0;
+    // The unrounded sum, kept only to compare against the total the client
+    // sent. The money that is stored is rounded; the comparison is not, so a
+    // client that summed the basket at full precision is not refused over a
+    // fraction of a cent.
+    let rawTotal = 0;
     const trustedItems = args.items.map((item) => {
         const stock = pricingMap.get(item.stockId);
         if (!stock) {
@@ -863,14 +889,27 @@ export async function applySale(
                 price: effectiveOverride,
             });
         }
-        computedTotal += unitPrice * item.quantity;
+        const lineAmount = unitPrice * item.quantity;
+        rawTotal += lineAmount;
+        // Each line is rounded to the currency and the total is the sum of
+        // the rounded lines, so the figure on the receipt is the figure in
+        // the ledger, to the cent.
+        computedTotal += round2(lineAmount);
         return {
             ...item,
+            // The product's identity comes from the server's catalogue, not
+            // from the browser. A client that renamed a line in transit would
+            // otherwise put a name on the receipt that does not match the
+            // product it was charged for — and that receipt is the record the
+            // customer and the tax authority both rely on.
+            name: stock.name,
+            productCode: stock.productCode,
             price: unitPrice,
             pv: stock.pv,
             bv: stock.bv,
         };
     });
+    computedTotal = round2(computedTotal);
 
     // Guard against a client submitting a mismatched total (e.g. 0).
     //
@@ -882,11 +921,37 @@ export async function applySale(
     // it now would lose a real sale and leave the books wrong. The
     // server's price wins — that is what the books say the sale was — and
     // the difference is recorded so it can be explained.
-    const totalDiffers = Math.abs(computedTotal - args.total) > 0.01;
+    const totalDiffers = Math.abs(rawTotal - args.total) > 0.01;
     if (totalDiffers && !offline) {
         throw new Error(
-            `Sale total mismatch: client sent ${args.total} but the server computed ${computedTotal}.`
+            `Sale total mismatch: client sent ${args.total} but the server computed ${rawTotal}.`
         );
+    }
+
+    // -----------------------------------------------------------------
+    // CREDIT LIMIT
+    //
+    // A credit limit that is displayed but never enforced is worse than no
+    // limit at all: the owner believes the shop is protected, and the books
+    // say otherwise. The limit is checked here, at the point of sale,
+    // because that is the only moment at which refusing the sale is still
+    // possible.
+    //
+    // A limit of zero means "no limit" — that is what the customer screens
+    // show, and it is what a business that does not extend credit has.
+    // -----------------------------------------------------------------
+    if (saleCustomer && isCreditSale(args)) {
+        const limit = saleCustomer.creditLimit ?? 0;
+        if (limit > 0) {
+            const outstanding = await outstandingBalance(ctx, saleCustomer._id);
+            const deposit = Math.max(0, args.initialDeposit ?? 0);
+            const adding = Math.max(0, computedTotal - deposit);
+            if (outstanding + adding > limit) {
+                throw new ConvexError(
+                    `${saleCustomer.name} is over their credit limit. They owe ${outstanding}, this sale adds ${adding}, and their limit is ${limit}.`
+                );
+            }
+        }
     }
 
     // Check if user is assigned to a shop in this business
@@ -926,9 +991,30 @@ export async function applySale(
             }
 
             const currentQty = updatedStocks[stockIndex].qty;
-            // Negative stock is allowed by design, so a sale that has
-            // already happened is never refused for want of stock. The
-            // shortfall is recorded as a conflict instead.
+            // A live sale may not sell what is not there.
+            //
+            // Selling stock that does not exist takes the position
+            // negative, hides the shortfall, and leaves the books showing
+            // more goods than were ever bought. The cashier is told which
+            // product ran out and how many are left, so the sale can be put
+            // right before the customer pays.
+            //
+            // The one exception is a position that is *already* negative:
+            // the books are already wrong there, and refusing to sell it
+            // would strand the product for good — it could never be sold
+            // again until somebody counted the shelves. So the sale goes
+            // through and the shortfall is recorded as a conflict, which is
+            // what the conflict list is for.
+            //
+            // An offline sale is a different matter again: the goods have
+            // gone and the customer has paid. Refusing it now would lose a
+            // real sale and leave the books short, so the shortfall is
+            // allowed and recorded as a conflict too.
+            if (!offline && currentQty >= 0 && currentQty < item.quantity) {
+                throw new ConvexError(
+                    `Not enough ${item.name} in stock at ${shop.name}: ${currentQty} left, ${item.quantity} requested.`
+                );
+            }
 
             updatedStocks[stockIndex] = {
                 ...updatedStocks[stockIndex],
@@ -954,7 +1040,16 @@ export async function applySale(
                 throw new Error(`Item ${item.name} not found in warehouse`);
             }
 
-            // Negative stock is allowed by design — see the note above.
+            // The same rule as the counter above: a live sale may not sell
+            // stock that is not there. An offline sale may, because the goods
+            // have already gone out of the door — and so may a sale of a
+            // product whose position is already negative, because the books
+            // are already wrong and refusing would strand it for good.
+            if (!offline && stock.qty >= 0 && stock.qty < item.quantity) {
+                throw new ConvexError(
+                    `Not enough ${item.name} in stock: ${stock.qty} left, ${item.quantity} requested.`
+                );
+            }
 
             await ctx.db.patch(item.stockId, {
                 qty: stock.qty - item.quantity,
@@ -1059,8 +1154,30 @@ export async function applySale(
 
     // Handle Loans
     if (args.isLoan && args.paymentDueDate) {
-        const deposit = args.initialDeposit || 0;
-        const loanBalance = computedTotal - deposit;
+        // -----------------------------------------------------------------
+        // THE DEPOSIT IS A MONEY FIELD
+        //
+        // The deposit is what the customer handed over against the credit
+        // sale, and it was taken from the browser without being checked. A
+        // deposit larger than the sale produced a **negative** loan balance,
+        // which is a negative receivable in the financial summary and a
+        // credit sale that can never be settled: the customer statement only
+        // looks at loans with a positive balance, and refuses any payment
+        // above it, so the account is stuck for ever.
+        //
+        // So the deposit is bounded here, between nothing and the whole
+        // sale, and the balance is never allowed below zero.
+        // -----------------------------------------------------------------
+        const deposit = args.initialDeposit ?? 0;
+        if (!Number.isFinite(deposit) || deposit < 0) {
+            throw new ConvexError("The deposit on a credit sale cannot be negative.");
+        }
+        if (deposit > computedTotal) {
+            throw new ConvexError(
+                `The deposit (${deposit}) is more than the sale (${computedTotal}).`
+            );
+        }
+        const loanBalance = Math.max(0, computedTotal - deposit);
 
         const loanId = await ctx.db.insert("loans", {
             businessId,
@@ -1080,8 +1197,12 @@ export async function applySale(
                 shopId: shop?._id,
                 customerId: args.customerId,
                 amount: deposit,
+                // The server stamps the payment; the date of the sale it was
+                // taken with is kept beside it.
                 date: new Date().toISOString(),
+                paymentDate: date,
                 balance: loanBalance,
+                method: salePaymentModeToMethod(args.paymentMode),
             });
         }
     }

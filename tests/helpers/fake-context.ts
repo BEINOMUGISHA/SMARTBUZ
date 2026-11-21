@@ -44,6 +44,8 @@ export interface FakeCtxOptions {
   activityLogs?: FakeRow[];
   employees?: FakeRow[];
   stocks?: FakeRow[];
+  categories?: FakeRow[];
+  shopIssueRecords?: FakeRow[];
   sales?: FakeRow[];
   shops?: FakeRow[];
   /* ── Phase 4: customers, suppliers, purchasing ────────────────────── */
@@ -94,6 +96,10 @@ const TABLES = [
   "stocks",
   "sales",
   "shops",
+  /** The catalogue's categories — read by the sale and by the inventory. */
+  "categories",
+  /** The counter's own issue history. */
+  "shopIssueRecords",
   /** Promotions — read by the sale, so a sale cannot be made without them. */
   "promotions",
   "promotionProducts",
@@ -300,6 +306,7 @@ class FakeQuery {
   private sortDirection: "asc" | "desc" = "asc";
   private sortField?: string;
   private limitCount?: number;
+  private searchTerm?: string;
 
   constructor(private readonly rows: FakeRow[]) {}
 
@@ -313,7 +320,9 @@ class FakeQuery {
   filter(builder: (q: ConditionBuilder) => unknown): FakeQuery {
     const conditions: Condition[] = [];
     builder(new ConditionBuilder(conditions));
-    this.filterConditions = conditions;
+    // Filters accumulate, the way the server's do: two filters are a
+    // narrower query, not a replacement of the first one.
+    this.filterConditions = [...this.filterConditions, ...conditions];
     return this;
   }
 
@@ -345,6 +354,16 @@ class FakeQuery {
         this.filterConditions.every((c) => conditionHolds(row, c))
     );
 
+    // A search index covers the name and the product code.
+    if (this.searchTerm) {
+      const term = this.searchTerm;
+      matched = matched.filter(
+        (row) =>
+          String(row.name ?? "").toLowerCase().includes(term) ||
+          String(row.productCode ?? "").toLowerCase().includes(term)
+      );
+    }
+
     // An index is in ascending order, so "desc" reverses it.
     if (this.sortDirection === "desc") {
       matched = [...matched].reverse();
@@ -369,6 +388,52 @@ class FakeQuery {
 
   async collect(): Promise<FakeRow[]> {
     return this.matches();
+  }
+
+  /**
+   * A page of rows.
+   *
+   * The server paginates the rows that match, and the cursor says where the
+   * next page starts. The fake does the same, so a test that checks what a
+   * page contains checks the real thing.
+   */
+  async paginate(opts: { numItems: number; cursor?: string | null }): Promise<{
+    page: FakeRow[];
+    isDone: boolean;
+    continueCursor: string;
+  }> {
+    const all = this.matches();
+    const start = opts.cursor ? Number(opts.cursor) : 0;
+    const size = opts.numItems > 0 ? opts.numItems : all.length;
+    const page = all.slice(start, start + size);
+    const next = start + size;
+    return {
+      page,
+      isDone: next >= all.length,
+      continueCursor: next < all.length ? String(next) : "",
+    };
+  }
+
+  /**
+   * The search index.
+   *
+   * The fake searches the name and the product code, which is what the
+   * catalogue's search index covers.
+   */
+  withSearchIndex(
+    _name: string,
+    builder: (q: { search: (field: string, term: string) => unknown }) => unknown
+  ): FakeQuery {
+    const captured: { term?: string } = {};
+    builder({
+      search: (field: string, term: string) => {
+        captured.term = term;
+        return field;
+      },
+    });
+    const term = (captured.term ?? "").toLowerCase();
+    this.searchTerm = term;
+    return this;
   }
 }
 

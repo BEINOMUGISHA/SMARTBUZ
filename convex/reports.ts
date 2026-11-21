@@ -6,7 +6,7 @@ import { paginationOptsValidator } from "convex/server";
 import { Id } from "./_generated/dataModel";
 import {
     buildCostIndex,
-    dayBounds,
+    businessDayBounds,
     loadSales,
     money,
     summariseSales,
@@ -115,7 +115,7 @@ export const getSalesAndExpenses = query({
         // Comparing against the bare date left out everything that happened
         // on that day, so a range that began and ended on the same day
         // showed nothing at all.
-        const { start, end } = dayBounds(args.startDate, args.endDate);
+        const { start, end } = await businessDayBounds(ctx, businessId, args.startDate, args.endDate);
 
         const sales = await ctx.db
             .query("sales")
@@ -717,29 +717,40 @@ export const getReportsSummary = query({
             });
         }
 
-        // [ENRICHMENT FOR SALES COST]
-        const stockIds = [...new Set(sales.flatMap(s => s.items.map(i => i.stockId)))];
-        const stockDocs = await Promise.all(stockIds.map(id => ctx.db.get(id)));
-        const stockMap = new Map(stockDocs.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
+        // The cost of the goods is resolved by the shared cost index below,
+        // which knows what each product cost when it was bought — so there
+        // is no need to read the current stock documents here.
 
-        let totalRevenue = 0;
-        let totalCostOfSales = 0;
+        // -----------------------------------------------------------------
+        // THE FIGURES COME FROM THE SHARED FINANCE HELPERS
+        //
+        // This summary used to add up `sale.total` without subtracting the
+        // refunds, and to cost the goods at today's purchase price rather
+        // than the price they were bought at. Both contradict the newer
+        // reports, so the same owner looking at two screens saw two
+        // different answers to "what did we make".
+        //
+        // Now both come from `financeCore` — the same helpers the analytics
+        // and finance modules use — so there is one answer.
+        // -----------------------------------------------------------------
+        const costIndex = await buildCostIndex(ctx, businessId);
+        const totals = summariseSales(sales, costIndex);
+
+        const totalRevenue = money(totals.revenue);
+        const totalCostOfSales = money(totals.cost);
+
         let totalPV = 0;
         let totalBV = 0;
-
         for (const sale of sales) {
-            totalRevenue += sale.total;
             for (const item of sale.items) {
                 totalPV += (item.pv || 0) * item.quantity;
                 totalBV += (item.bv || 0) * item.quantity;
-                const stock = stockMap.get(item.stockId);
-                if (stock) {
-                    totalCostOfSales += stock.purchasePrice * item.quantity;
-                }
             }
         }
 
-        const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+        const totalExpenses = money(
+            expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0)
+        );
 
         // [CURRENT INVENTORY VALUES]
         const totalInventorySellingPrice = stocks.reduce((sum, s) => sum + (s.price * s.qty), 0);
@@ -1769,11 +1780,40 @@ export const getAgedDebtors = query({
 
         const now = Date.now();
 
+        // -----------------------------------------------------------------
+        // AGEING FROM THE LAST PAYMENT
+        //
+        // The age of a debt is the time since the account was last touched,
+        // not the time since the oldest invoice on it. A customer who bought
+        // in January and paid yesterday is not a 90-day debtor — they are
+        // someone who pays. Ageing from the origination date instead puts
+        // every regular payer in the oldest bucket and hides the debts that
+        // genuinely have gone stale.
+        //
+        // The payments are read once and grouped by the loan they belong
+        // to, rather than queried per loan.
+        // -----------------------------------------------------------------
+        const allPayments = await ctx.db
+            .query("payments")
+            .withIndex("by_businessId", q => q.eq("businessId", businessId))
+            .collect();
+        const lastPaymentByLoan = new Map<string, string>();
+        for (const payment of allPayments) {
+            const loanId = payment.loanId as string;
+            const current = lastPaymentByLoan.get(loanId);
+            const paymentDate = String(payment.date ?? "");
+            if (!current || paymentDate > current) {
+                lastPaymentByLoan.set(loanId, paymentDate);
+            }
+        }
+
         let enriched = outstanding.map(l => {
             const sale = salesMap.get(l.salesId);
             const customer = l.customerId ? customerMap.get(l.customerId) : null;
             const loanDate = l.date ? new Date(l.date).getTime() : (sale?.date ? new Date(sale.date).getTime() : now);
-            const ageDays = Math.max(0, Math.floor((now - loanDate) / (1000 * 60 * 60 * 24)));
+            const lastPayment = lastPaymentByLoan.get(l._id as string);
+            const lastActivity = lastPayment ? new Date(lastPayment).getTime() : loanDate;
+            const ageDays = Math.max(0, Math.floor((now - lastActivity) / (1000 * 60 * 60 * 24)));
 
             let bucket: "current" | "30" | "60" | "90" | "over90";
             if (ageDays <= 30) bucket = "current";

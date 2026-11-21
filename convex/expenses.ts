@@ -3,6 +3,7 @@ import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { logActivity, requirePermission, requireTenant } from "./tenancy";
+import { dayBounds } from "./financeCore";
 
 /**
  * SMARTBUZ — expenses.
@@ -183,10 +184,25 @@ export const listByDateRange = query({
             .withIndex("by_businessId", (index) => index.eq("businessId", tenant.businessId));
 
         if (args.from && args.to) {
+            // -----------------------------------------------------------------
+            // THE RANGE IS INCLUSIVE OF BOTH ENDS
+            //
+            // An expense is stored as a bare calendar date — the day the
+            // business recorded it — and the browser sends the bounds as full
+            // instants (`startOfDay(from).toISOString()`). Comparing a bare
+            // date against a full instant lexicographically drops the first
+            // day of every range: "2026-03-10" sorts *before*
+            // "2026-03-10T00:00:00.000Z", so the expense on the first day
+            // falls outside the filter.
+            //
+            // So both sides are put in the same shape — the calendar day —
+            // and the range includes the first day and the last.
+            // -----------------------------------------------------------------
+            const { start, end } = dayBounds(args.from, args.to);
             q = q.filter((f) =>
                 f.and(
-                    f.gte(f.field("date"), args.from!),
-                    f.lte(f.field("date"), args.to!)
+                    f.gte(f.field("date"), start),
+                    f.lte(f.field("date"), end)
                 )
             );
         }
@@ -211,10 +227,13 @@ export const getStats = query({
             .withIndex("by_businessId", (index) => index.eq("businessId", tenant.businessId));
 
         if (args.from && args.to) {
+            // The same inclusive bounds as the list above, so the total and
+            // the rows it is made of always agree.
+            const { start, end } = dayBounds(args.from, args.to);
             q = q.filter((f) =>
                 f.and(
-                    f.gte(f.field("date"), args.from!),
-                    f.lte(f.field("date"), args.to!)
+                    f.gte(f.field("date"), start),
+                    f.lte(f.field("date"), end)
                 )
             );
         }

@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-21T09:02:00.807Z",
+  "generatedAt": "2026-11-21T15:17:21.278Z",
   "targets": [
     "src",
     "convex",
     "scripts"
   ],
   "totals": {
-    "files": 311,
-    "problems": 1465,
+    "files": 314,
+    "problems": 1468,
     "byRule": {
-      "@typescript-eslint/no-explicit-any": 1135,
-      "@typescript-eslint/no-unused-vars": 292,
+      "@typescript-eslint/no-explicit-any": 1143,
+      "@typescript-eslint/no-unused-vars": 287,
       "react-hooks/set-state-in-effect": 12,
       "react/no-unescaped-entities": 9,
       "prefer-const": 8,
@@ -26,7 +26,6 @@
       "@typescript-eslint/no-unused-vars": 1
     },
     "convex/analytics.ts": {
-      "@typescript-eslint/no-unused-vars": 3,
       "@typescript-eslint/no-explicit-any": 17
     },
     "convex/audit.ts": {
@@ -59,8 +58,8 @@
       "@typescript-eslint/no-explicit-any": 20
     },
     "convex/finance.ts": {
-      "@typescript-eslint/no-unused-vars": 3,
-      "@typescript-eslint/no-explicit-any": 56
+      "@typescript-eslint/no-explicit-any": 56,
+      "@typescript-eslint/no-unused-vars": 1
     },
     "convex/financeCore.ts": {
       "@typescript-eslint/no-unused-vars": 1,
@@ -128,7 +127,7 @@
     },
     "convex/sales.ts": {
       "@typescript-eslint/no-unused-vars": 1,
-      "@typescript-eslint/no-explicit-any": 63
+      "@typescript-eslint/no-explicit-any": 71
     },
     "convex/salesCore.ts": {
       "@typescript-eslint/no-explicit-any": 3

@@ -3,13 +3,17 @@ import { ConvexError } from "convex/values";
 import { mutation, query, MutationCtx } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { Id, Doc } from "./_generated/dataModel";
-import { logActivity, requireBranchAccess, requirePermission, requireTenant } from "./tenancy";
+import { hasPermission, logActivity, requireBranchAccess, requirePermission, requireTenant } from "./tenancy";
 import { writeAudit } from "./audit";
 import {
     applySale,
     generateInvoiceNumber,
     processPromotionTriggers,
 } from "./salesCore";
+import { salePaymentModeToMethod } from "./paymentRules";
+import { restateLoanPaymentBalances, reverseSaleLines } from "./saleCompensation";
+
+/**
 
 /**
  * SMART_BUZ — sales.
@@ -279,22 +283,43 @@ export const editSale = mutation({
         }
 
         // -----------------------------------------------------------------
-        // 2) REVERSE original loan and its payments
+        // 2) THE CREDIT SALE IS RE-OPENED — NOT ERASED
+        //
+        // Editing a credit sale used to delete the loan **and every payment
+        // the customer had made against it**, then create a fresh loan for
+        // the new total. Any money the customer had already handed over
+        // simply stopped existing: their statement fell, the receivables
+        // fell, and no money had been returned. A correction at the till
+        // could therefore *increase* what a customer owed.
+        //
+        // The loan and its payments are kept. What changes is the loan's
+        // amount, and the balance follows from the money that is actually
+        // recorded against it. The identity every loan has to satisfy —
+        //
+        //     amount − (sum of the payments) = balance
+        //
+        // — holds before the edit and holds after it, so the debt book
+        // reconciles either way.
         // -----------------------------------------------------------------
         const existingLoans = await ctx.db
             .query("loans")
             .withIndex("by_salesId", (q) => q.eq("salesId", args.saleId))
             .collect();
 
+        // What the customer has already paid against this sale, and what
+        // was taken as a deposit when it was rung up.
+        let paidAgainstSale = 0;
+        const depositTaken = existingSale.initialDeposit ?? 0;
+        let keptLoanId: Id<"loans"> | null = null;
+
         for (const loan of existingLoans) {
             const payments = await ctx.db
                 .query("payments")
                 .withIndex("by_loan", (q) => q.eq("loanId", loan._id))
                 .collect();
-            for (const p of payments) {
-                await ctx.db.delete(p._id);
-            }
-            await ctx.db.delete(loan._id);
+            const paid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+            paidAgainstSale += paid;
+            if (!keptLoanId) keptLoanId = loan._id;
         }
 
         // -----------------------------------------------------------------
@@ -389,10 +414,79 @@ export const editSale = mutation({
         // -----------------------------------------------------------------
         // 7) RE-CREATE loan + initial deposit if applicable
         // -----------------------------------------------------------------
-        if (args.isLoan && args.paymentDueDate) {
-            const deposit = args.initialDeposit || 0;
-            const loanBalance = editComputedTotal - deposit;
+        // 7) RE-OPEN THE LOAN AGAINST THE CORRECTED SALE
+        //
+        // The loan that was kept in step 2 is the one that carries the
+        // customer's money, so it is corrected rather than replaced.
+        // -----------------------------------------------------------------
+        const isCreditSale = Boolean(args.isLoan && args.paymentDueDate);
+        const deposit = args.initialDeposit ?? 0;
 
+        if (!Number.isFinite(deposit) || deposit < 0) {
+            throw new ConvexError("The deposit on a credit sale cannot be negative.");
+        }
+        if (isCreditSale && deposit > editComputedTotal) {
+            throw new ConvexError(
+                `The deposit (${deposit}) is more than the sale (${editComputedTotal}).`
+            );
+        }
+
+        if (keptLoanId) {
+            const loan = await ctx.db.get(keptLoanId);
+            if (loan) {
+                if (isCreditSale) {
+                    // The deposit may have changed with the sale. The
+                    // difference is its own entry, so the ledger shows what
+                    // moved rather than hiding it inside the balance.
+                    const depositChange = deposit - depositTaken;
+                    if (depositChange !== 0) {
+                        await ctx.db.insert("payments", {
+                            businessId,
+                            loanId: loan._id,
+                            shopId: shopId,
+                            customerId: loan.customerId,
+                            amount: depositChange,
+                            date: newDate,
+                            balance: 0,
+                            method: salePaymentModeToMethod(args.paymentMode),
+                            note:
+                                depositChange > 0
+                                    ? "Deposit increased when the sale was edited"
+                                    : "Deposit reduced when the sale was edited",
+                        });
+                    }
+
+                    const totalPaid = paidAgainstSale + depositChange;
+                    const balance = Math.max(0, editComputedTotal - totalPaid);
+
+                    await ctx.db.patch(loan._id, {
+                        amount: editComputedTotal,
+                        balance,
+                        customerId: args.customerId ?? loan.customerId,
+                        manualCustomerName: args.manualCustomerName ?? loan.manualCustomerName,
+                    });
+
+                    // Each payment carries the balance that was left after
+                    // it, so the running balance has to be restated against
+                    // the corrected amount. Without this the statement and
+                    // the loan would disagree about the same money.
+                    await restateLoanPaymentBalances(ctx, loan._id, editComputedTotal);
+                } else {
+                    // The sale is no longer a credit sale, so nothing is owed
+                    // on it any more — but the money the customer handed
+                    // over stays recorded, and the loan is kept as the record
+                    // of it.
+                    await ctx.db.patch(loan._id, {
+                        amount: paidAgainstSale,
+                        balance: 0,
+                    });
+                    await restateLoanPaymentBalances(ctx, loan._id, paidAgainstSale);
+                }
+            }
+        } else if (isCreditSale) {
+            // The sale was not on credit before, and is now. A fresh loan
+            // records the credit, and the deposit is a payment against it.
+            const loanBalance = Math.max(0, editComputedTotal - deposit);
             const loanId = await ctx.db.insert("loans", {
                 businessId,
                 customerId: args.customerId,
@@ -411,7 +505,9 @@ export const editSale = mutation({
                     customerId: args.customerId,
                     amount: deposit,
                     date: newDate,
+                    paymentDate: newDate,
                     balance: loanBalance,
+                    method: salePaymentModeToMethod(args.paymentMode),
                 });
             }
         }
@@ -462,24 +558,47 @@ export const mySalesStats = query({
         // Base Query Selection
         let salesQuery: any = ctx.db.query("sales"); // Use any to bypass complex Query vs QueryInitializer mismatch
 
-        // User MUST be assigned to a shop
-        if (!shop) {
-            return {
-                totalSales: 0,
-                totalRegular: 0,
-                totalHP: 0,
-                count: 0
-            };
-        }
+        // -----------------------------------------------------------------
+        // A USER WITH NO COUNTER
+        //
+        // This view used to be scoped to the caller's counter and returned
+        // an empty page when they had none, so an owner or an administrator
+        // who does not run a till saw nothing at all.
+        //
+        // The scope follows what the caller may see: someone who may read
+        // the business's financial reports sees the business's sales, and
+        // everyone else sees the sales they made themselves.
+        // -----------------------------------------------------------------
+        const seesWholeBusiness = await hasPermission(
+            ctx,
+            businessId,
+            "reports.financial"
+        );
 
-        if (args.from && args.to) {
-            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) =>
-                q.eq("businessId", businessId).eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!)
-            );
+        if (shop) {
+            if (args.from && args.to) {
+                salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) =>
+                    q.eq("businessId", businessId).eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!)
+                );
+            } else {
+                salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) =>
+                    q.eq("businessId", businessId).eq("shopId", shop._id)
+                );
+            }
+        } else if (seesWholeBusiness) {
+            if (args.from && args.to) {
+                salesQuery = salesQuery.withIndex("by_businessId_date", (q: any) =>
+                    q.eq("businessId", businessId).gte("date", args.from!).lte("date", args.to!)
+                );
+            } else {
+                salesQuery = salesQuery.withIndex("by_businessId_date", (q: any) =>
+                    q.eq("businessId", businessId)
+                );
+            }
         } else {
-            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) =>
-                q.eq("businessId", businessId).eq("shopId", shop._id)
-            );
+            salesQuery = salesQuery
+                .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+                .filter((q: any) => q.eq(q.field("userId"), tenant.user._id));
         }
 
         // 2. Apply Filters (REMOVE loan exclusion for Hybrid view)
@@ -517,16 +636,31 @@ export const mySalesStats = query({
 
         // 3. Fetch Data for Audit
         const sales = await salesQuery.collect();
-        const paymentsQuery = ctx.db
-            .query("payments")
-            .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
-            .filter((q: any) =>
-                q.and(
-                    q.eq(q.field("shopId"), shop._id),
-                    q.gte(q.field("date"), args.from || "0"),
-                    q.lte(q.field("date"), args.to || "z")
+
+        // The payments are scoped the same way the sales are: to the
+        // counter when the caller has one, and to the business when they
+        // do not — otherwise the collection figure would be the whole
+        // business's money against one counter's sales.
+        const paymentsQuery = shop
+            ? ctx.db
+                .query("payments")
+                .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+                .filter((q: any) =>
+                    q.and(
+                        q.eq(q.field("shopId"), shop._id),
+                        q.gte(q.field("date"), args.from || "0"),
+                        q.lte(q.field("date"), args.to || "z")
+                    )
                 )
-            );
+            : ctx.db
+                .query("payments")
+                .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+                .filter((q: any) =>
+                    q.and(
+                        q.gte(q.field("date"), args.from || "0"),
+                        q.lte(q.field("date"), args.to || "z")
+                    )
+                );
 
         const allPayments = await paymentsQuery.collect();
 
@@ -614,22 +748,54 @@ export const mySales = query({
             .filter((q) => q.eq(q.field("businessId"), businessId))
             .first();
 
-        // User MUST be assigned to a shop
-        if (!shop) {
-            return {
-                page: [],
-                isDone: true,
-                continueCursor: "",
-            };
-        }
+        // -----------------------------------------------------------------
+        // A USER WITH NO COUNTER
+        //
+        // This view used to be scoped to the caller's counter and returned
+        // an empty page when they had none. So an owner or an administrator
+        // who does not run a till saw nothing at all — the view was
+        // silently empty rather than scoped, and nobody could tell the
+        // difference between "no sales" and "no counter".
+        //
+        // So the scope follows what the caller is allowed to see:
+        //
+        //   - someone who may read the business's financial reports sees
+        //     the business's sales;
+        //   - everyone else sees the sales they made themselves.
+        //
+        // A cashier is never shown a colleague's takings either way.
+        // -----------------------------------------------------------------
+        const seesWholeBusiness = await hasPermission(
+            ctx,
+            businessId,
+            "reports.financial"
+        );
 
-        // 1. Base Query Construction
+        // Base Query Construction
         let salesQuery: any = ctx.db.query("sales");
 
-        if (args.from && args.to) {
-            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) => q.eq("businessId", businessId).eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!));
+        if (shop) {
+            if (args.from && args.to) {
+                salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) => q.eq("businessId", businessId).eq("shopId", shop._id).gte("date", args.from!).lte("date", args.to!));
+            } else {
+                salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) => q.eq("businessId", businessId).eq("shopId", shop._id));
+            }
+        } else if (seesWholeBusiness) {
+            // The business's own sales, bounded by the same period.
+            if (args.from && args.to) {
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", (q) =>
+                    q.eq("businessId", businessId).gte("date", args.from!).lte("date", args.to!)
+                );
+            } else {
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", (q) =>
+                    q.eq("businessId", businessId)
+                );
+            }
         } else {
-            salesQuery = salesQuery.withIndex("by_businessId_shop_date", (q: any) => q.eq("businessId", businessId).eq("shopId", shop._id));
+            // Their own sales only.
+            salesQuery = salesQuery
+                .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+                .filter((q: any) => q.eq(q.field("userId"), tenant.user._id));
         }
 
         // 2. Apply Filters (REMOVE restriction for Hybrid view)
@@ -1083,90 +1249,19 @@ export const refundSale = mutation({
             await requireBranchAccess(ctx, tenant.membership, sale.branchId);
         }
 
-        const alreadyRefunded = new Map<string, number>();
-        for (const item of sale.refundedItems ?? []) {
-            alreadyRefunded.set(item.stockId, (alreadyRefunded.get(item.stockId) ?? 0) + item.quantity);
-        }
-
-        const refundedItems: {
-            stockId: Id<"stocks">;
-            name: string;
-            productCode?: string;
-            quantity: number;
-            amount: number;
-        }[] = [];
-        let refundTotal = 0;
-
-        for (const line of args.items) {
-            if (line.quantity <= 0) {
-                throw new ConvexError("Refund quantities must be positive.");
-            }
-
-            const soldLine = sale.items.find((i) => i.stockId === line.stockId);
-            if (!soldLine) {
-                throw new ConvexError(
-                    "Forbidden: that product was not on this sale."
-                );
-            }
-
-            const already = alreadyRefunded.get(line.stockId) ?? 0;
-            if (already + line.quantity > soldLine.quantity) {
-                throw new ConvexError(
-                    `Cannot refund ${line.quantity} of ${soldLine.name} � only ${
-                        soldLine.quantity - already
-                    } remain on this sale.`
-                );
-            }
-
-            // The stock must belong to this business.
-            const stock = await ctx.db.get(line.stockId);
-            if (!stock || stock.businessId !== businessId) {
-                throw new ConvexError(
-                    "Forbidden: that product belongs to another business."
-                );
-            }
-
-            // The amount refunded is computed on the server from the price
-            // that was actually charged, never from the browser.
-            const amount = soldLine.price * line.quantity;
-            refundTotal += amount;
-
-            refundedItems.push({
-                stockId: line.stockId,
-                name: soldLine.name,
-                productCode: soldLine.productCode,
-                quantity: line.quantity,
-                amount,
-            });
-
-            await ctx.db.patch(line.stockId, { qty: stock.qty + line.quantity });
-
-            await ctx.db.insert("stockLedger", {
-                businessId,
-                stockId: line.stockId,
-                shopId: sale.shopId,
-                deltaQty: line.quantity,
-                eventType: "SALE_REFUND",
-                referenceId: sale.invoiceNumber || args.saleId,
-                userId,
-                timestamp: new Date().toISOString(),
-                notes: `Refund of ${soldLine.name} (${line.quantity}) on sale ${
-                    sale.invoiceNumber || args.saleId
-                }`,
-            });
-        }
-
-        const nextRefunded = [...(sale.refundedItems ?? []), ...refundedItems];
-        const totalRefunded = (sale.refundAmount ?? 0) + refundTotal;
-        const isFullyRefunded = totalRefunded >= sale.total;
-
-        await ctx.db.patch(args.saleId, {
-            refundedItems: nextRefunded,
-            refundAmount: totalRefunded,
-            refundedAt: new Date().toISOString(),
-            refundedBy: userId,
-            refundReason: args.reason,
-            deliveryStatus: isFullyRefunded ? "Refunded" : sale.deliveryStatus,
+        // -----------------------------------------------------------------
+        // THE COMPENSATION ITSELF
+        //
+        // The work is in `saleCompensation` because an offline sale that the
+        // owner rejects has to be reversed exactly the same way: the goods
+        // back, the money off, the ledger written, the debt corrected.
+        // -----------------------------------------------------------------
+        const compensation = await reverseSaleLines(ctx, {
+            businessId,
+            userId,
+            sale,
+            lines: args.items,
+            reason: args.reason ?? "Refunded at the till",
         });
 
         await logActivity(
@@ -1174,9 +1269,9 @@ export const refundSale = mutation({
             businessId,
             userId,
             "Refund Sale",
-            `Refunded ${refundedItems.length} line(s) worth ${refundTotal} on sale ${
+            `Refunded ${compensation.refundedItems.length} line(s) worth ${compensation.refundTotal} on sale ${
                 sale.invoiceNumber || args.saleId
-            }${args.reason ? ` � ${args.reason}` : ""}`
+            }${args.reason ? ` - ${args.reason}` : ""}`
         );
 
         await writeAudit(ctx, {
@@ -1188,10 +1283,10 @@ export const refundSale = mutation({
             targetId: args.saleId,
             metadata: {
                 invoiceNumber: sale.invoiceNumber,
-                refundAmount: refundTotal,
-                totalRefunded,
-                fullyRefunded: isFullyRefunded,
-                items: refundedItems.map((i) => ({
+                refundAmount: compensation.refundTotal,
+                totalRefunded: compensation.totalRefunded,
+                fullyRefunded: compensation.fullyRefunded,
+                items: compensation.refundedItems.map((i) => ({
                     name: i.name,
                     quantity: i.quantity,
                     amount: i.amount,
@@ -1200,6 +1295,10 @@ export const refundSale = mutation({
             },
         });
 
-        return { refundAmount: refundTotal, totalRefunded, fullyRefunded: isFullyRefunded };
+        return {
+            refundAmount: compensation.refundTotal,
+            totalRefunded: compensation.totalRefunded,
+            fullyRefunded: compensation.fullyRefunded,
+        };
     },
 });

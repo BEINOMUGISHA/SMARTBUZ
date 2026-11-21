@@ -27,11 +27,13 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
-import { requireTenant } from "./tenancy";
+import type { MutationCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { requireTenant, logActivity } from "./tenancy";
 import { normalizeBusinessRole, roleHasPermission } from "./rbac";
 import { writeAudit } from "./audit";
 import { applySale, type SaleInput } from "./salesCore";
+import { reverseSaleLines } from "./saleCompensation";
 import { resolvePlan, subscriptionCoveredAt } from "./entitlements";
 import { loadSubscriptionRow, loadSubscriptionStatus } from "./subscriptionState";
 
@@ -633,6 +635,53 @@ export const resolveConflict = mutation({
             );
         }
 
+        // -----------------------------------------------------------------
+        // "REJECTED" MEANS THE SALE IS REVERSED
+        //
+        // Marking the conflict resolved used to be the whole of the
+        // rejection. The sale stood, the goods stayed gone, the money stayed
+        // taken — and the owner was told the problem had been dealt with.
+        //
+        // So a rejection now does the same work a refund does: the goods go
+        // back to the counter they came from, the money comes off, the
+        // ledger is written and the debt book is corrected. The conflict is
+        // only marked resolved *after* that has happened, so a failure
+        // leaves the conflict open for another attempt rather than hiding it.
+        // -----------------------------------------------------------------
+        let reversal: { refundTotal: number; fullyRefunded: boolean } | undefined;
+
+        if (args.resolution === "rejected") {
+            const sale = await findConflictedSale(ctx, tenant.businessId, conflict);
+            if (!sale) {
+                throw new ConvexError(
+                    "The sale behind this conflict could not be found, so it cannot be reversed. Resolve it as accepted and correct the stock by hand."
+                );
+            }
+
+            const lines = linesToReverse(sale);
+            if (lines.length === 0) {
+                throw new ConvexError(
+                    "There is nothing left on this sale to reverse - it has already been refunded."
+                );
+            }
+
+            reversal = await reverseSaleLines(ctx, {
+                businessId: tenant.businessId,
+                userId: tenant.user._id,
+                sale,
+                lines,
+                reason: args.note ?? "The offline sale was rejected by the owner.",
+            });
+
+            await logActivity(
+                ctx,
+                tenant.businessId,
+                tenant.user._id,
+                "Reject Offline Sale",
+                `Reversed sale ${sale.invoiceNumber ?? sale._id} after a stock conflict was rejected`
+            );
+        }
+
         await ctx.db.patch(conflict._id, {
             status: "resolved",
             resolution: args.resolution,
@@ -648,12 +697,88 @@ export const resolveConflict = mutation({
             action: "sync.conflict.resolve",
             targetType: "stock_conflict",
             targetId: conflict._id,
-            metadata: { resolution: args.resolution, note: args.note },
+            metadata: {
+                resolution: args.resolution,
+                note: args.note,
+                ...(reversal
+                    ? { refundAmount: reversal.refundTotal, fullyRefunded: reversal.fullyRefunded }
+                    : {}),
+            },
         });
 
-        return { conflictId: conflict._id, changed: true, status: "resolved" };
+        return {
+            conflictId: conflict._id,
+            changed: true,
+            status: "resolved",
+            ...(reversal ? { reversal } : {}),
+        };
     },
 });
+
+/**
+ * The sale a conflict belongs to.
+ *
+ * A conflict is raised against an offline transaction, so the sale is found
+ * by the offline id the till gave it. When the transaction cannot be found
+ * that way, the synchronisation log is asked, because it records which sale
+ * the transaction produced.
+ */
+async function findConflictedSale(
+    ctx: MutationCtx,
+    businessId: Id<"businesses">,
+    conflict: Doc<"stockConflicts">
+): Promise<Doc<"sales"> | null> {
+    if (!conflict.transactionId) return null;
+
+    const sale = await ctx.db
+        .query("sales")
+        .withIndex("by_clientOfflineId", (q) =>
+            q.eq("clientOfflineId", conflict.transactionId!)
+        )
+        .filter((q) => q.eq(q.field("businessId"), businessId))
+        .first();
+    if (sale) return sale;
+
+    const log = await ctx.db
+        .query("syncLogs")
+        .withIndex("by_transactionId", (q) =>
+            q.eq("transactionId", conflict.transactionId!)
+        )
+        .filter((q) => q.eq(q.field("businessId"), businessId))
+        .first();
+    if (log?.saleId) {
+        const fromLog = await ctx.db.get(log.saleId);
+        if (fromLog) return fromLog;
+    }
+
+    return null;
+}
+
+/**
+ * The lines of a sale that a rejection reverses.
+ *
+ * Everything on the sale that has not already been refunded is reversed,
+ * not only the product the conflict was about: the sale as a whole was made
+ * on the belief that the goods were there, so reversing one line of it
+ * would leave the customer holding goods they did not pay for.
+ */
+function linesToReverse(
+    sale: Doc<"sales">
+): { stockId: Id<"stocks">; quantity: number }[] {
+    const alreadyRefunded = new Map<string, number>();
+    for (const item of sale.refundedItems ?? []) {
+        alreadyRefunded.set(item.stockId, (alreadyRefunded.get(item.stockId) ?? 0) + item.quantity);
+    }
+
+    const lines: { stockId: Id<"stocks">; quantity: number }[] = [];
+    for (const item of sale.items) {
+        const remaining = item.quantity - (alreadyRefunded.get(item.stockId) ?? 0);
+        if (remaining <= 0) continue;
+        lines.push({ stockId: item.stockId, quantity: remaining });
+    }
+
+    return lines;
+}
 
 /* ────────────────────────────────────────────────────────────────────────
  * Status

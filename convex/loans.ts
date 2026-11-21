@@ -4,6 +4,7 @@ import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { Id } from "./_generated/dataModel";
 import { logActivity, requirePermission, requireTenant } from "./tenancy";
+import { assertPaymentMethod, resolvePaymentDates } from "./paymentRules";
 
 /**
  * SMART_BUZ — credit sales (loans) and loan payments.
@@ -385,13 +386,36 @@ export const makePayment = mutation({
     args: {
         loanId: v.id("loans"),
         amount: v.number(),
-        date: v.string(),
+        date: v.optional(v.string()),
+        method: v.optional(v.string()),
+        reference: v.optional(v.string()),
+        note: v.optional(v.string()),
         userId: v.id("users"), // @deprecated — the caller is derived from the session
         businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "loans.manage");
+
+        // -----------------------------------------------------------------
+        // THE SAME RULES AS THE CUSTOMER STATEMENT
+        //
+        // This mutation used to be the looser of the two doors into the
+        // debt book: it accepted a negative amount (which *increased* what
+        // the customer owed), took the date from the browser without any
+        // bound, and recorded no method — so the payment never appeared in
+        // the reconciliation that matches a provider's statement against the
+        // ledger.
+        //
+        // It is now the same door as `customers.recordPayment`, so it does
+        // not matter which one the till used: the answer is the same and the
+        // ledger looks the same.
+        // -----------------------------------------------------------------
+        if (!Number.isFinite(args.amount) || args.amount <= 0) {
+            throw new ConvexError("A payment must be greater than zero.");
+        }
+        const method = assertPaymentMethod(args.method);
+        const { date, paymentDate } = resolvePaymentDates(args.date);
 
         const loan = await ctx.db.get(args.loanId);
         if (!loan) throw new Error("Loan not found");
@@ -413,8 +437,13 @@ export const makePayment = mutation({
             shopId: sale.shopId,
             customerId: loan.customerId,
             amount: args.amount,
-            date: args.date,
+            date,
+            paymentDate,
             balance: newBalance,
+            method,
+            reference: args.reference,
+            userId: tenant.user._id,
+            note: args.note,
         });
 
         // Log activity

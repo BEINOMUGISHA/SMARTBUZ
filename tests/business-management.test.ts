@@ -184,6 +184,7 @@ describe("customer payments", () => {
 
     await call(customers.recordPayment, ctx, {
       customerId: "customers_1",
+      method: "cash",
       amount: 120_000,
       reference: "RCPT-001",
     });
@@ -206,6 +207,7 @@ describe("customer payments", () => {
 
     await call(customers.recordPayment, ctx, {
       customerId: "customers_1",
+      method: "cash",
       amount: 10_000,
       reference: "RCPT-001",
     });
@@ -214,6 +216,7 @@ describe("customer payments", () => {
       () =>
         call(customers.recordPayment, ctx, {
           customerId: "customers_1",
+          method: "cash",
           amount: 10_000,
           reference: "RCPT-001",
         }),
@@ -237,6 +240,7 @@ describe("customer payments", () => {
       () =>
         call(customers.recordPayment, ctx, {
           customerId: "customers_1",
+          method: "cash",
           amount: 150_000,
         }),
       /exceeds the outstanding balance/
@@ -252,6 +256,7 @@ describe("customer payments", () => {
       () =>
         call(customers.recordPayment, ctx, {
           customerId: "customers_1",
+          method: "cash",
           amount: 0,
         }),
       /greater than zero/
@@ -272,6 +277,7 @@ describe("customer payments", () => {
       () =>
         call(customers.recordPayment, ctx, {
           customerId: "customers_1",
+          method: "cash",
           amount: 10_000,
         }),
       /Forbidden/
@@ -1041,6 +1047,7 @@ describe("the audit trail", () => {
 
     await call(customers.recordPayment, ctx, {
       customerId: "customers_1",
+      method: "cash",
       amount: 10_000,
       reference: "RCPT-1",
     });

@@ -683,6 +683,7 @@ export const updateSettings = mutation({
     tin: v.optional(v.string()),
     allowPriceOverrides: v.optional(v.boolean()),
     openingFloat: v.optional(v.number()),
+    defaultReorderPoint: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const tenant = await requireTenant(ctx, args.businessId);
@@ -706,7 +707,16 @@ export const updateSettings = mutation({
       patch.timezone = args.timezone.trim();
     }
     if (args.country !== undefined && args.country.trim()) patch.country = args.country.trim();
-    if (args.locale !== undefined) patch.locale = args.locale;
+    // The reorder point used for products that do not have one of their own.
+    // It is stored on the business rather than typed into a browser at the
+    // time of the alert, so the low-stock report means the same thing every
+    // time it is run.
+    if (args.defaultReorderPoint !== undefined) {
+      if (!Number.isFinite(args.defaultReorderPoint) || args.defaultReorderPoint < 0) {
+        throw new ConvexError("The reorder point cannot be negative.");
+      }
+      patch.defaultReorderPoint = args.defaultReorderPoint;
+    }    if (args.locale !== undefined) patch.locale = args.locale;
     if (args.dateFormat !== undefined) patch.dateFormat = args.dateFormat;
     if (args.businessAddress !== undefined) patch.businessAddress = args.businessAddress;
     if (args.businessPhone !== undefined) patch.businessPhone = args.businessPhone;

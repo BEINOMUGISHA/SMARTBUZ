@@ -35,6 +35,16 @@ export default defineSchema({
         dateFormat: v.optional(v.string()), // "dd/MM/yyyy"
         country: v.optional(v.string()), // "Uganda"
 
+        /**
+         * The reorder point used for products that do not have one of their
+         * own.
+         *
+         * Stored on the business rather than chosen in the browser, so the
+         * low-stock alert means the same thing every time it is run and can
+         * be audited afterwards.
+         */
+        defaultReorderPoint: v.optional(v.number()),
+
         /** URA tax configuration. The server owns the rate (verticals/tax.ts). */
         taxEnabled: v.optional(v.boolean()),
         taxRate: v.optional(v.number()),
@@ -455,8 +465,31 @@ export default defineSchema({
         supplier: v.optional(v.string()),
         /** Where this product is stored. */
         warehouseId: v.optional(v.id("warehouses")),
+        /**
+         * Whether the product is still traded.
+         *
+         * A product that has been sold is never destroyed: the past sales
+         * point at it, and a report that resolves a sale line back to a
+         * product has to be able to find it. So a product with history is
+         * archived — taken out of the catalogue, out of the pickers and out
+         * of stock, but still there for the books to read.
+         */
+        isActive: v.optional(v.boolean()),
         /** The branch this product belongs to (when branch-level stock). */
         branchId: v.optional(v.id("branches")),
+        /**
+         * The quantity below which this product should be reordered.
+         *
+         * The low-stock alert used to compare every product against one
+         * number typed into the browser, so a business stocking 200-litre
+         * drums and one stocking tea sachets got the same cutoff — and the
+         * cutoff was not recorded anywhere, so the alert could not be
+         * reproduced or audited later.
+         *
+         * This is the product's own reorder point. When it is not set the
+         * business's default is used.
+         */
+        reorderPoint: v.optional(v.number()),
         /**
          * The barcode printed on the product, if it has one.
          *
@@ -768,6 +801,18 @@ export default defineSchema({
         customerId: v.optional(v.id("customers")), // Scoped for auditing
         amount: v.number(),
         date: v.string(),
+        /**
+         * The date the money actually changed hands, when the business told
+         * us and the date was close enough to the server's clock to be
+         * believable.
+         *
+         * `date` is always the server's own stamp: a payment can never be
+         * placed in a reporting period that has already been closed by
+         * dating it into the past. This field keeps the transaction date the
+         * operator gave, bounded to two days either side of the server's
+         * clock, so the two can be compared.
+         */
+        paymentDate: v.optional(v.string()),
         balance: v.number(),
         /** cash | mobile_money | bank | card | cheque */
         method: v.optional(v.string()),
@@ -1751,7 +1796,7 @@ export default defineSchema({
         stockId: v.id("stocks"),
         shopId: v.optional(v.id("shops")), // null/undefined = HQ warehouse
         deltaQty: v.number(),              // negative for sales/issues, positive for restocks/voids
-        eventType: v.string(),             // "SALE", "SALE_VOID", "RESTOCK", "SHOP_ISSUE", "ADJUSTMENT"
+        eventType: v.string(),             // "OPENING_BALANCE", "SALE", "SALE_VOID", "RESTOCK", "SHOP_ISSUE", "ADJUSTMENT"
         referenceId: v.optional(v.string()), // saleId, invoice number, etc.
         userId: v.id("users"),
         timestamp: v.string(),
