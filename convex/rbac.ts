@@ -329,6 +329,45 @@ export function isWritePermission(permission: string): boolean {
   return WRITE_VERBS.includes(verb);
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Which entitlement a permission needs
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The entitlement each permission belongs to.
+ *
+ * The `core.*` entitlements were published in the catalogue and shown on the
+ * pricing page, but nothing ever checked them — so a plan could promise
+ * the customer the sales module and then not deliver it, and a business
+ * could use a module its plan did not include without anything noticing.
+ *
+ * The mapping is by permission prefix, because the permission names are
+ * grouped by subject already: everything under `sales.` is the sales
+ * module, everything under `products.`, `inventory.` and `stock.` is the
+ * stock module, and everything under `customers.` is the directory.
+ */
+const PERMISSION_ENTITLEMENTS: { prefix: string; feature: string }[] = [
+  { prefix: "sales.", feature: "core.sales" },
+  { prefix: "products.", feature: "core.stock" },
+  { prefix: "inventory.", feature: "core.stock" },
+  { prefix: "stock.", feature: "core.stock" },
+  { prefix: "customers.", feature: "core.customers" },
+];
+
+/**
+ * The entitlement a permission needs, if it needs one.
+ *
+ * Permissions outside the core modules — finance, purchasing, branches,
+ * members — are gated by their own explicit `requireEntitlement` call, at
+ * the point where the feature is used.
+ */
+export function entitlementForPermission(permission: string): string | null {
+  for (const entry of PERMISSION_ENTITLEMENTS) {
+    if (permission.startsWith(entry.prefix)) return entry.feature;
+  }
+  return null;
+}
+
 /**
  * Permissions that may only ever be exercised by a platform administrator.
  *

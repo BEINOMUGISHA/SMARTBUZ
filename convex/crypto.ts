@@ -6,6 +6,40 @@
  */
 
 /**
+ * The bcrypt cost factor used for stored passwords.
+ *
+ * 10 — which is what this codebase was using — is bcrypt's *minimum*. It
+ * is fast enough to be worth attacking: commodity hardware checks
+ * millions of candidates a second at that cost, so a database that leaks
+ * turns a password into a lookup rather than a guessing problem.
+ *
+ * 12 is the usual floor for a password a human chose and can remember.
+ * It costs about a quarter of a second to verify, which is invisible to
+ * the person signing in and expensive for whoever is trying every word in
+ * a list.
+ *
+ * The cost is stored inside each hash, so passwords hashed at the old
+ * factor still verify. They are re-hashed at the new factor the next time
+ * their owner signs in, which upgrades the whole table gradually without
+ * ever locking anybody out.
+ */
+export const PASSWORD_HASH_COST = 12;
+
+/**
+ * The cost factor a stored hash was created with, or `null` when the value
+ * is not a bcrypt hash at all.
+ *
+ * It is used to notice a hash that is weaker than the current setting, so
+ * that it can be replaced while its owner is signing in.
+ */
+export function bcryptCostOf(hash: string): number | null {
+    const match = /^\$2[aby]\$(\d{2})\$/.exec(hash);
+    if (!match) return null;
+    const cost = Number(match[1]);
+    return Number.isFinite(cost) ? cost : null;
+}
+
+/**
  * SHA-256 of a UTF-8 string, hex encoded.
  *
  * Used for the session secret: the server keeps the hash and the browser

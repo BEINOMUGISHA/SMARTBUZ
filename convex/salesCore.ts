@@ -109,9 +109,48 @@ export interface ApplySaleOptions {
     userId: Id<"users">;
     /** Whether this business allows till-level price overrides. */
     allowPriceOverrides: boolean;
+    /**
+     * Whether the seller may take a line below the price floor.
+     *
+     * The floor is what stops a till giving the goods away; going under it
+     * is a manager's decision, so the permission is checked on the server
+     * and never taken from the browser.
+     */
+    canOverrideBelowFloor?: boolean;
     /** Set when the sale was made offline and is arriving later. */
     offline?: OfflineContext;
 }
+
+/**
+ * The floor used when the business does not know what a product cost.
+ *
+ * Half the list price: a discount is still a discount, but a seller cannot
+ * halve the price of everything without somebody noticing.
+ */
+const PRICE_OVERRIDE_FALLBACK_RATIO = 0.5;
+
+/**
+ * The lowest price a till may sell an item for on its own authority.
+ *
+ * The floor exists because an override without one is a blank cheque: a
+ * seller can type zero and hand the goods over for nothing, and the books
+ * then show a sale that earns nothing.
+ *
+ * The cost price sets the floor when the business knows it — selling below
+ * cost loses money on every unit — and half the list price stands in when
+ * it does not. The floor is never above the list price, so the list price
+ * itself is always allowed.
+ */
+export function priceOverrideFloor(stock: {
+    price: number;
+    purchasePrice?: number;
+}): number {
+    const listPrice = stock.price;
+    const cost = stock.purchasePrice ?? 0;
+    const floor = cost > 0 ? cost : listPrice * PRICE_OVERRIDE_FALLBACK_RATIO;
+    return Math.min(listPrice, floor);
+}
+
 
 export interface StockConflict {
     stockId: Id<"stocks">;
@@ -465,6 +504,167 @@ export function validateSaleInput(args: any): void {
     }
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Idempotency
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * How long two matching sale requests are treated as one sale.
+ *
+ * A till that loses the network sends the same request again, and a
+ * cashier who taps the keypad twice sends it twice. Both arrive within a
+ * few seconds of each other and carry the same body. Recording the
+ * second one would take the stock a second time and put a second sale in
+ * the books, so the server answers with the sale it already has.
+ *
+ * The window is deliberately short. Two genuinely separate sales of the
+ * same basket by the same cashier must never be mistaken for one, so the
+ * answer only stands for as long as a retry plausibly takes.
+ */
+export const IDEMPOTENCY_WINDOW_MS = 10_000;
+
+/**
+ * The prefix of a key the server made up for itself.
+ *
+ * A key that starts with this was not sent by a till, so it can never be
+ * confused with a device's own transaction id.
+ */
+const SERVER_IDEMPOTENCY_PREFIX = "srv-";
+
+/**
+ * A short, stable fingerprint of a sale request.
+ *
+ * Two requests that describe the same sale in the same words must get the
+ * same fingerprint, so that the second one can be recognised as a repeat
+ * of the first. The operator and the shop are part of it on purpose: the
+ * same basket sold by two different cashiers is two sales, not one.
+ */
+function saleRequestFingerprint(args: SaleInput, options: ApplySaleOptions): string {
+    const items = args.items
+        .map((i) => `${i.stockId}:${i.quantity}:${i.price}:${i.pv}:${i.bv}`)
+        .sort()
+        .join(",");
+    const overrides = (args.priceOverrides ?? [])
+        .map((o) => `${o.stockId}:${o.price}`)
+        .sort()
+        .join(",");
+    return [
+        options.businessId,
+        args.shopId ?? "hq",
+        options.userId,
+        args.customerId ?? args.manualCustomerName ?? "walk-in",
+        args.clientType ?? "",
+        args.paymentMode ?? "",
+        args.transactionType ?? "Sale",
+        String(args.total ?? 0),
+        items,
+        overrides,
+    ].join("|");
+}
+
+/**
+ * A 64-bit hash of a fingerprint, written out as hex.
+ *
+ * The fingerprint is far too long to keep in an index, and it holds names
+ * and prices, which are nobody else's business but the business's.
+ */
+function fingerprintHash(text: string): string {
+    let low = 0x811c9dc5;
+    let high = 0x01000193;
+    for (let index = 0; index < text.length; index++) {
+        const code = text.charCodeAt(index);
+        low = Math.imul(low ^ code, 0x01000193) >>> 0;
+        high = Math.imul(high ^ code, 0x85ebca6b) >>> 0;
+    }
+    return (
+        low.toString(16).padStart(8, "0") + high.toString(16).padStart(8, "0")
+    );
+}
+
+/**
+ * The key the server uses to recognise a repeat of this sale.
+ *
+ * A till that can name its own transaction sends that name and the server
+ * believes it. A till that cannot (the online path today) gets a key made
+ * from the shape of the request, so that a retry of the same request is
+ * still recognised as the same sale rather than as a new one.
+ */
+export function deriveServerIdempotencyKey(
+    args: SaleInput,
+    options: ApplySaleOptions
+): string {
+    return (
+        SERVER_IDEMPOTENCY_PREFIX +
+        fingerprintHash(saleRequestFingerprint(args, options))
+    );
+}
+
+/**
+ * The VAT on a sale, worked out from the business's own tax settings.
+ *
+ * The settings on the business record were themselves decided by the
+ * server when the business was set up — `convex/verticals/tax.ts` holds
+ * the URA registry, and the rate in force for the business's trade is
+ * whatever that registry says. So this function reads a stored rate; it
+ * does not accept one.
+ *
+ * An **inclusive** price is one the customer paid with the tax already in
+ * it: the tax is inside the total, and the net is what is left once it is
+ * taken out. An **exclusive** price is one the tax is added on top of, so
+ * the net is the price and the tax is on top of it.
+ */
+async function resolveSaleTax(
+    ctx: MutationCtx,
+    businessId: Id<"businesses">,
+    grossTotal: number
+): Promise<{
+    amount: number;
+    net: number;
+    rate: number;
+    inclusive: boolean;
+    note?: string;
+}> {
+    const business = await ctx.db.get(businessId);
+    if (!business || business.taxEnabled !== true) {
+        // No tax on this business's account. The split is still recorded —
+        // as zero — so that a report never has to guess whether a missing
+        // figure means "no tax" or "never recorded".
+        return { amount: 0, net: grossTotal, rate: 0, inclusive: false };
+    }
+
+    const rate = Number(business.taxRate ?? 0);
+    if (!Number.isFinite(rate) || rate <= 0) {
+        return { amount: 0, net: grossTotal, rate: 0, inclusive: false };
+    }
+
+    const inclusive = business.taxInclusive !== false;
+
+    if (inclusive) {
+        const amount = round2((grossTotal * rate) / (100 + rate));
+        return {
+            amount,
+            net: round2(grossTotal - amount),
+            rate,
+            inclusive: true,
+            note: business.taxNote,
+        };
+    }
+
+    const amount = round2((grossTotal * rate) / 100);
+    return {
+        amount,
+        net: round2(grossTotal),
+        rate,
+        inclusive: false,
+        note: business.taxNote,
+    };
+}
+
+/** Two decimal places, without the floating-point dust. */
+function round2(value: number): number {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 /**
  * Record a sale.
  *
@@ -479,7 +679,13 @@ export async function applySale(
 ): Promise<ApplySaleResult> {
     validateSaleInput(args);
 
-    const { businessId, userId, allowPriceOverrides, offline } = options;
+    const {
+        businessId,
+        userId,
+        allowPriceOverrides,
+        canOverrideBelowFloor = false,
+        offline,
+    } = options;
 
     // Everything the sale refers to must belong to this business.
     if (args.customerId) {
@@ -497,6 +703,22 @@ export async function applySale(
 
     // Idempotency: if this sale was already recorded — by an earlier push
     // that arrived while this one was in flight — return it as it is.
+    //
+    // The same thing happens on the online path: a till that loses the
+    // network sends the request again, and a cashier who taps the keypad
+    // twice sends it twice. Recording the second one would take the stock a
+    // second time and put a second sale in the books, so the sale the
+    // server already has is handed back instead.
+    //
+    // A till that names its own transaction is believed: that name is its
+    // key for good. A till that does not — the online path today — gets a
+    // key made from the shape of the request, so a retry of that same
+    // request is recognised as the same sale rather than as a new one.
+    const serverKey = offline
+        ? undefined
+        : deriveServerIdempotencyKey(args, options);
+    const idempotencyKey = args.clientOfflineId ?? serverKey;
+
     if (args.clientOfflineId) {
         const existingSale = await ctx.db
             .query("sales")
@@ -511,6 +733,32 @@ export async function applySale(
                 isDuplicateSync: true,
                 conflicts: [],
                 total: existingSale.total,
+            };
+        }
+    } else if (serverKey) {
+        // A key the server made up only stands for as long as a retry
+        // plausibly takes. After that the same basket is a new sale again.
+        const cutoff = Date.now() - IDEMPOTENCY_WINDOW_MS;
+        const candidates = await ctx.db
+            .query("sales")
+            .withIndex("by_clientOfflineId", (q) => q.eq("clientOfflineId", serverKey))
+            .filter((q) => q.eq(q.field("businessId"), businessId))
+            .collect();
+        const repeated = candidates
+            .map((sale) => ({
+                sale,
+                at: Date.parse(sale.occurredAt ?? sale.date),
+            }))
+            .filter((entry) => Number.isFinite(entry.at) && entry.at >= cutoff)
+            .sort((a, b) => b.at - a.at)[0];
+        if (repeated) {
+            return {
+                saleId: repeated.sale._id,
+                invoiceNumber: repeated.sale.invoiceNumber,
+                redemptions: [],
+                isDuplicateSync: true,
+                conflicts: [],
+                total: repeated.sale.total,
             };
         }
     }
@@ -578,12 +826,41 @@ export async function applySale(
                     `Price override for ${item.name} is above the list price (${stock.price}).`
                 );
             }
-            unitPrice = override;
+
+            // The floor is the lowest price a seller may use on their own
+            // authority. Under it, only a seller with the discount
+            // permission may go.
+            const floor = priceOverrideFloor(stock);
+            let effectiveOverride = override;
+            if (override < floor) {
+                if (canOverrideBelowFloor) {
+                    // Somebody with the discount permission is behind this
+                    // till: the price they chose is the price charged.
+                } else if (offline) {
+                    // The sale has already happened: the goods are gone and
+                    // the customer has paid. Refusing to record it would
+                    // lose a real sale and leave the books short, so the
+                    // price is raised to the floor and the difference is
+                    // recorded with the sale, exactly as a stale price list
+                    // on the till is handled.
+                    effectiveOverride = floor;
+                } else {
+                    // A live sale. The customer agreed to a price, and a
+                    // seller may not give the goods away: charging the
+                    // customer something they did not agree to is not an
+                    // option either, so the sale is refused and the till
+                    // is told why.
+                    throw new ConvexError(
+                        `The price of ${item.name} may not be reduced below ${floor} without a discount permission.`
+                    );
+                }
+            }
+            unitPrice = effectiveOverride;
             appliedOverrides.push({
                 stockId: item.stockId,
                 name: item.name,
                 originalPrice: stock.price,
-                price: override,
+                price: effectiveOverride,
             });
         }
         computedTotal += unitPrice * item.quantity;
@@ -685,6 +962,22 @@ export async function applySale(
         }
     }
 
+    // ────────────────────────────────────────────────────────────────────
+    // The VAT on this sale
+    // ────────────────────────────────────────────────────────────────────
+    //
+    // There used to be no VAT figure anywhere: the sale recorded a total,
+    // and nothing said how much of it was tax. A business that has to file
+    // a return had to work it out from the price list afterwards, and a
+    // price list that has since changed gives the wrong answer.
+    //
+    // So the split is worked out **here**, at the moment the sale happens,
+    // from the business's own stored tax configuration — never from
+    // anything the browser sent — and it is stored on the sale. A report
+    // then reads what was actually charged, which is the only figure that
+    // can be defended.
+    const tax = await resolveSaleTax(ctx, businessId, computedTotal);
+
     // Record the sale
     const saleId = await ctx.db.insert("sales", {
         businessId,
@@ -693,6 +986,11 @@ export async function applySale(
         shopId: shop ? shop._id : args.shopId, // Prioritize found shop, else fallback to arg
         userId,
         total: computedTotal,
+        taxAmount: tax.amount,
+        netAmount: tax.net,
+        taxRate: tax.rate,
+        taxInclusive: tax.inclusive,
+        taxNote: tax.note,
         date,
         clientType: args.clientType,
         paymentMode: args.paymentMode,
@@ -706,11 +1004,16 @@ export async function applySale(
         customerLocation: args.customerLocation,
         transactionType: args.transactionType || "Sale",
         invoiceNumber: await generateInvoiceNumber(ctx, businessId, shop ? shop._id : args.shopId),
-        clientOfflineId: args.clientOfflineId,
+        // The key that identifies this sale, so that a repeat of the same
+        // request is answered with this sale instead of a second one. For
+        // an offline sale it is the till's own transaction id; for an
+        // online sale it is the key the server derived, unless the client
+        // named the sale itself.
+        clientOfflineId: idempotencyKey,
         isOfflineSync: args.isOfflineSync,
         occurredAt: offline?.occurredAt ?? date,
         deviceId: offline?.deviceId,
-        clientTransactionId: offline?.transactionId ?? args.clientOfflineId,
+        clientTransactionId: offline?.transactionId ?? idempotencyKey,
         clientTotal: offline && totalDiffers ? args.total : undefined,
         paymentConfirmation: resolvePaymentConfirmation(
             args.paymentMode,

@@ -52,6 +52,16 @@ export interface AdapterView {
     }[];
     /** Whether the business has switched it on. */
     enabled: boolean;
+    /**
+     * True when the adapter is pointed at a provider's sandbox.
+     *
+     * Every adapter starts in the sandbox, because a sandbox is the only
+     * place a new integration can be tried without risk. The danger is
+     * that nobody notices: an owner switches the adapter on, believes real
+     * money is moving, and watches a sandbox account instead. So the
+     * interface is told plainly which side of that line it is on.
+     */
+    sandbox: boolean;
     /** How far it has been proved. */
     verificationStatus: VerificationStatus;
     /** The words under the badge. */
@@ -144,6 +154,7 @@ export const listAdapters = query({
                 capabilities: adapter.capabilities,
                 fields,
                 enabled: loaded.enabled,
+                sandbox: loaded.sandbox,
                 verificationStatus: loaded.verificationStatus,
                 verificationLabel: verificationLabel(loaded.verificationStatus),
                 verifiedAt: loaded.row?.verifiedAt,

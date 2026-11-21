@@ -26,6 +26,7 @@ import * as purchasing from "../convex/purchasing";
 import {
   FakeContext,
   FakeRow,
+  makeActiveSubscription,
   makeBranch,
   makeBusiness,
   makeCustomer,
@@ -59,7 +60,13 @@ async function call(
   return handler(ctx, args);
 }
 
-/** A context where the caller is a member of the business with `role`. */
+/**
+ * A context where the caller is a member of the business with `role`.
+ *
+ * Both businesses are on a running subscription: a business with no
+ * subscription is not licensed, and the entitlement gate fails closed. A
+ * test that wants an unlicensed business passes its own `subscriptions` row.
+ */
 function contextFor(
   role: string,
   extra: Record<string, FakeRow[]> = {}
@@ -75,6 +82,13 @@ function contextFor(
         userId: CALLER,
         businessId: BUSINESS,
         role,
+      }),
+    ],
+    subscriptions: [
+      makeActiveSubscription({ businessId: BUSINESS }),
+      makeActiveSubscription({
+        _id: "subscriptions_2",
+        businessId: OTHER_BUSINESS,
       }),
     ],
     ...extra,

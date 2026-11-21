@@ -14,7 +14,7 @@
  *   4. Re-running the migration changes nothing (it is idempotent and never
  *      overwrites a row that already has a tenant).
  */
-import { convex, ok, errText, signAccessToken, createRunner, SITE_URL } from "./lib/harness.mjs";
+import { convex, ok, errText, signAccessToken, createRunner, SITE_URL, ENV } from "./lib/harness.mjs";
 
 const { check, summary } = createRunner("SMART_BUZ migration");
 
@@ -23,10 +23,24 @@ function arg(name, fallback = null) {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
+/**
+ * The server-to-backend secret. The migration is a deployment-time
+ * operation, so the backend refuses every call without it — the value is
+ * never logged, only the fact that it is present.
+ */
+const serverSecret =
+  ENV.SMARTBUZ_SERVER_SECRET || ENV.RESEND_API_KEY || ENV.SESSION_SECRET || "";
+
 const email = arg("email");
 const password = arg("password");
 if (!email || !password) {
   console.error("Usage: node scripts/verify-migration.mjs --email <login> --password <password>");
+  process.exit(1);
+}
+if (!serverSecret || serverSecret.length < 16) {
+  console.error(
+    "No server secret is configured. Set SMARTBUZ_SERVER_SECRET (or RESEND_API_KEY / SESSION_SECRET) in .env.local."
+  );
   process.exit(1);
 }
 
@@ -39,7 +53,7 @@ const user = login.value;
 const token = signAccessToken({ userId: user._id, email: user.email, issuer: SITE_URL });
 
 const call = async (kind, path, args = {}) => {
-  const res = await convex(kind, path, args, token);
+  const res = await convex(kind, path, { ...args, serverSecret }, token);
   if (!ok(res)) throw new Error(`${path}: ${errText(res)}`);
   return res.value;
 };

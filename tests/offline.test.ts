@@ -25,6 +25,7 @@ import * as subscriptionState from "../convex/subscriptionState";
 import {
     FakeContext,
     FakeRow,
+    makeActiveSubscription,
     makeBusiness,
     makeMembership,
     makeStock,
@@ -53,13 +54,36 @@ async function call(
     return handler(ctx, args);
 }
 
-/** A context where the caller owns the business. */
+/**
+ * A context where the caller owns the business.
+ *
+ * The business is on a running subscription: a business with no subscription
+ * is not licensed, and a till may not be registered for one.
+ *
+ * The till is registered by default too. A till that has never been
+ * registered cannot push its queue — the device limit used to be checked
+ * only at registration, so a till nobody had registered could record
+ * sales — so a test that pushes a queue needs a registered till unless it
+ * is specifically testing what happens without one.
+ */
 function ownerContext(extra: Record<string, FakeRow[]> = {}): FakeContext {
     return signedInContext({
         users: [makeUser({ _id: CALLER })],
         businesses: [makeBusiness({ _id: BUSINESS, ownerId: CALLER })],
         memberships: [
             makeMembership({ userId: CALLER, businessId: BUSINESS, role: "owner" }),
+        ],
+        subscriptions: [makeActiveSubscription()],
+        devices: [
+            {
+                _id: "devices_1",
+                businessId: BUSINESS,
+                deviceId: DEVICE,
+                deviceName: "Till 1",
+                status: "active",
+                registeredAt: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+            },
         ],
         ...extra,
     });
@@ -108,7 +132,8 @@ function queued(transactionId: string, overrides: Record<string, unknown> = {}) 
 
 describe("device registration", () => {
     it("registers a till once, and recognises it afterwards", async () => {
-        const ctx = ownerContext();
+        // No till yet — this is the test that registers the first one.
+        const ctx = ownerContext({ devices: [] });
 
         const first = await call(sync.registerDevice, ctx, {
             deviceId: DEVICE,
@@ -282,6 +307,26 @@ describe("pushing the queue", () => {
     it("recognises a duplicate that arrives from a different till", async () => {
         const ctx = ownerContext({
             stocks: [makeStock({ _id: STOCK, qty: 10 })],
+            devices: [
+                {
+                    _id: "devices_1",
+                    businessId: BUSINESS,
+                    deviceId: DEVICE,
+                    deviceName: "Till 1",
+                    status: "active",
+                    registeredAt: new Date().toISOString(),
+                    createdAt: new Date().toISOString(),
+                },
+                {
+                    _id: "devices_2",
+                    businessId: BUSINESS,
+                    deviceId: "SBZ-DEVICE-0002",
+                    deviceName: "Till 2",
+                    status: "active",
+                    registeredAt: new Date().toISOString(),
+                    createdAt: new Date().toISOString(),
+                },
+            ],
         });
 
         await call(sync.pushTransactions, ctx, {

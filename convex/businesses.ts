@@ -30,6 +30,7 @@ import {
   slugify,
 } from "./tenancy";
 import { resolveTax } from "./verticals/tax";
+import { PASSWORD_HASH_COST } from "./crypto";
 import { startTrial } from "./subscriptions";
 import { DEFAULT_PLAN_KEY } from "./subscriptionState";
 import {
@@ -302,7 +303,7 @@ export const register = mutation({
       first_name: args.ownerFirstName.trim(),
       last_name: args.ownerLastName.trim(),
       email,
-      password: bcrypt.hashSync(args.password, 10),
+      password: bcrypt.hashSync(args.password, PASSWORD_HASH_COST),
       // The legacy global role vocabulary. Inside the business the owner
       // holds the "owner" membership, which is what actually authorises
       // anything.
@@ -395,6 +396,18 @@ export const register = mutation({
     });
 
     await ctx.db.patch(ownerId, { activeBusinessId: businessId });
+
+    // Put the business on a real, tracked free trial straight away.
+    //
+    // Without this the business had no subscription row at all, and a
+    // business with no subscription row is not gated: it got every
+    // entitlement and could write indefinitely. The trial gives the gate
+    // something to work from — a plan, a status and an end date — so the
+    // subscription lapses when the trial is over.
+    await startTrial(ctx, businessId, DEFAULT_PLAN_KEY, {
+      userId: ownerId,
+      role: "owner",
+    });
 
     await ctx.db.insert("activityLogs", {
       businessId,
@@ -870,7 +883,7 @@ export const addMember = mutation({
         first_name: args.firstName?.trim() || email.split("@")[0],
         last_name: args.lastName?.trim() || "",
         email,
-        password: bcrypt.hashSync(args.password, 10),
+        password: bcrypt.hashSync(args.password, PASSWORD_HASH_COST),
         // Legacy global roles — the business membership is what counts.
         roles: role === "business_admin" ? ["admin"] : ["sales"],
         status: "active",

@@ -26,7 +26,7 @@
  * `payments.verify`, the same authority that confirms money arrived.
  */
 
-import { action, mutation, query } from "../_generated/server";
+import { action, internalMutation, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
@@ -145,7 +145,7 @@ export const sendMessage = action({
             });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            await ctx.runMutation(api.integrations.messaging.recordMessage, {
+            await ctx.runMutation(internal.integrations.messaging.recordMessage, {
                 businessId,
                 adapterKey: args.adapterKey,
                 channel: args.channel,
@@ -162,7 +162,7 @@ export const sendMessage = action({
             throw new ConvexError(message);
         }
 
-        await ctx.runMutation(api.integrations.messaging.recordMessage, {
+        await ctx.runMutation(internal.integrations.messaging.recordMessage, {
             businessId,
             adapterKey: args.adapterKey,
             channel: args.channel,
@@ -188,8 +188,13 @@ export const sendMessage = action({
 
 /**
  * Write a message into the log.
+ *
+ * This is **internal**: it records what happened when the server itself
+ * sent a message. As a public mutation it was a hole — anybody could write
+ * a message log entry against any business, addressed to anybody, which
+ * would put words in a customer's mouth in another tenant's records.
  */
-export const recordMessage = mutation({
+export const recordMessage = internalMutation({
     args: {
         businessId: v.id("businesses"),
         adapterKey: v.string(),
@@ -347,7 +352,7 @@ export const sendSaleReceipt = action({
             }
         );
 
-        await ctx.runMutation(api.integrations.messaging.recordMessage, {
+        await ctx.runMutation(internal.integrations.messaging.recordMessage, {
             businessId,
             adapterKey: args.adapterKey,
             channel: adapter.channel ?? "sms",
@@ -529,7 +534,7 @@ export const sendPaymentReminders = action({
                     );
                 }
 
-                await ctx.runMutation(api.integrations.messaging.recordMessage, {
+                await ctx.runMutation(internal.integrations.messaging.recordMessage, {
                     businessId,
                     adapterKey: args.adapterKey,
                     channel: adapter.channel ?? "sms",

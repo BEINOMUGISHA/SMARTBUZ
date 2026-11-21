@@ -312,6 +312,54 @@ export default defineSchema({
         .index("by_email", ["email"]),
 
     /**
+     * A record of the emails the server has sent.
+     *
+     * Used to throttle sending. Two rules are enforced against it: a
+     * cooldown per address, so one inbox cannot be flooded, and a cap per
+     * address and per IP address over a window, so a script cannot use the
+     * reset endpoint to send mail to a list of addresses.
+     *
+     * The key is either `address:<email>` or `ip:<address>`, so one table
+     * serves both rules.
+     */
+    emailThrottle: defineTable({
+        /** `address:foo@example.com` or `ip:203.0.113.7`. */
+        key: v.string(),
+        /** How many have been sent in the current window. */
+        sentCount: v.number(),
+        /** When the current window started. */
+        windowStart: v.optional(v.number()),
+        /** When the last one was sent. */
+        lastSentAt: v.optional(v.number()),
+    }).index("by_key", ["key"]),
+
+    /**
+     * Failed sign-in attempts, keyed by the address that was tried.
+     *
+     * This is the server's half of the brute-force defence. The Next.js
+     * route keeps its own limiter, but that one lives in the memory of a
+     * single server instance and evaporates on every deploy; this table is
+     * shared by every instance and every deployment of the backend.
+     *
+     * The row exists for an address whether or not it belongs to an account.
+     * That is deliberate: if only real accounts were counted, a caller could
+     * tell the two apart by watching which attempts eventually lock out.
+     */
+    loginAttempts: defineTable({
+        /** The address that was tried, normalised to lower case. */
+        email: v.string(),
+        /** Consecutive failures. A successful sign-in resets it to zero. */
+        failedCount: v.number(),
+        /** Epoch ms before which sign-in is refused for this address. */
+        lockedUntil: v.optional(v.number()),
+        /** Epoch ms of the most recent failure. */
+        lastAttemptAt: v.optional(v.number()),
+        /** Epoch ms of the first failure in the current counting window. */
+        firstFailureAt: v.optional(v.number()),
+    })
+        .index("by_email", ["email"]),
+
+    /**
      * Custom permissions granted to a *role* inside one business.
      *
      * A business administrator may widen a role (for example give
@@ -379,7 +427,11 @@ export default defineSchema({
 
     userTypes: defineTable({
         type: v.string(),
-    }),
+    })
+        // The table is read by type on almost every request that needs to
+        // know what a user is, so without this index the whole table is
+        // scanned each time.
+        .index("by_type", ["type"]),
 
     categories: defineTable({
         type: v.string(), // name of the category
@@ -535,6 +587,30 @@ export default defineSchema({
         branchId: v.optional(v.id("branches")),
         userId: v.id("users"),
         total: v.number(),
+        /**
+         * The VAT on this sale, and what is left of it once the VAT is
+         * taken out.
+         *
+         * These are recorded **on the sale**, at the moment the sale is
+         * made, from the server's own tax configuration. They are not
+         * worked out when a report is asked for, because the tax rate in
+         * force when the goods were sold is not the tax rate in force
+         * today — and a fiscal figure that moves when the rate moves is
+         * not a fiscal figure.
+         *
+         * A sale made before this was recorded has no tax on it. The
+         * reports treat that as zero, which is the honest reading: nobody
+         * knows what the tax was, so it is not claimed.
+         */
+        taxAmount: v.optional(v.number()),
+        /** The amount before tax — `total` less `taxAmount`. */
+        netAmount: v.optional(v.number()),
+        /** The rate that was applied, as a percentage. */
+        taxRate: v.optional(v.number()),
+        /** Whether the price the customer paid already included the tax. */
+        taxInclusive: v.optional(v.boolean()),
+        /** The wording to print on the receipt. */
+        taxNote: v.optional(v.string()),
         date: v.string(), // ISO String
         clientType: v.string(), // retail, distributor, etc.
         isLoan: v.optional(v.boolean()),
@@ -1887,6 +1963,19 @@ export default defineSchema({
         businessId: v.id("businesses"),
         /** The plan this subscription is on. */
         planKey: v.string(),
+        /**
+         * The plan the business has asked for but not yet paid for.
+         *
+         * Choosing a paid plan does **not** change `planKey` — it records
+         * the intention here instead, and the plan only becomes the real
+         * one when a verified payment for it arrives. Without this, a
+         * business could name any plan it liked and be entitled to it
+         * immediately.
+         *
+         * A free plan never lands here: moving to a free plan takes effect
+         * at once, because nobody loses by being moved to a smaller plan.
+         */
+        pendingPlanKey: v.optional(v.string()),
         /** trial | active | past_due | grace | suspended | expired | cancelled */
         status: v.string(),
         /** monthly | annual */

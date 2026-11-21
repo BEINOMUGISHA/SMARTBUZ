@@ -52,8 +52,9 @@ import {
   roleFromLegacyRoles,
   roleHasPermission as rbacRoleHasPermission,
   sanitizePermissionList,
+  entitlementForPermission,
 } from "./rbac";
-import { assertSubscriptionWritable } from "./subscriptionState";
+import { assertSubscriptionWritable, assertFeatureAllowed } from "./subscriptionState";
 
 /**
  * The contexts the tenancy guards accept.
@@ -512,6 +513,24 @@ export async function requirePermission(
 
   if (isWritePermission(permission)) {
     await assertSubscriptionWritable(ctx, businessId);
+
+    // ────────────────────────────────────────────────────────────────────
+    // The core entitlements
+    // ────────────────────────────────────────────────────────────────────
+    //
+    // The `core.*` entitlements — sales, stock, the customer directory —
+    // are what every plan is built around, and they are advertised on the
+    // pricing page as part of what the plan includes. They were never
+    // checked, which meant the catalogue was a description rather than a
+    // rule.
+    //
+    // The check is on writes only. A business whose plan does not include
+    // a module can still *look* at its own history — the owner has to be
+    // able to see what happened — but cannot record anything new in it.
+    const feature = entitlementForPermission(permission);
+    if (feature) {
+      await assertFeatureAllowed(ctx, businessId, feature);
+    }
   }
 
   return membership;

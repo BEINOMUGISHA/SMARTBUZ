@@ -155,8 +155,13 @@ export const registerDevice = mutation({
         }
 
         // How many devices does the plan allow?
-        const subscription = await loadSubscriptionRow(ctx, businessId);
-        const limit = subscription ? await deviceLimit(ctx, businessId) : 0;
+        const limit = await deviceLimit(ctx, businessId);
+
+        if (limit === undefined) {
+            throw new ConvexError(
+                "This account has no subscription yet, so no devices can be registered. Choose a plan to start your free trial."
+            );
+        }
 
         if (limit > 0) {
             const devices = await ctx.db
@@ -206,12 +211,92 @@ export const registerDevice = mutation({
     },
 });
 
-/** How many devices the plan allows. */
-async function deviceLimit(ctx: any, businessId: string): Promise<number> {
+/**
+ * How many devices the plan allows.
+ *
+ * `0` means unlimited — that is what the plan says. `undefined` means the
+ * business has no subscription at all, which is **not** unlimited: it means
+ * the device may not be registered at all. The two used to be confused,
+ * which let an unlicensed tenant register as many devices as it liked.
+ */
+async function deviceLimit(ctx: any, businessId: string): Promise<number | undefined> {
     const subscription = await loadSubscriptionRow(ctx, businessId);
-    if (!subscription) return 0;
+    if (!subscription) return undefined;
     const plan = await resolvePlan(ctx, subscription.planKey);
     return plan?.deviceLimit ?? 0;
+}
+
+/**
+ * Check that a device may actually be used by this business.
+ *
+ * The limit used to be checked only at **registration**, which meant two
+ * things went unchecked afterwards:
+ *
+ *  • A device that was never registered could still push its queue. The
+ *    registration step was the only place the device list was consulted,
+ *    so the till could be a stranger and the server would take its sales.
+ *  • A business that was moved down to a smaller plan kept every device
+ *    it already had. The limit only ever applied to *new* registrations.
+ *
+ * So the check happens here too, at the moment the device speaks: the
+ * device has to be registered and active, and it has to still be inside
+ * the plan's allowance. Which device is "inside" is decided by the order
+ * the devices were registered — the first ones in are the ones that keep
+ * working, so a downgrade takes effect against the most recently added
+ * device rather than against whichever one happens to sync first.
+ */
+async function assertDeviceAllowed(
+    ctx: any,
+    businessId: string,
+    deviceId: string
+): Promise<any> {
+    const device = await ctx.db
+        .query("devices")
+        .withIndex("by_businessId_deviceId", (q: any) =>
+            q.eq("businessId", businessId).eq("deviceId", deviceId)
+        )
+        .unique();
+
+    if (!device) {
+        throw new ConvexError(
+            "This device is not registered for this business. Register the till before recording sales on it."
+        );
+    }
+
+    if (device.status === "revoked") {
+        throw new ConvexError(
+            "This device has been revoked. Its sales were not recorded — ask an administrator to register it again."
+        );
+    }
+
+    const limit = await deviceLimit(ctx, businessId);
+    if (limit === undefined) {
+        throw new ConvexError(
+            "This account has no subscription yet, so no device may record anything. Choose a plan to start your free trial."
+        );
+    }
+
+    if (limit === 0) return device;
+
+    const devices = await ctx.db
+        .query("devices")
+        .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+        .collect();
+
+    const active = devices
+        .filter((d: any) => d.status === "active")
+        .sort((a: any, b: any) =>
+            String(a.registeredAt ?? "").localeCompare(String(b.registeredAt ?? ""))
+        );
+
+    const position = active.findIndex((d: any) => d._id === device._id);
+    if (position === -1 || position >= limit) {
+        throw new ConvexError(
+            `Your plan allows ${limit} device${limit === 1 ? "" : "s"}, and this device is beyond that limit. Revoke one, or upgrade your plan.`
+        );
+    }
+
+    return device;
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -250,19 +335,12 @@ export const pushTransactions = mutation({
         const now = new Date().toISOString();
         const results: PushResult[] = [];
 
-        // The device must be known to this business.
-        const device = await ctx.db
-            .query("devices")
-            .withIndex("by_businessId_deviceId", (q: any) =>
-                q.eq("businessId", businessId).eq("deviceId", deviceId)
-            )
-            .unique();
-
-        if (device && device.status === "revoked") {
-            throw new ConvexError(
-                "This device has been revoked. Its sales were not recorded — ask an administrator to register it again."
-            );
-        }
+        // The device must be known to this business, must not have been
+        // revoked, and must still be inside the plan's allowance. The
+        // limit used to be checked only at registration, so a device that
+        // was never registered could push its queue and a business that was
+        // moved to a smaller plan kept every device it had.
+        const device = await assertDeviceAllowed(ctx, businessId, deviceId);
 
         for (const transaction of args.transactions) {
             const transactionId = transaction.transactionId.trim();
@@ -332,6 +410,10 @@ export const pushTransactions = mutation({
                         userId,
                         allowPriceOverrides:
                             tenant.business.allowPriceOverrides === true,
+                        // The permission is read from the seller's own
+                        // record on the server, so a till cannot claim it.
+                        canOverrideBelowFloor:
+                            tenant.permissions.has("sales.discount"),
                         offline: {
                             deviceId,
                             transactionId,
@@ -606,12 +688,20 @@ export const getSyncStatus = query({
             )
             .collect();
 
+        // The most recent activity is all this needs. The whole log was
+        // being read — every row the till has ever written — only to take
+        // the newest one's timestamp, which on a busy till is thousands of
+        // rows read for one date.
+        //
+        // The index is in date order, so the newest rows come first and
+        // the rest are never read.
         const logs = await ctx.db
             .query("syncLogs")
             .withIndex("by_businessId_createdAt", (q: any) =>
                 q.eq("businessId", tenant.businessId)
             )
-            .collect();
+            .order("desc")
+            .take(50);
 
         const wanted = args.deviceId
             ? devices.filter((d: any) => d.deviceId === args.deviceId)
@@ -631,9 +721,9 @@ export const getSyncStatus = query({
                 lastSyncError: d.lastSyncError,
             })),
             pendingConflicts: conflicts.length,
-            lastActivityAt: logs.length
-                ? logs.map((l: any) => l.createdAt).sort().slice(-1)[0]
-                : undefined,
+            // The log was read newest-first, so the first row is the most
+            // recent activity.
+            lastActivityAt: logs.length ? logs[0].createdAt : undefined,
         };
     },
 });
@@ -653,22 +743,31 @@ export const listSyncLogs = query({
         const tenant = await requireTenant(ctx, args.businessId);
         await requireSalesViewer(ctx, tenant);
 
-        let logs = await ctx.db
-            .query("syncLogs")
-            .withIndex("by_businessId", (q: any) =>
-                q.eq("businessId", tenant.businessId)
-            )
-            .collect();
-
-        if (args.deviceId) {
-            logs = logs.filter((l: any) => l.deviceId === args.deviceId);
-        }
-
-        logs.sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt));
-
         const limit = args.limit ?? 100;
 
-        return logs.slice(0, limit).map((l: any) => ({
+        // The trail is read newest-first and only as far as it needs to go.
+        //
+        // It used to read every row the till had ever written and then
+        // throw most of them away, which on a busy till meant thousands of
+        // rows read to show the hundred newest. The index is in date
+        // order, so the newest rows are the ones the server reads.
+        const logs = args.deviceId
+            ? await ctx.db
+                  .query("syncLogs")
+                  .withIndex("by_deviceId", (q: any) =>
+                      q.eq("deviceId", args.deviceId!)
+                  )
+                  .order("desc")
+                  .take(limit)
+            : await ctx.db
+                  .query("syncLogs")
+                  .withIndex("by_businessId_createdAt", (q: any) =>
+                      q.eq("businessId", tenant.businessId)
+                  )
+                  .order("desc")
+                  .take(limit);
+
+        return logs.map((l: any) => ({
             _id: l._id,
             deviceId: l.deviceId,
             transactionId: l.transactionId,

@@ -4,7 +4,32 @@ import { requirePermission, requireTenant } from "./tenancy";
 import { query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { Id } from "./_generated/dataModel";
+import {
+    buildCostIndex,
+    dayBounds,
+    loadSales,
+    money,
+    summariseSales,
+} from "./financeCore";
 
+/**
+ * The profit and loss of a day.
+ *
+ * The figures come from `convex/financeCore.ts`, which is where the rest of
+ * the application's money is calculated from. This query used to work out
+ * the figures on its own, and it got them wrong in three ways that the
+ * shared core already handles:
+ *
+ *   • A refunded sale still counted as revenue. The core nets the refund
+ *     back out, so a day with a refund in it reports what it actually
+ *     brought in.
+ *   • The cost of the goods was today's purchase price rather than the
+ *     price the goods were bought at. Last month's profit therefore changed
+ *     every time the owner restocked. The core resolves the cost from the
+ *     cost history, falling back to the value recorded on the sale line.
+ *   • The figures were not rounded, so floating-point noise reached the
+ *     screen. The core rounds to two decimals.
+ */
 export const getDailyProfitLoss = query({
     args: { date: v.string(),
         businessId: v.optional(v.id("businesses")),
@@ -15,42 +40,32 @@ export const getDailyProfitLoss = query({
         await requirePermission(ctx, businessId, "reports.view");
         const targetDate = args.date.split("T")[0];
 
-        // [OPTIMIZED with Index]
-        const daySales = await ctx.db
-            .query("sales")
-            .withIndex("by_date", (q) => q.gte("date", targetDate).lte("date", targetDate + "\uffff"))
-            .collect();
-
-        let totalRevenue = 0;
-        let totalCost = 0;
-
-        // [BATCH FETCH] Collect all unique stock IDs first
-        const stockIds = [...new Set(daySales.flatMap(s => s.items.map(i => i.stockId)))];
-        const stockDocs = await Promise.all(stockIds.map(id => ctx.db.get(id)));
-        const stockMap = new Map(stockDocs.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
-
-        for (const sale of daySales) {
-            totalRevenue += sale.total;
-            for (const item of sale.items) {
-                const stock = stockMap.get(item.stockId);
-                if (stock) {
-                    totalCost += stock.purchasePrice * item.quantity;
-                }
-            }
-        }
-
-        const totalProfit = totalRevenue - totalCost;
+        const daySales = await loadSales(ctx, businessId, targetDate, targetDate);
+        const costs = await buildCostIndex(ctx, businessId);
+        const totals = summariseSales(daySales, costs);
 
         return {
             date: targetDate,
-            totalRevenue,
-            totalCost,
-            totalProfit,
-            salesCount: daySales.length,
+            totalRevenue: money(totals.revenue),
+            totalCost: money(totals.cost),
+            totalProfit: money(totals.grossProfit),
+            // The VAT charged that day, and the revenue without it. A
+            // business that has to file a return needs both, and they come
+            // from the sales themselves rather than from a rate applied
+            // afterwards.
+            totalVat: money(totals.vat),
+            netRevenue: money(totals.netRevenue),
+            salesCount: totals.transactions,
         };
     },
 });
 
+/**
+ * The profit and loss of a month.
+ *
+ * As with the daily figure, the arithmetic comes from the shared core, so
+ * the two reports and the dashboard cannot disagree.
+ */
 export const getMonthlyProfitLoss = query({
     args: { year: v.number(), month: v.number(),
         businessId: v.optional(v.id("businesses")),
@@ -59,41 +74,30 @@ export const getMonthlyProfitLoss = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        const prefix = `${args.year}-${String(args.month).padStart(2, "0")}`;
 
-        // [OPTIMIZED with Index]
-        const monthSales = await ctx.db
-            .query("sales")
-            .withIndex("by_date", (q) => q.gte("date", prefix).lte("date", prefix + "\uffff"))
-            .collect();
+        const month = String(args.month).padStart(2, "0");
+        const lastDay = new Date(
+            Date.UTC(args.year, args.month, 0)
+        ).toISOString().slice(0, 10);
 
-        let totalRevenue = 0;
-        let totalCost = 0;
-
-        // [BATCH FETCH] Collect all unique stock IDs first
-        const stockIds = [...new Set(monthSales.flatMap(s => s.items.map(i => i.stockId)))];
-        const stockDocs = await Promise.all(stockIds.map(id => ctx.db.get(id)));
-        const stockMap = new Map(stockDocs.filter((s): s is NonNullable<typeof s> => !!s).map(s => [s._id, s]));
-
-        for (const sale of monthSales) {
-            totalRevenue += sale.total;
-            for (const item of sale.items) {
-                const stock = stockMap.get(item.stockId);
-                if (stock) {
-                    totalCost += stock.purchasePrice * item.quantity;
-                }
-            }
-        }
-
-        const totalProfit = totalRevenue - totalCost;
+        const monthSales = await loadSales(
+            ctx,
+            businessId,
+            `${args.year}-${month}-01`,
+            lastDay
+        );
+        const costs = await buildCostIndex(ctx, businessId);
+        const totals = summariseSales(monthSales, costs);
 
         return {
             year: args.year,
             month: args.month,
-            totalRevenue,
-            totalCost,
-            totalProfit,
-            salesCount: monthSales.length,
+            totalRevenue: money(totals.revenue),
+            totalCost: money(totals.cost),
+            totalProfit: money(totals.grossProfit),
+            totalVat: money(totals.vat),
+            netRevenue: money(totals.netRevenue),
+            salesCount: totals.transactions,
         };
     },
 });
@@ -106,15 +110,21 @@ export const getSalesAndExpenses = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        // [OPTIMIZED with Index]
+
+        // The upper bound runs to the last millisecond of the end date.
+        // Comparing against the bare date left out everything that happened
+        // on that day, so a range that began and ended on the same day
+        // showed nothing at all.
+        const { start, end } = dayBounds(args.startDate, args.endDate);
+
         const sales = await ctx.db
             .query("sales")
-            .withIndex("by_businessId_date", (q) => q.eq("businessId", businessId).gte("date", args.startDate).lte("date", args.endDate))
+            .withIndex("by_businessId_date", (q) => q.eq("businessId", businessId).gte("date", start).lte("date", end))
             .collect();
 
         const expenses = await ctx.db
             .query("expenses")
-            .withIndex("by_businessId_date", (q) => q.eq("businessId", businessId).gte("date", args.startDate).lte("date", args.endDate))
+            .withIndex("by_businessId_date", (q) => q.eq("businessId", businessId).gte("date", start).lte("date", end))
             .collect();
 
         return { sales, expenses };

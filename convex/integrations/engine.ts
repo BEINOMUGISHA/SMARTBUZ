@@ -28,7 +28,7 @@
  * look when a provider and the books disagree.
  */
 
-import { action, mutation } from "../_generated/server";
+import { action, internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
@@ -105,7 +105,7 @@ export function messagingProvider(adapterKey: string): MessagingProvider {
  * Kept as a mutation so that actions can call it — an action cannot write
  * to the database itself, it has to ask a mutation to do it.
  */
-export const recordEvent = mutation({
+export const recordEvent = internalMutation({
     args: {
         businessId: v.id("businesses"),
         adapterKey: v.string(),
@@ -221,7 +221,7 @@ export const runLiveTest = action({
 
         // The verification outcome is written by a mutation, because an
         // action cannot write to the database itself.
-        await ctx.runMutation(api.integrations.engine.saveTestResult, {
+        await ctx.runMutation(internal.integrations.engine.saveTestResult, {
             businessId,
             adapterKey: args.adapterKey,
             verificationStatus: status,
@@ -232,7 +232,7 @@ export const runLiveTest = action({
             userId: prepared.userId,
         });
 
-        await ctx.runMutation(api.integrations.engine.recordEvent, {
+        await ctx.runMutation(internal.integrations.engine.recordEvent, {
             businessId,
             adapterKey: args.adapterKey,
             direction: "outbound",
@@ -260,7 +260,7 @@ export const runLiveTest = action({
  * Split out because an action cannot write to the database — it has to
  * ask a mutation to do it.
  */
-export const saveTestResult = mutation({
+export const saveTestResult = internalMutation({
     args: {
         businessId: v.id("businesses"),
         adapterKey: v.string(),

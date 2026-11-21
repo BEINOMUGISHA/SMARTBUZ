@@ -4,6 +4,8 @@ import { ConvexError } from "convex/values";
 import bcrypt from "bcryptjs";
 import { Id } from "./_generated/dataModel";
 import { requirePermission, requireTenant } from "./tenancy";
+import { serverSecretMatches } from "./serverSecret";
+import { PASSWORD_HASH_COST } from "./crypto";
 
 /**
  * SMART_BUZ — demo data seeding.
@@ -15,9 +17,70 @@ import { requirePermission, requireTenant } from "./tenancy";
  *
  * Seeding used to be a public mutation that wrote global rows. It now
  * requires an authenticated administrator of the active business.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * The demo accounts
+ * ────────────────────────────────────────────────────────────────────────
+ *
+ * Seeding used to create three accounts with the address `admin@pos.com`
+ * and the password `password123`. The `users` table is global — a user is
+ * not owned by a business — so those three addresses were **one account
+ * for the whole deployment**. Whichever business seeded first owned them,
+ * and everybody who seeded afterwards was given a membership on the *same*
+ * account: one well-known password, valid in every tenant that had ever
+ * run the seed.
+ *
+ * Now:
+ *
+ *  • the address carries the business's own slug and lives on the
+ *    `.invalid` domain, which by definition cannot be registered, so two
+ *    businesses never share a login;
+ *  • the password is random, generated per account, and printed once to
+ *    whoever seeded — nobody else ever learns it;
+ *  • seeding is a **server** operation, so it needs the server-to-backend
+ *    secret. A browser cannot create accounts.
  */
 
 /* --- Internal Helper Functions --- */
+
+/**
+ * A random password for a seeded account.
+ *
+ * Long enough to be worth nothing to a guesser, and made of characters that
+ * do not need escaping in a shell or a password manager.
+ */
+function generateSeedPassword(): string {
+    const alphabet =
+        "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = new Uint8Array(20);
+    crypto.getRandomValues(bytes);
+    let out = "";
+    for (let i = 0; i < bytes.length; i++) {
+        out += alphabet[bytes[i] % alphabet.length];
+    }
+    return out;
+}
+
+/**
+ * The address a seeded account gets.
+ *
+ * It is unique per business and per role, and it is on `.invalid`, a
+ * domain reserved by RFC 2606 precisely so that it can never be
+ * registered by anybody.
+ */
+async function seedEmailFor(
+    ctx: any,
+    businessId: Id<"businesses">,
+    role: string
+): Promise<string> {
+    const business = await ctx.db.get(businessId);
+    const slug = (business?.slug ?? business?.name ?? "demo")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40);
+    return `${role}.${slug || "demo"}@example.invalid`;
+}
 
 async function runSeedCategories(ctx: any, businessId: Id<"businesses">) {
     const categories = ["Health & Beauty", "Supplements", "Personal Care", "Home Essentials", "Electronics", "Home"];
@@ -39,30 +102,47 @@ async function runSeedCategories(ctx: any, businessId: Id<"businesses">) {
 
 async function seedUsersInternal(ctx: any, businessId: Id<"businesses">) {
     const users = [
-        { first_name: "Admin", last_name: "User", email: "admin@pos.com", password: "password123", roles: ["admin"], role: "admin" },
-        { first_name: "Sales", last_name: "Agent", email: "sales@pos.com", password: "password123", roles: ["sales"], role: "cashier" },
-        { first_name: "Stock", last_name: "Manager", email: "stock@pos.com", password: "password123", roles: ["stock"], role: "stock" },
+        { first_name: "Admin", last_name: "User", roles: ["admin"], role: "admin" },
+        { first_name: "Sales", last_name: "Agent", roles: ["sales"], role: "cashier" },
+        { first_name: "Stock", last_name: "Manager", roles: ["stock"], role: "stock" },
     ];
     const now = new Date().toISOString();
+    const created: { email: string; password: string; role: string }[] = [];
 
     for (const user of users) {
+        const email = await seedEmailFor(ctx, businessId, user.role);
+
         let account = await ctx.db
             .query("users")
-            .withIndex("by_email", (q: any) => q.eq("email", user.email))
+            .withIndex("by_email", (q: any) => q.eq("email", email))
             .unique();
 
+        // The password is generated afresh every time, and the stored hash
+        // is replaced to match. A seeded account therefore never carries a
+        // password that is written down anywhere, and re-seeding cannot
+        // leave an old, known one behind.
+        const password = generateSeedPassword();
+        const hashedPassword = bcrypt.hashSync(password, PASSWORD_HASH_COST);
+
         if (!account) {
-            const hashedPassword = bcrypt.hashSync(user.password, 10);
             const userId = await ctx.db.insert("users", {
                 first_name: user.first_name,
                 last_name: user.last_name,
-                email: user.email,
+                email,
                 roles: user.roles,
                 password: hashedPassword,
                 status: "active",
+                emailVerified: true,
                 createdAt: now,
             });
             account = await ctx.db.get(userId);
+        } else {
+            await ctx.db.patch(account._id, {
+                password: hashedPassword,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                roles: user.roles,
+            });
         }
 
         if (!account) continue;
@@ -83,7 +163,11 @@ async function seedUsersInternal(ctx: any, businessId: Id<"businesses">) {
                 joinedAt: now,
             });
         }
+
+        created.push({ email, password, role: user.role });
     }
+
+    return created;
 }
 
 async function runSeedStocks(ctx: any, businessId: Id<"businesses">, categoryIds: Id<"categories">[]) {
@@ -285,15 +369,34 @@ async function runSeedActivities(ctx: any, businessId: Id<"businesses">, userId:
 
 /* --- Public Mutations --- */
 
+/**
+ * Assert that the caller is the server.
+ *
+ * Seeding writes accounts, and an account is a global row: the `users`
+ * table belongs to no single business. That makes account creation a
+ * deployment-time operation rather than something a browser may ask for.
+ */
+function requireSeedOperator(serverSecret: string | undefined): void {
+    if (serverSecretMatches(serverSecret)) return;
+    throw new ConvexError(
+        "Forbidden: demo accounts can only be created by the SMARTBUZ server. " +
+            "Run scripts/seed-legacy-fixture.mjs instead of calling this from a browser."
+    );
+}
+
 export const seed = mutation({
-    args: { businessId: v.optional(v.id("businesses")) },
+    args: {
+        businessId: v.optional(v.id("businesses")),
+        serverSecret: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
+        requireSeedOperator(args.serverSecret);
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "products.manage");
         const catIds = await runSeedCategories(ctx, tenant.businessId);
-        await seedUsersInternal(ctx, tenant.businessId);
+        const accounts = await seedUsersInternal(ctx, tenant.businessId);
         await runSeedStocks(ctx, tenant.businessId, catIds);
-        return "Base seeding complete.";
+        return { message: "Base seeding complete.", accounts };
     }
 });
 
@@ -343,24 +446,32 @@ export const seedActivityLogs = mutation({
 });
 
 export const runSeedUsers = mutation({
-    args: { businessId: v.optional(v.id("businesses")) },
+    args: {
+        businessId: v.optional(v.id("businesses")),
+        serverSecret: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
+        requireSeedOperator(args.serverSecret);
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "members.manage");
-        await seedUsersInternal(ctx, tenant.businessId);
-        return "Users seeded successfully.";
+        const accounts = await seedUsersInternal(ctx, tenant.businessId);
+        return { message: "Users seeded successfully.", accounts };
     }
 });
 
 export const seedEverything = mutation({
-    args: { businessId: v.optional(v.id("businesses")) },
+    args: {
+        businessId: v.optional(v.id("businesses")),
+        serverSecret: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
+        requireSeedOperator(args.serverSecret);
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "settings.manage");
         const businessId = tenant.businessId;
 
         const catIds = await runSeedCategories(ctx, businessId);
-        await seedUsersInternal(ctx, businessId);
+        const accounts = await seedUsersInternal(ctx, businessId);
         await runSeedStocks(ctx, businessId, catIds);
         await runSeedLargeStock(ctx, businessId, catIds);
         await runSeedPromotions(ctx, businessId);
@@ -369,6 +480,6 @@ export const seedEverything = mutation({
         await runSeedSales(ctx, businessId);
         await runSeedHPSales(ctx, businessId);
         await runSeedActivities(ctx, businessId, tenant.user._id);
-        return "COMPLETE SEED SUCCESSFUL!";
+        return { message: "COMPLETE SEED SUCCESSFUL!", accounts };
     }
 });

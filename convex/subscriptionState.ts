@@ -445,8 +445,18 @@ export async function loadSubscriptionStatus(
     const business = await ctx.db.get(businessId);
     const raw = business?.subscriptionStatus;
     if (!raw) {
-        // No subscription on record at all: not gated.
-        return { status: "active", writable: true, subscription: null };
+        // No subscription on record at all: the business is not licensed.
+        //
+        // This used to return "active, writable" — "not gated" — on the
+        // theory that the platform owner would sort it out. What it did was
+        // leave a business that never had a subscription row able to write
+        // for ever, which is the whole licensing system with a hole in it.
+        //
+        // Failing closed is the only safe direction. The business can still
+        // read its data; it just cannot record anything new until it has a
+        // plan. `businesses:register` starts a trial, and
+        // `scripts/backfill-subscriptions.mjs` gives the existing tenants one.
+        return { status: "expired", writable: false, subscription: null };
     }
 
     const status = computeEffectiveStatus({
@@ -454,6 +464,72 @@ export async function loadSubscriptionStatus(
         currentPeriodEnd: business?.subscriptionExpiresAt,
     });
     return { status, writable: isWritableStatus(status), subscription: null };
+}
+
+/**
+ * The plan a subscription is on.
+ *
+ * The `plans` table is the catalogue; the built-in definitions are the
+ * seed, used when the catalogue has not been written yet so that a fresh
+ * installation still has a pricing page.
+ *
+ * It lives here, rather than in `entitlements.ts`, so that the tenancy
+ * layer can ask about it without a circular import.
+ */
+export async function resolvePlanRow(
+    ctx: any,
+    planKey: string
+): Promise<any | null> {
+    const stored = await ctx.db
+        .query("plans")
+        .withIndex("by_key", (q: any) => q.eq("key", planKey))
+        .unique();
+
+    if (stored) return stored;
+
+    const fallback = defaultPlanFor(planKey);
+    return fallback ? (fallback as any) : null;
+}
+
+/**
+ * Refuse a write that uses a feature the business's plan does not include.
+ *
+ * The `core.*` entitlements — sales, stock, the customer directory — are
+ * what every plan is built around, and they are shown on the pricing page
+ * as part of what the plan includes. They were never actually checked, so
+ * the promise was not kept either way: a plan could leave one out and the
+ * business would still be able to use it, and nobody could tell from the
+ * plan whether the module was included.
+ *
+ * This is the check that makes the catalogue mean something.
+ */
+export async function assertFeatureAllowed(
+    ctx: any,
+    businessId: string,
+    feature: string
+): Promise<void> {
+    const subscription = await loadSubscriptionRow(ctx, businessId);
+    if (!subscription) {
+        throw new ConvexError(
+            "This account has no subscription, so nothing can be recorded. Choose a plan to start your free trial."
+        );
+    }
+
+    const plan = await resolvePlanRow(ctx, subscription.planKey);
+    if (!plan) {
+        throw new ConvexError(
+            `The plan on this subscription (${subscription.planKey}) no longer exists, so nothing can be recorded.`
+        );
+    }
+
+    if (planHasFeature(plan, feature)) return;
+
+    const label = (ENTITLEMENT_CATALOGUE as Record<string, { label?: string }>)[feature]
+        ?.label;
+
+    throw new ConvexError(
+        `Your ${plan.name} plan does not include ${label ?? feature}. Choose a plan that includes it to use this.`
+    );
 }
 
 /**

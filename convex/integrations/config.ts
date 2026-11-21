@@ -235,6 +235,38 @@ export async function writeIntegrationConfig(
         ...(args.config ?? {}),
     };
 
+    // ──────────────────────────────────────────────────────────────────────
+    // A callback adapter must have a webhook secret before it is switched on
+    // ──────────────────────────────────────────────────────────────────────
+    //
+    // A callback that arrives with no secret to check it against cannot be
+    // told apart from a forged one, so it is refused. That refusal is
+    // correct — but it would leave the owner with a payment provider that
+    // silently never confirms anything, which is worse than the problem it
+    // fixes.
+    //
+    // So the secret is required at the moment the adapter is enabled: the
+    // owner is told to set it before the provider is pointed at SMARTBUZ,
+    // rather than after the first payment goes missing.
+    if (args.enabled && adapter.capabilities.includes("status_callback")) {
+        const webhookSecret =
+            (args.secrets?.webhookSecret ??
+                ((existing?.secrets ?? {}) as Record<string, SealedSecret>)
+                    .webhookSecret) as SealedSecret | undefined;
+
+        const hasWebhookSecret =
+            typeof webhookSecret === "object" &&
+            webhookSecret !== null &&
+            typeof webhookSecret.ciphertext === "string" &&
+            webhookSecret.ciphertext.length > 0;
+
+        if (!hasWebhookSecret) {
+            throw new ConvexError(
+                "Set a webhook secret for this adapter before switching it on. Without it the provider's callback cannot be checked, and SMARTBUZ will refuse it — which would leave the payment unconfirmed."
+            );
+        }
+    }
+
     // A changed secret invalidates the proof: the adapter has not been
     // tested with the new credential, so it has not been verified.
     const secretChanged =

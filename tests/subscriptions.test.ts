@@ -38,6 +38,7 @@ import {
     makeCustomer,
     makeMembership,
     makePlatformAdmin,
+    makeSubscriptionPayment,
     makeUser,
     signedInContext,
 } from "./helpers/fake-context";
@@ -60,7 +61,13 @@ async function call(
     return handler(ctx, args);
 }
 
-/** A context where the caller owns the business. */
+/**
+ * A context where the caller owns the business.
+ *
+ * The business is **not** licensed by default: this file is about what
+ * happens at the edges of a subscription — the trial, the grace period, the
+ * lapse — so each test states the subscription it is about.
+ */
 function ownerContext(extra: Record<string, FakeRow[]> = {}): FakeContext {
     return signedInContext({
         users: [makeUser({ _id: CALLER })],
@@ -68,6 +75,7 @@ function ownerContext(extra: Record<string, FakeRow[]> = {}): FakeContext {
         memberships: [
             makeMembership({ userId: CALLER, businessId: BUSINESS, role: "owner" }),
         ],
+        unlicensed: true,
         ...extra,
     });
 }
@@ -81,6 +89,7 @@ function platformContext(extra: Record<string, FakeRow[]> = {}): FakeContext {
             makeMembership({ userId: CALLER, businessId: BUSINESS, role: "owner" }),
         ],
         platformAdmins: [makePlatformAdmin({ userId: CALLER })],
+        unlicensed: true,
         ...extra,
     });
 }
@@ -271,8 +280,40 @@ describe("the free trial", () => {
         );
     });
 
-    it("changes the plan of a business that already has one", async () => {
+    it("does not move a business to a paid plan that has not been paid for", async () => {
         const ctx = ownerContext();
+        await call(subscriptions.selectPlan, ctx, { planKey: "starter" });
+        const result = await call(subscriptions.selectPlan, ctx, {
+            planKey: "business",
+        });
+
+        // The plan has not changed: the business asked, and the plan becomes
+        // real only once the payment is confirmed.
+        assert.equal(result.changed, false);
+        assert.equal(result.requiresPayment, true);
+        assert.equal(result.planKey, "starter");
+        assert.equal(result.pendingPlanKey, "business");
+
+        const subs = (ctx as any).tables.subscriptions;
+        assert.equal(subs[0].planKey, "starter");
+        assert.equal(subs[0].pendingPlanKey, "business");
+
+        // The request is on the record.
+        const events = (ctx as any).tables.subscriptionEvents;
+        assert.ok(events.some((e: any) => e.type === "plan_change_requested"));
+        assert.ok(!events.some((e: any) => e.type === "plan_changed"));
+    });
+
+    it("moves a business to a paid plan once the payment is verified", async () => {
+        const ctx = ownerContext({
+            subscriptionPayments: [
+                makeSubscriptionPayment({
+                    planKey: "business",
+                    status: "verified",
+                    amount: 150_000,
+                }),
+            ],
+        });
         await call(subscriptions.selectPlan, ctx, { planKey: "starter" });
         const result = await call(subscriptions.selectPlan, ctx, {
             planKey: "business",
@@ -286,6 +327,42 @@ describe("the free trial", () => {
 
         const events = (ctx as any).tables.subscriptionEvents;
         assert.ok(events.some((e: any) => e.type === "plan_changed"));
+    });
+
+    it("moves a business to a free plan at once, because nobody loses by it", async () => {
+        const ctx = ownerContext({
+            plans: [
+                {
+                    _id: "plans_free",
+                    key: "free",
+                    name: "Free",
+                    priceMonthly: 0,
+                    priceAnnual: 0,
+                    currency: "UGX",
+                    trialDays: 0,
+                    gracePeriodDays: 0,
+                    deviceLimit: 0,
+                    maxUsers: 0,
+                    maxBranches: 0,
+                    maxWarehouses: 0,
+                    maxProducts: 0,
+                    features: ["core.sales"],
+                    isActive: true,
+                    sortOrder: 0,
+                },
+            ],
+        });
+        await call(subscriptions.selectPlan, ctx, { planKey: "starter" });
+        const result = await call(subscriptions.selectPlan, ctx, {
+            planKey: "free",
+        });
+
+        assert.equal(result.changed, true);
+        assert.equal(result.planKey, "free");
+
+        const subs = (ctx as any).tables.subscriptions;
+        assert.equal(subs[0].planKey, "free");
+        assert.equal(subs[0].pendingPlanKey, undefined);
     });
 
     it("is not granted to a staff member who cannot manage the subscription", async () => {
@@ -444,14 +521,31 @@ describe("the write gate", () => {
         assert.ok(created);
     });
 
-    it("leaves a business with no subscription on record alone", async () => {
+    it("does not let a business with no subscription on record record anything new", async () => {
+        // A business with no subscription row is not licensed. It used to
+        // be given every entitlement and allowed to write for ever, which
+        // is the hole the licensing system had in it.
+        //
+        // What is still true — and must stay true — is that its *existing*
+        // data is not deleted or hidden. The owner can still look at what
+        // happened; they just cannot add to it until there is a plan.
         const ctx = ownerContext();
-        const created = await call(customers.add, ctx, {
-            name: "Amina Nakato",
-            phone: "0772123456",
-            userId: CALLER,
-        });
-        assert.ok(created);
+
+        let refused = "";
+        try {
+            await call(customers.add, ctx, {
+                name: "Amina Nakato",
+                phone: "0772123456",
+                userId: CALLER,
+            });
+        } catch (err) {
+            refused = err instanceof Error ? err.message : String(err);
+        }
+
+        assert.match(refused, /subscription|plan|trial/i);
+
+        // Nothing was written.
+        assert.equal((ctx as any).tables.customers.length, 0);
     });
 });
 

@@ -131,6 +131,11 @@ const TABLES = [
   // Phase 7
   "syncLogs",
   "stockConflicts",
+  // The throttle tables. The sign-in throttle and the email throttle keep
+  // their state in the database so that every instance of the server
+  // shares the limit and a deploy does not reset it.
+  "loginAttempts",
+  "emailThrottle",
 ] as const;
 
 type TableName = (typeof TABLES)[number];
@@ -292,6 +297,9 @@ export class FakeContext {
 class FakeQuery {
   private indexConditions: Condition[] = [];
   private filterConditions: Condition[] = [];
+  private sortDirection: "asc" | "desc" = "asc";
+  private sortField?: string;
+  private limitCount?: number;
 
   constructor(private readonly rows: FakeRow[]) {}
 
@@ -309,12 +317,44 @@ class FakeQuery {
     return this;
   }
 
+  /**
+   * Order the rows.
+   *
+   * `order("desc")` on an index that is already in date order reverses it,
+   * which is what the server does. `order("asc")` leaves it alone.
+   */
+  order(direction: "asc" | "desc"): FakeQuery {
+    this.sortDirection = direction;
+    return this;
+  }
+
+  /**
+   * Take at most `count` rows.
+   *
+   * The server's `take` resolves to the rows themselves, so this does too.
+   */
+  async take(count: number): Promise<FakeRow[]> {
+    this.limitCount = count;
+    return this.matches();
+  }
+
   private matches(): FakeRow[] {
-    return this.rows.filter(
+    let matched = this.rows.filter(
       (row) =>
         this.indexConditions.every((c) => conditionHolds(row, c)) &&
         this.filterConditions.every((c) => conditionHolds(row, c))
     );
+
+    // An index is in ascending order, so "desc" reverses it.
+    if (this.sortDirection === "desc") {
+      matched = [...matched].reverse();
+    }
+
+    if (this.limitCount !== undefined) {
+      matched = matched.slice(0, this.limitCount);
+    }
+
+    return matched;
   }
 
   async unique(): Promise<FakeRow | null> {
@@ -731,6 +771,25 @@ export function makeSubscription(overrides: Partial<FakeRow> = {}): FakeRow {
   };
 }
 
+/**
+ * A subscription that is running, on a plan that grants every feature.
+ *
+ * A business with no subscription row is **not licensed** — the entitlement
+ * gate fails closed — so any test that exercises a gated feature needs one
+ * of these. The dates are far in the future so that the subscription is
+ * still running whenever the test happens to run.
+ */
+export function makeActiveSubscription(overrides: Partial<FakeRow> = {}): FakeRow {
+  return makeSubscription({
+    planKey: "professional",
+    status: "active",
+    trialEndsAt: "2099-01-01T00:00:00.000Z",
+    currentPeriodStart: "2026-01-01T00:00:00.000Z",
+    currentPeriodEnd: "2099-01-01T00:00:00.000Z",
+    ...overrides,
+  });
+}
+
 /** A `subscriptionPayments` row. */
 export function makeSubscriptionPayment(overrides: Partial<FakeRow> = {}): FakeRow {
   return {
@@ -801,7 +860,16 @@ export function makeLicenseKey(overrides: Partial<FakeRow> = {}): FakeRow {
 
 /**
  * A context where the given user is signed in with a live session.
- */export function signedInContext(options: FakeCtxOptions & { subject?: string } = {}) {
+ *
+ * Unless the caller says otherwise, the business is on a running
+ * subscription. A business with no subscription is not licensed — the
+ * entitlement gate fails closed — so a test that exercises anything
+ * ordinary needs one. A test that is specifically about an unlicensed
+ * business passes `subscriptions: []`, or sets `unlicensed: true`.
+ */
+export function signedInContext(
+  options: FakeCtxOptions & { subject?: string; unlicensed?: boolean } = {}
+) {
   const subject = options.subject ?? "users_1";
   const identity = {
     subject,
@@ -809,5 +877,11 @@ export function makeLicenseKey(overrides: Partial<FakeRow> = {}): FakeRow {
     tokenIdentifier: `${subject}|token`,
     ...(options.identity ?? {}),
   };
-  return new FakeContext({ ...options, identity });
+
+  const tables: FakeCtxOptions = { ...options };
+  if (options.subscriptions === undefined && !options.unlicensed) {
+    tables.subscriptions = [makeActiveSubscription()];
+  }
+
+  return new FakeContext({ ...tables, identity });
 }

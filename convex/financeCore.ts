@@ -283,6 +283,16 @@ export interface SaleTotals {
   cashRevenue: number;
   /** The revenue that was paid by card or transfer. */
   otherRevenue: number;
+  /**
+   * The VAT that was charged, read from the sales.
+   *
+   * This is the figure a business files. It is the tax that was actually
+   * charged at the moment each sale was made, not a rate applied to
+   * today's prices.
+   */
+  vat: number;
+  /** The revenue without the VAT in it. */
+  netRevenue: number;
   /** The revenue that was sold on credit. */
   creditRevenue: number;
 }
@@ -314,6 +324,8 @@ export function summariseSales(
     cashRevenue: 0,
     otherRevenue: 0,
     creditRevenue: 0,
+    vat: 0,
+    netRevenue: 0,
   };
 
   for (const sale of sales) {
@@ -337,6 +349,16 @@ export function summariseSales(
     totals.cost += cost;
     totals.transactions += 1;
     totals.items += items;
+
+    // The VAT that was actually charged on this sale.
+    //
+    // It is read from the sale, because that is where it was worked out at
+    // the moment the sale was made. A sale made before the VAT was recorded
+    // has none, and is counted as zero rather than guessed at — a figure
+    // that moved when the tax rate moved would not be a figure anybody
+    // could file.
+    totals.vat += Math.max(0, (sale.taxAmount ?? 0) - (sale.refundTaxAmount ?? 0));
+    totals.netRevenue += sale.netAmount ?? revenue;
 
     if (isCreditSale(sale)) {
       totals.creditTransactions += 1;

@@ -43,8 +43,15 @@ import {
 } from "./tenancy";
 import { requireSelfOrAdmin } from "./auth";
 import { writeAudit } from "./audit";
-import { sha256Hex } from "./crypto";
+import { sha256Hex, bcryptCostOf, PASSWORD_HASH_COST } from "./crypto";
 import { serverSecretMatches } from "./serverSecret";
+import {
+    assertLoginAllowed,
+    burnComparisonTime,
+    clearLoginFailures,
+    recordLoginFailure,
+} from "./loginThrottle";
+import { assertEmailAllowed, recordEmailSent } from "./emailThrottle";
 
 /**
  * SMARTBUZ — users and access.
@@ -189,7 +196,7 @@ export const register = mutation({
             throw new Error("An account with this email already exists");
         }
 
-        const hashedPassword = bcrypt.hashSync(args.password, 10);
+        const hashedPassword = bcrypt.hashSync(args.password, PASSWORD_HASH_COST);
 
         const userId = await ctx.db.insert("users", {
             first_name: args.first_name.trim(),
@@ -329,6 +336,8 @@ export const requestVerification = mutation({
     args: {
         email: v.string(),
         serverSecret: v.optional(v.string()),
+        /** The caller's address, so sending can be capped per caller. */
+        clientIp: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const email = args.email.trim().toLowerCase();
@@ -339,6 +348,12 @@ export const requestVerification = mutation({
             .unique();
         if (!user) return { success: true };
         if (user.emailVerified) return { success: true };
+
+        // Sending is throttled: one email to an address each minute, and a
+        // cap per address and per caller over an hour. Without it this
+        // endpoint is a way to make the server mail anybody, as fast as the
+        // connection will carry it.
+        await assertEmailAllowed(ctx, email, args.clientIp);
 
         // Replace any outstanding code.
         const existing = await ctx.db
@@ -367,26 +382,70 @@ export const requestVerification = mutation({
             metadata: { email },
         });
 
+        await recordEmailSent(ctx, email, args.clientIp);
+
         const isServer = serverSecretMatches(args.serverSecret);
         return isServer ? { success: true, code } : { success: true };
     },
 });
 
-// Login verification
+// Login verification.
+//
+// This mutation is public by necessity — it is the way in — so it carries
+// its own defences:
+//
+//   • **Throttling.** `loginThrottle` counts failures per address in the
+//     database, so the limit is shared by every instance of the server.
+//     The Next.js route's own limiter is per-instance and evaporates on
+//     every deploy; this one does not.
+//   • **No enumeration.** An address with no account is still compared
+//     against a real bcrypt hash, and it is counted and locked out exactly
+//     like a real one. Otherwise the answer to "does this person have an
+//     account here?" would be observable from the outside.
 export const login = mutation({
     args: {
         email: v.string(),
         password: v.string(),
     },
     handler: async (ctx, args) => {
+        const email = args.email.trim().toLowerCase();
+
+        await assertLoginAllowed(ctx, email);
+
         const user = await ctx.db
             .query("users")
-            .withIndex("by_email", (q) => q.eq("email", args.email.trim().toLowerCase()))
-            .unique();
-        if (!user) throw new Error("Invalid email or password");
+            .withIndex("by_email", (q) => q.eq("email", email))
+            .first();
+
+        if (!user) {
+            // No account: pay the same cost a wrong password would have,
+            // then fail exactly as a wrong password fails.
+            burnComparisonTime(args.password);
+            await recordLoginFailure(ctx, email);
+            throw new Error("Invalid email or password");
+        }
 
         const isValid = bcrypt.compareSync(args.password, user.password);
-        if (!isValid) throw new Error("Invalid email or password");
+        if (!isValid) {
+            await recordLoginFailure(ctx, email);
+            throw new Error("Invalid email or password");
+        }
+
+        // The password was right, so the episode is over. The next mistake
+        // starts a fresh count.
+        await clearLoginFailures(ctx, email);
+
+        // If the stored hash was made with an older, weaker cost factor,
+        // replace it now, while the owner has just proved they know the
+        // password. The cost is stored inside the hash, so the old one
+        // still verified — and this upgrades the table one sign-in at a
+        // time without ever locking anybody out.
+        const cost = bcryptCostOf(user.password);
+        if (cost !== null && cost < PASSWORD_HASH_COST) {
+            await ctx.db.patch(user._id, {
+                password: bcrypt.hashSync(args.password, PASSWORD_HASH_COST),
+            });
+        }
 
         if (user.status === "suspended") {
             throw new Error("This account has been suspended. Contact your business owner.");
@@ -425,7 +484,12 @@ export const login = mutation({
 
 // Password reset request
 export const requestPasswordReset = mutation({
-    args: { email: v.string(), serverSecret: v.optional(v.string()) },
+    args: {
+        email: v.string(),
+        serverSecret: v.optional(v.string()),
+        /** The caller's address, so sending can be capped per caller. */
+        clientIp: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
         const email = args.email.trim().toLowerCase();
         const user = await ctx.db
@@ -433,6 +497,12 @@ export const requestPasswordReset = mutation({
             .withIndex("by_email", (q) => q.eq("email", email))
             .unique();
         if (!user) return { success: true }; // Don't leak user existence
+
+        // Sending is throttled: one email to an address each minute, and a
+        // cap per address and per caller over an hour. The reset endpoint
+        // is unauthenticated, so without this it is a way to make the
+        // server mail anybody, as fast as the connection will carry it.
+        await assertEmailAllowed(ctx, email, args.clientIp);
 
         // Generate a 6-digit code from a cryptographically secure source.
         // Only the hash is stored, so a database read cannot be used to
@@ -480,6 +550,9 @@ export const requestPasswordReset = mutation({
         // request a reset for any account and complete the takeover without
         // ever reading the victim's inbox.
         const isServer = serverSecretMatches(args.serverSecret);
+
+        await recordEmailSent(ctx, email, args.clientIp);
+
         return isServer ? { success: true, code } : { success: true };
     },
 });
@@ -519,11 +592,22 @@ export const resetPassword = mutation({
         }
         await ctx.db.patch(reset._id, { attempts });
 
+        // The code is compared against a hash.
+        //
         // Codes issued before hashing was introduced still carry the plain
-        // value; accept those too.
-        const matches = reset.codeHash
-            ? await bcrypt.compare(args.code, reset.codeHash)
-            : reset.code === args.code;
+        // value, and those used to be accepted as well. That was a way for
+        // anybody with a read on the database to take over an account: the
+        // plain code was sitting right there in the row. A code that was
+        // issued in the plain era is now refused — the person who holds it
+        // simply asks for a new one, which costs them a minute.
+        if (!reset.codeHash) {
+            await ctx.db.delete(reset._id);
+            throw new Error(
+                "This reset code is no longer valid. Please request a new one."
+            );
+        }
+
+        const matches = await bcrypt.compare(args.code, reset.codeHash);
         if (!matches) {
             throw new Error("Invalid or expired reset code");
         }
@@ -534,7 +618,7 @@ export const resetPassword = mutation({
             .unique();
         if (!user) throw new Error("User not found");
 
-        const hashedPassword = bcrypt.hashSync(args.newPassword, 10);
+        const hashedPassword = bcrypt.hashSync(args.newPassword, PASSWORD_HASH_COST);
         await ctx.db.patch(user._id, {
             password: hashedPassword,
             passwordChangedAt: new Date().toISOString(),
@@ -1436,7 +1520,7 @@ export const create = mutation({
         if (existing) throw new Error("User with this email already exists");
 
         const passwordToHash = args.password || "password123";
-        const hashedPassword = bcrypt.hashSync(passwordToHash, 10);
+        const hashedPassword = bcrypt.hashSync(passwordToHash, PASSWORD_HASH_COST);
         const now = new Date().toISOString();
 
         const userId = await ctx.db.insert("users", {
@@ -1691,7 +1775,7 @@ export const changePassword = mutation({
             throw new Error("The new password must be different from the current one.");
         }
 
-        const hashedPassword = bcrypt.hashSync(args.newPassword, 10);
+        const hashedPassword = bcrypt.hashSync(args.newPassword, PASSWORD_HASH_COST);
         await ctx.db.patch(args.userId, {
             password: hashedPassword,
             passwordChangedAt: new Date().toISOString(),

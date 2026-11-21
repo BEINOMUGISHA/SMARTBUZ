@@ -274,10 +274,15 @@ describe("the payment callback", () => {
         assert.equal(check.ok, false);
     });
 
-    it("says so plainly when there is no secret to check against", async () => {
+    it("refuses a callback when there is no secret to check it against", async () => {
+        // A callback with no secret to check it against cannot be told
+        // apart from a forged one, so it is refused. The reference is not a
+        // secret — it is printed on the receipt and sent to the provider in
+        // clear — so accepting the callback on the reference alone would
+        // have meant accepting anybody's callback.
         const check = await verifyWebhookSignature("{}", null, undefined);
-        assert.equal(check.ok, true);
-        assert.match(check.reason ?? "", /reference alone/i);
+        assert.equal(check.ok, false);
+        assert.match(check.reason ?? "", /webhook secret/i);
     });
 });
 

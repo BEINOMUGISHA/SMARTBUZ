@@ -112,7 +112,16 @@ export const submitPayment = mutation({
       );
     }
 
-    const plan = await resolvePlan(ctx, subscription.planKey);
+    // The plan this payment is *for*.
+    //
+    // When the business has asked to move to a paid plan that it has not
+    // paid for yet, that is the plan the money is for — the payment has to
+    // be priced against the plan the customer is buying, not the one they
+    // are still on. The plan itself only changes when the payment is
+    // verified.
+    const targetPlanKey = subscription.pendingPlanKey ?? subscription.planKey;
+
+    const plan = await resolvePlan(ctx, targetPlanKey);
     if (!plan) {
       throw new ConvexError("The plan on this subscription no longer exists.");
     }
@@ -155,7 +164,7 @@ export const submitPayment = mutation({
     const paymentId = await ctx.db.insert("subscriptionPayments", {
       businessId: business._id,
       subscriptionId: subscription._id,
-      planKey: subscription.planKey,
+      planKey: targetPlanKey,
       amount: expectedAmount > 0 ? expectedAmount : args.amount,
       currency: args.currency ?? plan.currency ?? "UGX",
       billingCycle: args.billingCycle,
@@ -310,8 +319,16 @@ export const verifyPayment = mutation({
       const staysAsItIs =
         fromStatus === "suspended" || fromStatus === "cancelled";
 
+      // The money settles the plan it was paid for. This is the only place
+      // a paid plan becomes the real one, and it happens because a payment
+      // was confirmed against the provider's own record — never because a
+      // browser asked.
+      const planChanges = payment.planKey !== subscription.planKey;
+
       await ctx.db.patch(subscription._id, {
         status: staysAsItIs ? fromStatus : "active",
+        ...(planChanges ? { planKey: payment.planKey } : {}),
+        pendingPlanKey: undefined,
         billingCycle: payment.billingCycle,
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEndDate,
@@ -327,6 +344,8 @@ export const verifyPayment = mutation({
         type: fromStatus === "active" ? "renewed" : "payment_verified",
         fromStatus,
         toStatus: status,
+        fromPlan: subscription.planKey,
+        toPlan: payment.planKey,
         amount: payment.amount,
         currency: payment.currency,
         billingCycle: payment.billingCycle,
@@ -338,7 +357,12 @@ export const verifyPayment = mutation({
               0,
               10
             )}. The account stays ${fromStatus} until an administrator restores it.`
-          : `Payment verified — paid through to ${periodEndDate.slice(0, 10)}.`,
+          : planChanges
+            ? `Payment verified — moved to the ${payment.planKey} plan, paid through to ${periodEndDate.slice(
+                0,
+                10
+              )}.`
+            : `Payment verified — paid through to ${periodEndDate.slice(0, 10)}.`,
       });
     }
 

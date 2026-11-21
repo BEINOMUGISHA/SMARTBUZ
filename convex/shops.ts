@@ -305,6 +305,19 @@ export const issueStock = mutation({
         }
         await ctx.db.patch(args.shopId, { issuedStocks: issued });
 
+        // Record Issue History for every item
+        const now = new Date().toISOString();
+        for (const item of args.items) {
+            await ctx.db.insert("shopIssueRecords", {
+                businessId,
+                shopId: args.shopId,
+                stockId: item.stockId,
+                quantity: item.qty,
+                date: now,
+                userId: tenant.user._id,
+            });
+        }
+
         // Log activity
         const itemSummary = args.items.map(i => `${i.name} (${i.qty})`).join(", ");
         await logActivity(

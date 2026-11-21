@@ -8,10 +8,10 @@ import {
   ENTITLEMENT_CATALOGUE,
   computeEffectiveStatus,
   daysRemaining,
-  defaultPlanFor,
   explainStatus,
   isWritableStatus,
   planHasFeature,
+  resolvePlanRow,
   type SubscriptionStatus,
 } from "./subscriptionState";
 import { loadSubscriptionRow } from "./subscriptionState";
@@ -75,15 +75,7 @@ export async function resolvePlan(
   isActive: boolean;
   sortOrder: number;
 } | null> {
-  const stored = await ctx.db
-    .query("plans")
-    .withIndex("by_key", (q: any) => q.eq("key", planKey))
-    .unique();
-
-  if (stored) return stored as any;
-
-  const fallback = defaultPlanFor(planKey);
-  return fallback ? (fallback as any) : null;
+  return resolvePlanRow(ctx, planKey);
 }
 
 /**
@@ -108,16 +100,27 @@ export async function subscriptionSnapshot(
     : null;
 
   if (!subscription) {
-    // No subscription on record: this business is not licensed, so nothing
-    // is gated. The platform owner decides which businesses that is.
+    // No subscription on record: this business is not licensed.
+    //
+    // This used to return every entitlement and allow writing, on the
+    // theory that the platform owner would sort it out. What it actually
+    // did was leave a business that never had a subscription row — one
+    // created through a path that forgot to make one — able to use
+    // everything, forever, and to keep doing so after the owner noticed.
+    //
+    // Failing closed is the only direction that is safe. The business can
+    // still read its own data; it just cannot record anything new until it
+    // has a plan. `subscriptions:selectPlan` starts the trial for it, and
+    // `businesses:register` now starts one straight away.
     return {
       subscription: null,
       plan: null,
-      status: "active",
-      writable: true,
+      status: "expired",
+      writable: false,
       daysRemaining: undefined,
-      explanation: "This account is not on a subscription.",
-      features: ALL_ENTITLEMENTS as string[],
+      explanation:
+        "This account has no subscription yet. Choose a plan to start your free trial.",
+      features: [],
     };
   }
 
@@ -157,8 +160,12 @@ export async function requireEntitlement(
 ): Promise<void> {
   const snapshot = await subscriptionSnapshot(ctx, businessId);
 
-  // No subscription on record — nothing is gated.
-  if (!snapshot.subscription) return;
+  // No subscription on record: the business is not licensed, so nothing is
+  // available to it. Saying so plainly beats a message about a plan it does
+  // not have.
+  if (!snapshot.subscription) {
+    throw new ConvexError(snapshot.explanation);
+  }
 
   if (planHasFeature(snapshot.plan, feature)) return;
 
@@ -184,7 +191,11 @@ export async function requireActiveEntitlement(
 ): Promise<void> {
   const snapshot = await subscriptionSnapshot(ctx, businessId);
 
-  if (!snapshot.subscription) return;
+  if (!snapshot.subscription) {
+    throw new ConvexError(
+      `${snapshot.explanation} Ask an administrator to start a subscription.`
+    );
+  }
 
   if (!snapshot.writable) {
     throw new ConvexError(
@@ -213,8 +224,11 @@ export async function subscriptionCoveredAt(
 ): Promise<boolean> {
   const subscription = await loadSubscriptionRow(ctx, businessId);
 
-  // A business with no subscription on record is not gated at all.
-  if (!subscription) return true;
+  // A business with no subscription on record was never licensed, so a sale
+  // it made was not covered either. This used to return true, which meant
+  // an unlicensed tenant could push an entire backlog of offline sales
+  // through and have them recorded.
+  if (!subscription) return false;
 
   // A suspension or a cancellation is a decision about everything, not just
   // about the period that has already been paid for.

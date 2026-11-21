@@ -79,7 +79,17 @@ export const create = mutation({
         customerPhone: v.optional(v.string()),
         customerLocation: v.optional(v.string()),
         transactionType: v.optional(v.string()), // Sale, Swap
-        clientOfflineId: v.optional(v.string()), // Offline sync idempotency key
+        /**
+         * The idempotency key for this sale.
+         *
+         * A till that sends it can have its request retried as many times
+         * as it likes: the second and later attempts are answered with the
+         * sale that was already recorded, so the stock is not taken twice.
+         * The offline queue has always sent one; the online path may send
+         * one too, and the server falls back to a key of its own when it
+         * does not.
+         */
+        clientOfflineId: v.optional(v.string()),
         isOfflineSync: v.optional(v.boolean()),
         /**
          * The payment provider's reference, when the payment was taken
@@ -114,6 +124,10 @@ export const create = mutation({
             businessId: tenant.businessId,
             userId,
             allowPriceOverrides: tenant.business.allowPriceOverrides === true,
+            // Going under the price floor is a manager's decision. The
+            // permission is read from the caller's own record on the
+            // server — never from anything the browser sent.
+            canOverrideBelowFloor: tenant.permissions.has("sales.discount"),
         });
 
         return {

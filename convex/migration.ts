@@ -26,9 +26,12 @@
  *    global rows — are stamped. Running the migration on a deployment that
  *    already holds multi-tenant data therefore cannot collapse two tenants
  *    into one.
- *  • **Only an administrator may run it.** The caller must be an owner or an
- *    admin of a business, or hold the legacy `admin`/`settings` role — the
- *    server decides, never the client.
+ *  • **Only the server may run it.** The caller must present the
+ *    server-to-backend secret (`SMARTBUZ_SERVER_SECRET`) in addition to
+ *    holding an owner or admin role in a business. A browser cannot obtain
+ *    the secret, so a tenant administrator can no longer rewrite the
+ *    deployment — the migration is a deployment-time operation, run from
+ *    `scripts/migrate-to-multitenancy.mjs`, and it must stay that way.
  */
 
 import { v } from "convex/values";
@@ -37,6 +40,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { roleFromLegacyRoles } from "./tenancy";
+import { serverSecretMatches } from "./serverSecret";
 
 type Ctx = MutationCtx | QueryCtx;
 
@@ -97,12 +101,27 @@ const VERTICAL_TABLES = [
 /**
  * The operator running the migration.
  *
- * Authorisation is decided server-side: the caller must hold the `owner` or
- * `admin` role in a business, or carry the legacy `admin`/`settings` role on
- * their user document (which is what a legacy single-tenant administrator
- * had, before memberships existed).
+ * Two things must be true, and the server decides both:
+ *
+ *  1. The caller holds the server-to-backend secret. A browser never has it,
+ *     so this is what keeps the migration a deployment-time operation.
+ *  2. The caller is an owner or an administrator of a business, or holds the
+ *     legacy `admin`/`settings` role on their user document.
+ *
+ * The second check on its own is not enough: a *tenant* owner satisfies it,
+ * and a tenant owner must never be able to rewrite another tenant's data.
  */
-async function requireMigrationOperator(ctx: Ctx): Promise<Doc<"users">> {
+async function requireMigrationOperator(
+  ctx: Ctx,
+  serverSecret: string | undefined
+): Promise<Doc<"users">> {
+  if (!serverSecretMatches(serverSecret)) {
+    throw new ConvexError(
+      "Forbidden: the migration can only be run by the SMARTBUZ server. " +
+        "Run scripts/migrate-to-multitenancy.mjs instead of calling this from a browser."
+    );
+  }
+
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new ConvexError(
@@ -152,7 +171,12 @@ async function requireMigrationOperator(ctx: Ctx): Promise<Doc<"users">> {
  *     the common case: the person running the migration is the person who
  *     created the business profile.
  *  3. A business the operator owns.
- *  4. The first business that has an owner.
+ *
+ * There is deliberately **no** "first business that has an owner" fallback.
+ * That fallback let the migration pick a business that had nothing to do
+ * with the operator, which is how a deployment-wide write could land inside
+ * somebody else's tenant. When nothing matches, the migration stops and says
+ * so; the operator names the business explicitly.
  */
 async function resolveTargetBusiness(
   ctx: Ctx,
@@ -186,8 +210,11 @@ async function resolveTargetBusiness(
   const owned = businesses.find((b) => b.ownerId === operatorId);
   if (owned) return owned;
 
-  const withOwner = businesses.find((b) => b.ownerId);
-  return withOwner ?? businesses[0];
+  throw new ConvexError(
+    "No target business could be determined for this operator. " +
+      "Pass businessId explicitly so the migration cannot land in a business " +
+      "that has nothing to do with you."
+  );
 }
 
 /** Legacy profile id → business id, from the mapping the caller passed in. */
@@ -220,9 +247,13 @@ async function buildLegacyMapping(
  * the migration can re-point the data.
  */
 export const migrateBusinessProfiles = mutation({
-  args: { businessId: v.optional(v.id("businesses")) },
+  args: {
+    businessId: v.optional(v.id("businesses")),
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    const operator = await requireMigrationOperator(ctx);
+    const operator = await requireMigrationOperator(ctx, args.serverSecret);
 
     const profiles = await ctx.db.query("businessProfiles").collect();
     const existingBusinesses = await ctx.db.query("businesses").collect();
@@ -303,9 +334,11 @@ export const migrateMemberships = mutation({
     businessId: v.optional(v.id("businesses")),
     /** Legacy profile id → business id, as returned by migrateBusinessProfiles. */
     mapping: v.optional(v.record(v.string(), v.string())),
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const operator = await requireMigrationOperator(ctx);
+    const operator = await requireMigrationOperator(ctx, args.serverSecret);
 
     const legacyToBusiness = await buildLegacyMapping(ctx, args.mapping);
     const primary = await resolveTargetBusiness(
@@ -419,9 +452,11 @@ export const migrateTenantRows = mutation({
   args: {
     businessId: v.optional(v.id("businesses")),
     mapping: v.optional(v.record(v.string(), v.string())),
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const operator = await requireMigrationOperator(ctx);
+    const operator = await requireMigrationOperator(ctx, args.serverSecret);
 
     const legacyToBusiness = await buildLegacyMapping(ctx, args.mapping);
     const primary = await resolveTargetBusiness(
@@ -483,10 +518,13 @@ export const migrateTenantRows = mutation({
  * The state of the migration — what still needs doing.
  */
 export const migrationStatus = query({
-  args: {},
-  handler: async (ctx) => {
-    // Deployment-wide figures — only an administrator may read them.
-    await requireMigrationOperator(ctx);
+  args: {
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Deployment-wide figures — only the server may read them.
+    await requireMigrationOperator(ctx, args.serverSecret);
 
     const profiles = await ctx.db.query("businessProfiles").collect();
     const businesses = await ctx.db.query("businesses").collect();

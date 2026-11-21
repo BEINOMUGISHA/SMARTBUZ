@@ -21,10 +21,12 @@ import assert from "node:assert/strict";
 
 import * as finance from "../convex/finance";
 import * as analytics from "../convex/analytics";
+import * as reports from "../convex/reports";
 
 import {
     FakeContext,
     FakeRow,
+    makeActiveSubscription,
     makeBusiness,
     makeCashMovement,
     makeCashShift,
@@ -55,7 +57,13 @@ async function call(
     return handler(ctx, args);
 }
 
-/** A context where the caller is a member of the business with `role`. */
+/**
+ * A context where the caller is a member of the business with `role`.
+ *
+ * The business is on a running subscription: a business with no subscription
+ * is not licensed, and the entitlement gate fails closed. A test that wants
+ * an unlicensed business passes its own `subscriptions` row.
+ */
 function contextFor(role: string, extra: Record<string, FakeRow[]> = {}): FakeContext {
     return signedInContext({
         users: [makeUser({ _id: CALLER })],
@@ -63,6 +71,7 @@ function contextFor(role: string, extra: Record<string, FakeRow[]> = {}): FakeCo
         memberships: [
             makeMembership({ userId: CALLER, businessId: BUSINESS, role }),
         ],
+        subscriptions: [makeActiveSubscription()],
         ...extra,
     });
 }
@@ -1419,5 +1428,74 @@ describe("the permissions on the finance module", () => {
 
         assert.equal(closed.expectedCash, 10_000);
         assert.equal(closed.variance, 0);
+    });
+
+    describe("reports tenant isolation (C-01)", () => {
+        it("getDailyProfitLoss does not include sales from another business", async () => {
+            const OTHER_BUSINESS = "businesses_other";
+            const ctx = contextFor("accountant", {
+                stocks: [
+                    makeStock({ _id: BLUE_BAND, businessId: BUSINESS, purchasePrice: 1500, price: 2000 }),
+                ],
+                sales: [
+                    makeSale({
+                        _id: "sales_mine",
+                        businessId: BUSINESS,
+                        total: 20_000,
+                        date: "2026-01-15T10:00:00.000Z",
+                        items: [{ stockId: BLUE_BAND, name: "Blue Band", quantity: 10, price: 2000, bv: 0, pv: 0 }],
+                    }),
+                    makeSale({
+                        _id: "sales_theirs",
+                        businessId: OTHER_BUSINESS,
+                        total: 50_000,
+                        date: "2026-01-15T11:00:00.000Z",
+                        items: [{ stockId: BLUE_BAND, name: "Blue Band", quantity: 25, price: 2000, bv: 0, pv: 0 }],
+                    }),
+                ],
+            });
+
+            const result = await call(reports.getDailyProfitLoss, ctx, {
+                date: "2026-01-15",
+                businessId: BUSINESS,
+            });
+
+            assert.equal(result.totalRevenue, 20_000);
+            assert.equal(result.salesCount, 1);
+        });
+
+        it("getMonthlyProfitLoss does not include sales from another business", async () => {
+            const OTHER_BUSINESS = "businesses_other";
+            const ctx = contextFor("accountant", {
+                stocks: [
+                    makeStock({ _id: BLUE_BAND, businessId: BUSINESS, purchasePrice: 1500, price: 2000 }),
+                ],
+                sales: [
+                    makeSale({
+                        _id: "sales_mine",
+                        businessId: BUSINESS,
+                        total: 20_000,
+                        date: "2026-01-15T10:00:00.000Z",
+                        items: [{ stockId: BLUE_BAND, name: "Blue Band", quantity: 10, price: 2000, bv: 0, pv: 0 }],
+                    }),
+                    makeSale({
+                        _id: "sales_theirs",
+                        businessId: OTHER_BUSINESS,
+                        total: 50_000,
+                        date: "2026-01-20T11:00:00.000Z",
+                        items: [{ stockId: BLUE_BAND, name: "Blue Band", quantity: 25, price: 2000, bv: 0, pv: 0 }],
+                    }),
+                ],
+            });
+
+            const result = await call(reports.getMonthlyProfitLoss, ctx, {
+                year: 2026,
+                month: 1,
+                businessId: BUSINESS,
+            });
+
+            assert.equal(result.totalRevenue, 20_000);
+            assert.equal(result.salesCount, 1);
+        });
     });
 });

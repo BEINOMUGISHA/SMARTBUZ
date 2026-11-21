@@ -16,10 +16,11 @@ import {
   explainStatus,
   isWritableStatus,
   loadSubscriptionRow,
+  DEFAULT_PLAN_KEY,
   type SubscriptionStatus,
 } from "./subscriptionState";
 import { hmacSha256Hex, safeEqual } from "./crypto";
-import { serverSecretValue } from "./serverSecret";
+import { serverSecretMatches, serverSecretValue } from "./serverSecret";
 
 /**
  * SMARTBUZ — subscriptions.
@@ -137,6 +138,40 @@ export function periodEnd(cycle: string, from: Date): string {
   if (cycle === "annual") end.setUTCFullYear(end.getUTCFullYear() + 1);
   else end.setUTCMonth(end.getUTCMonth() + 1);
   return end.toISOString();
+}
+
+/**
+ * The most recent **verified** payment for a plan.
+ *
+ * Only a verified payment counts. A pending one is a claim; a verified one
+ * is money that was confirmed against the provider's own record.
+ */
+export async function latestVerifiedPaymentForPlan(
+  ctx: any,
+  businessId: Id<"businesses">,
+  planKey: string
+): Promise<any | null> {
+  const payments = await ctx.db
+    .query("subscriptionPayments")
+    .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+    .collect();
+
+  const matching = payments
+    .filter((p: any) => p.status === "verified" && p.planKey === planKey)
+    .sort((a: any, b: any) =>
+      String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))
+    );
+
+  return matching[0] ?? null;
+}
+
+/** Has this business already paid for this plan? */
+export async function hasVerifiedPaymentForPlan(
+  ctx: any,
+  businessId: Id<"businesses">,
+  planKey: string
+): Promise<boolean> {
+  return (await latestVerifiedPaymentForPlan(ctx, businessId, planKey)) !== null;
 }
 
 /**
@@ -324,6 +359,24 @@ export const getHistory = query({
  *
  * The trial end date is set when the trial starts and is not moved by
  * changing plan: a business cannot extend its trial by changing its mind.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * Choosing a paid plan does not buy it
+ * ────────────────────────────────────────────────────────────────────────
+ *
+ * Entitlements are read from the plan key, so patching that key without
+ * money behind it would be a hole straight through the billing system: a
+ * business could name the most expensive plan and be entitled to it
+ * immediately.
+ *
+ * So the plan key only moves when the money is there:
+ *
+ *  • A **free** plan takes effect at once. Moving to a smaller plan costs
+ *    nobody anything, and blocking it would only trap people on a plan
+ *    they cannot afford.
+ *  • A **paid** plan is recorded as `pendingPlanKey` and takes effect when
+ *    a payment for it is verified. Until then the business keeps the
+ *    entitlements it has already paid for.
  */
 export const selectPlan = mutation({
   args: {
@@ -351,6 +404,10 @@ export const selectPlan = mutation({
 
     if (existing) {
       if (existing.planKey === args.planKey) {
+        // Already on this plan. Clear any stale intention to change.
+        if (existing.pendingPlanKey) {
+          await ctx.db.patch(existing._id, { pendingPlanKey: undefined });
+        }
         return {
           subscriptionId: existing._id,
           planKey: existing.planKey,
@@ -359,11 +416,99 @@ export const selectPlan = mutation({
         };
       }
 
+      const isFreePlan = plan.priceMonthly <= 0 && plan.priceAnnual <= 0;
+
+      if (!isFreePlan) {
+        // A paid plan needs money behind it. Look for a verified payment
+        // for exactly this plan; if there is none, record the intention
+        // and leave the real plan alone.
+        const hasVerifiedPayment = await hasVerifiedPaymentForPlan(
+          ctx,
+          business._id,
+          args.planKey
+        );
+
+        if (!hasVerifiedPayment) {
+          await ctx.db.patch(existing._id, {
+            pendingPlanKey: args.planKey,
+            updatedAt: now.toISOString(),
+          });
+
+          await recordEvent(ctx, {
+            businessId: business._id,
+            subscriptionId: existing._id,
+            type: "plan_change_requested",
+            fromStatus: existing.status,
+            toStatus: existing.status,
+            fromPlan: existing.planKey,
+            toPlan: args.planKey,
+            actorUserId: user._id,
+            actorRole: role,
+            note: `Asked to move to ${args.planKey}. The plan changes once the payment is confirmed.`,
+          });
+
+          await writeAudit(ctx, {
+            businessId: business._id,
+            actorUserId: user._id,
+            actorRole: role,
+            action: "subscription.plan.request",
+            targetType: "subscription",
+            targetId: existing._id,
+            metadata: { fromPlan: existing.planKey, toPlan: args.planKey },
+          });
+
+          return {
+            subscriptionId: existing._id,
+            planKey: existing.planKey,
+            pendingPlanKey: args.planKey,
+            status: computeEffectiveStatus(existing),
+            changed: false,
+            requiresPayment: true,
+            message: `To move to the ${plan.name} plan, submit the payment. The plan changes once the payment is confirmed.`,
+          };
+        }
+      }
+
       const fromPlan = existing.planKey;
-      await ctx.db.patch(existing._id, {
+
+      // ────────────────────────────────────────────────────────────────
+      // A plan change moves the price, the cycle and the period
+      // ────────────────────────────────────────────────────────────────
+      //
+      // The plan used to change and nothing else did. The subscription was
+      // then on a new plan with the old plan's billing cycle, the old
+      // plan's period and — worse — the old plan's period still running.
+      // A business that moved to a cheaper plan kept the expensive one
+      // until the old period ran out, and a business that moved to an
+      // expensive one had never paid for the period it was being given.
+      //
+      // So the three travel together. A free plan ends the paid period:
+      // nothing is being paid for any more. A paid plan takes the cycle
+      // and the period from the payment that paid for it.
+      const patch: Record<string, unknown> = {
         planKey: args.planKey,
+        pendingPlanKey: undefined,
         updatedAt: now.toISOString(),
-      });
+      };
+
+      if (isFreePlan) {
+        patch.billingCycle = "monthly";
+        patch.currentPeriodStart = undefined;
+        patch.currentPeriodEnd = undefined;
+        patch.trialEndsAt = undefined;
+        patch.graceEndsAt = undefined;
+      } else {
+        const payment = await latestVerifiedPaymentForPlan(
+          ctx,
+          business._id,
+          args.planKey
+        );
+        patch.billingCycle = payment?.billingCycle ?? existing.billingCycle;
+        if (payment?.periodStart) patch.currentPeriodStart = payment.periodStart;
+        if (payment?.periodEnd) patch.currentPeriodEnd = payment.periodEnd;
+      }
+
+      await ctx.db.patch(existing._id, patch);
 
       await recordEvent(ctx, {
         businessId: business._id,
@@ -478,11 +623,17 @@ export const activateSubscription = mutation({
       ? new Date(subscription.currentPeriodEnd).getTime()
       : 0;
 
+    // The plan the money was actually for: the plan the business asked for
+    // but had not yet paid for, if there is one, otherwise the plan it is
+    // already on. A payment for the pending plan is what makes the change
+    // real.
+    const targetPlanKey = subscription.pendingPlanKey ?? subscription.planKey;
+
     const verified = payments
       .filter(
         (p: any) =>
           p.status === "verified" &&
-          p.planKey === subscription.planKey &&
+          p.planKey === targetPlanKey &&
           new Date(p.periodEnd ?? p.verifiedAt ?? p.createdAt).getTime() > paidUntil
       )
       .sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt))[0];
@@ -498,8 +649,14 @@ export const activateSubscription = mutation({
     const periodEndDate =
       verified.periodEnd ?? periodEnd(verified.billingCycle, now);
 
+    // The payment settles the plan the business asked for. Moving the plan
+    // key here — and only here — is what makes a paid plan real.
+    const planChanges = targetPlanKey !== subscription.planKey;
+
     await ctx.db.patch(subscription._id, {
       status: "active",
+      ...(planChanges ? { planKey: targetPlanKey } : {}),
+      pendingPlanKey: undefined,
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEndDate,
       updatedAt: now.toISOString(),
@@ -518,14 +675,16 @@ export const activateSubscription = mutation({
       fromStatus: subscription.status,
       toStatus: "active",
       fromPlan: subscription.planKey,
-      toPlan: subscription.planKey,
+      toPlan: targetPlanKey,
       amount: verified.amount,
       currency: verified.currency,
       billingCycle: verified.billingCycle,
       paymentId: verified._id,
       actorUserId: user._id,
       actorRole: role,
-      note: "Subscription activated.",
+      note: planChanges
+        ? `Subscription activated on the ${targetPlanKey} plan.`
+        : "Subscription activated.",
     });
 
     await writeAudit(ctx, {
@@ -541,6 +700,101 @@ export const activateSubscription = mutation({
     await syncBusiness(ctx, business._id);
 
     return { subscriptionId: subscription._id, status: "active" as const, changed: true };
+  },
+});
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Repair
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Give a business that has no subscription row one.
+ *
+ * A business used to be able to exist with no subscription at all — the
+ * registration path forgot to create one — and a business with no
+ * subscription was not gated: it could use every feature and keep writing
+ * for ever. Registration now starts a trial, and the entitlement gate fails
+ * closed, so no new business can be in that state.
+ *
+ * This mutation is how the businesses that *already* are get out of it.
+ * It is a server operation: it is called by
+ * `scripts/backfill-subscriptions.mjs`, and a browser cannot reach it.
+ */
+export const backfillSubscription = mutation({
+  args: {
+    businessId: v.id("businesses"),
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
+    /** The plan to put the trial on. Defaults to the default plan. */
+    planKey: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!serverSecretMatches(args.serverSecret)) {
+      throw new ConvexError(
+        "Forbidden: the backfill can only be run by the SMARTBUZ server."
+      );
+    }
+
+    const existing = await loadSubscriptionRow(ctx, args.businessId);
+    if (existing) {
+      return {
+        businessId: args.businessId,
+        created: false,
+        planKey: existing.planKey,
+        status: existing.status,
+      };
+    }
+
+    const business = await ctx.db.get(args.businessId);
+    if (!business) {
+      throw new ConvexError("That business does not exist.");
+    }
+
+    const planKey = args.planKey ?? DEFAULT_PLAN_KEY;
+    const subscriptionId = await startTrial(ctx, args.businessId, planKey);
+
+    if (!subscriptionId) {
+      throw new ConvexError(`There is no plan called "${planKey}".`);
+    }
+
+    return {
+      businessId: args.businessId,
+      created: true,
+      subscriptionId,
+      planKey,
+      status: "trial" as SubscriptionStatus,
+    };
+  },
+});
+
+/**
+ * The businesses that have no subscription row.
+ *
+ * This is the list `scripts/backfill-subscriptions.mjs` works through. It
+ * is gated by the server secret rather than by a platform role, because
+ * the script runs without signing anybody in — and because a list of every
+ * tenant is exactly the kind of thing that should not be readable by
+ * accident.
+ */
+export const listUnsubscribed = query({
+  args: {
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!serverSecretMatches(args.serverSecret)) {
+      throw new ConvexError(
+        "Forbidden: only the SMARTBUZ server may list the tenants without a subscription."
+      );
+    }
+
+    const businesses = await ctx.db.query("businesses").collect();
+    const subscriptions = await ctx.db.query("subscriptions").collect();
+    const subscribed = new Set(subscriptions.map((s) => s.businessId));
+
+    return businesses
+      .filter((b) => !subscribed.has(b._id))
+      .map((b) => ({ businessId: b._id, name: b.name, slug: b.slug }));
   },
 });
 
@@ -599,7 +853,14 @@ export const registerDevice = mutation({
     }
 
     // How many devices does the plan allow?
+    //
+    // A business with no subscription has no plan, so it has no device
+    // allowance either. Reading that as "0 means unlimited" would let an
+    // unlicensed tenant register devices without limit.
     const snapshot = await subscriptionSnapshot(ctx, business._id);
+    if (!snapshot.subscription) {
+      throw new ConvexError(snapshot.explanation);
+    }
     const limit = snapshot.plan?.deviceLimit ?? 0;
 
     if (limit > 0) {

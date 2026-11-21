@@ -42,6 +42,18 @@ export const add = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         await requirePermission(ctx, tenant.businessId, "finance.expenses.create");
 
+        // An expense is money leaving the business. A negative or zero
+        // amount is not a small mistake: it *adds* to profit when the
+        // reports net expenses off revenue, so a tampered client could
+        // turn an expense into a gain. The amount is therefore rejected
+        // here rather than clamped, because a clamped expense would
+        // still hide the tamper from the person who typed it.
+        if (!Number.isFinite(args.amount) || args.amount <= 0) {
+            throw new ConvexError(
+                "The expense amount must be greater than zero."
+            );
+        }
+
         if (args.branchId) {
             const branch = await ctx.db.get(args.branchId);
             if (!branch || branch.businessId !== tenant.businessId) {
@@ -123,6 +135,15 @@ export const update = mutation({
         if (!existing) throw new Error("Expense not found");
         if (existing.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that expense belongs to another business.");
+        }
+
+        // The same rule as on create: an expense amount is money out, and
+        // an amount of zero or less would inflate net profit when the
+        // reports net expenses off revenue.
+        if (!Number.isFinite(args.amount) || args.amount <= 0) {
+            throw new ConvexError(
+                "The expense amount must be greater than zero."
+            );
         }
 
         await ctx.db.patch(args.id, {

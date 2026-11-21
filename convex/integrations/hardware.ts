@@ -209,10 +209,15 @@ export const saveHardware = mutation({
  * `verified` flag it sends is respected. A browser that reports
  * `verified: true` for a drawer is not believed — the drawer status
  * cannot be read, so the server downgrades it.
+ *
+ * The report is written against the caller's **own** business, which the
+ * server resolves from the session. It used to be written against whatever
+ * `businessId` the browser sent, so anybody could register — or overwrite —
+ * a till device in another tenant.
  */
 export const reportHardware = mutation({
     args: {
-        businessId: v.id("businesses"),
+        businessId: v.optional(v.id("businesses")),
         hardwareKey: v.string(),
         deviceId: v.optional(v.string()),
         /** What the browser did. */
@@ -223,6 +228,12 @@ export const reportHardware = mutation({
         deviceRecordId: v.optional(v.id("hardwareDevices")),
     },
     handler: async (ctx, args) => {
+        // The tenant comes from the session, not from the argument. A
+        // caller who is not a member of the business they name is refused
+        // here, and the write below uses the resolved id regardless.
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+
         const hardware = findHardware(args.hardwareKey);
         if (!hardware) {
             throw new ConvexError(`Unknown hardware: ${args.hardwareKey}.`);
@@ -241,7 +252,7 @@ export const reportHardware = mutation({
 
         if (recordId) {
             const existing = await ctx.db.get(recordId);
-            if (!existing || existing.businessId !== args.businessId) {
+            if (!existing || existing.businessId !== businessId) {
                 throw new ConvexError(
                     "Forbidden: that device belongs to another business."
                 );
@@ -259,7 +270,7 @@ export const reportHardware = mutation({
 
         // No record yet — register one against the till that reported it.
         return await ctx.db.insert("hardwareDevices", {
-            businessId: args.businessId,
+            businessId,
             hardwareKey: args.hardwareKey,
             kind: hardware.kind,
             name: hardware.label,

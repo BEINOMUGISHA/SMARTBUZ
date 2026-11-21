@@ -64,6 +64,28 @@ const environmentField: AdapterConfigField = {
  * Payments
  * ──────────────────────────────────────────────────────────────────────── */
 
+/**
+ * The secret a provider's callback is signed with.
+ *
+ * Every adapter that receives a callback needs one. Without it the callback
+ * cannot be checked against anything, so it is refused — which means an
+ * adapter that takes a callback and has no secret here will never confirm
+ * a payment. The field is required for exactly that reason, and the help
+ * text says so.
+ */
+const webhookSecretField: AdapterConfigField = {
+    key: "webhookSecret",
+    label: "Webhook secret",
+    type: "secret",
+    required: true,
+    resetsVerification: true,
+    help: "A secret of your own choosing, at least 32 characters. The provider signs its callback with it, and SMARTBUZ refuses any callback that does not carry a matching signature. Choose a long, random value and give the provider the same one.",
+};
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The MTN Mobile Money adapter
+ * ──────────────────────────────────────────────────────────────────────── */
+
 const mtnMoMo: AdapterDescriptor = {
     key: "mtn.momo",
     category: "payment",
@@ -135,14 +157,7 @@ const mtnMoMo: AdapterDescriptor = {
             default: "UGX",
             required: true,
         },
-        {
-            key: "webhookSecret",
-            label: "Webhook secret",
-            type: "secret",
-            required: false,
-            resetsVerification: true,
-            help: "A secret of your own choosing. When it is set, a callback that arrives without a matching signature is refused. Choose a long, random value.",
-        },
+        webhookSecretField,
     ],
     verification: {
         method: "Request a sandbox collection and confirm the callback arrives.",
@@ -159,7 +174,7 @@ const mtnMoMo: AdapterDescriptor = {
         "Sandbox collection requests do not reach a real handset, so the end-to-end push and callback cannot be proved on the sandbox alone.",
         "The callback host must be reachable from the public internet; a laptop on a local network cannot receive it.",
         "MTN does not settle same-day for every merchant tier, so a cash book will not always agree with the provider on the same day.",
-        "The signature scheme MTN uses on its callbacks must be confirmed against MTN's own documentation during live testing; until then the callback is accepted on its reference alone.",
+        "The signature scheme MTN uses on its callbacks must be confirmed against MTN's own documentation during live testing; until it is confirmed, a callback that carries no matching signature is refused rather than believed.",
     ],
 };
 
@@ -211,6 +226,7 @@ const airtelMoney: AdapterDescriptor = {
             default: "UGX",
             required: true,
         },
+        webhookSecretField,
     ],
     verification: {
         method: "Request a sandbox collections token and confirm it is issued.",
@@ -241,6 +257,7 @@ const cardGatewayFields: AdapterConfigField[] = [
         resetsVerification: true,
         help: "The gateway's secret API key. Never the publishable key — that is public and cannot make calls.",
     },
+    webhookSecretField,
 ];
 
 const flutterwave: AdapterDescriptor = {

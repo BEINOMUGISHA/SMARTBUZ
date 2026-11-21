@@ -34,7 +34,7 @@
  * and says so.
  */
 
-import { httpAction, mutation, query } from "../_generated/server";
+import { httpAction, internalMutation, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { api, internal } from "../_generated/api";
@@ -140,9 +140,22 @@ export function mapWebhookStatus(value: unknown): "succeeded" | "failed" | "pend
  * The signature is an HMAC-SHA256 of the raw body, hex-encoded, under a
  * secret the business chose. The header name is `x-smartbuz-signature`.
  *
- * When no secret is configured the check cannot be made, and the caller
- * falls back to the reference rule alone. That is weaker, and it is why
- * the adapter's limitations say so.
+ * ────────────────────────────────────────────────────────────────────────
+ * A callback with no secret is refused
+ * ────────────────────────────────────────────────────────────────────────
+ *
+ * When no secret was configured the check could not be made, and the
+ * callback was accepted on its reference alone. That is the whole security
+ * of the callback reduced to "do you know a string that appears in the
+ * provider's message" — and the reference is not a secret: it is printed
+ * on the payment, returned to the browser, and sent to the provider in
+ * clear. Anything that can see a payment receipt could forge the callback
+ * that says it was paid.
+ *
+ * So a callback for an adapter with no webhook secret is refused, and the
+ * reason says exactly what the owner has to do about it. The alternative —
+ * accepting the callback and mentioning the weakness afterwards — is how a
+ * deployment ends up taking money for goods it never delivered.
  */
 export async function verifyWebhookSignature(
     rawBody: string,
@@ -151,9 +164,9 @@ export async function verifyWebhookSignature(
 ): Promise<{ ok: boolean; reason?: string }> {
     if (!secret) {
         return {
-            ok: true,
+            ok: false,
             reason:
-                "No webhook secret is configured for this adapter, so the callback was accepted on its reference alone. Set a webhook secret to check the signature as well.",
+                "This adapter has no webhook secret, so the callback cannot be trusted and was refused. Set a webhook secret for this adapter, then ask the provider to send the signature again.",
         };
     }
 
@@ -243,12 +256,12 @@ export const paymentCallback = httpAction(async (ctx, request) => {
     const check = await verifyWebhookSignature(rawBody, signature, secret);
 
     if (!check.ok) {
-        await ctx.runMutation(api.integrations.webhooks.recordCallback, {
+        await ctx.runMutation(internal.integrations.webhooks.recordCallback, {
             businessId,
             adapterKey: intent.adapterKey,
             reference,
             status: "failed",
-            summary: "A callback was refused because its signature did not match.",
+            summary: "A callback was refused because it could not be trusted.",
             error: check.reason,
         });
 
@@ -260,8 +273,8 @@ export const paymentCallback = httpAction(async (ctx, request) => {
 
     const status = mapWebhookStatus(
         (payload as Record<string, unknown>)?.status ??
-            (payload as Record<string, unknown>)?.state ??
-            (payload as Record<string, unknown>)?.result
+        (payload as Record<string, unknown>)?.state ??
+        (payload as Record<string, unknown>)?.result
     );
 
     const providerReference = readProviderReference(payload);
@@ -269,7 +282,7 @@ export const paymentCallback = httpAction(async (ctx, request) => {
     if (status === "pending") {
         // The provider has not finished deciding. The payment stays
         // pending, which is the honest answer.
-        await ctx.runMutation(api.integrations.webhooks.recordCallback, {
+        await ctx.runMutation(internal.integrations.webhooks.recordCallback, {
             businessId,
             adapterKey: intent.adapterKey,
             reference,
@@ -284,7 +297,7 @@ export const paymentCallback = httpAction(async (ctx, request) => {
         });
     }
 
-    await ctx.runMutation(api.integrations.payments.confirmPayment, {
+    await ctx.runMutation(internal.integrations.payments.confirmPayment, {
         businessId,
         reference,
         providerReference,
@@ -346,7 +359,7 @@ export function webhookSecretName(): string {
  * A callback that was refused is recorded too — a stream of refused
  * callbacks is worth knowing about.
  */
-export const recordCallback = mutation({
+export const recordCallback = internalMutation({
     args: {
         businessId: v.id("businesses"),
         adapterKey: v.string(),

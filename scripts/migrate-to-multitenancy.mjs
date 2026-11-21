@@ -17,6 +17,12 @@
  * The operator authenticates with their own account, so the migration runs
  * with the same permissions as that person — an administrator of the
  * business being migrated.
+ *
+ * The server additionally requires the server-to-backend secret on every
+ * call (`SMARTBUZ_SERVER_SECRET`, or `RESEND_API_KEY` / `SESSION_SECRET` as
+ * fallbacks). That secret is what keeps the migration a deployment-time
+ * operation: a browser cannot obtain it, so a tenant administrator cannot
+ * rewrite the deployment even though they hold an owner role.
  */
 import { convex, ok, errText, signAccessToken, ENV, CONVEX_URL, SITE_URL } from "./lib/harness.mjs";
 
@@ -35,10 +41,27 @@ const password = arg("password") || ENV.MIGRATION_PASSWORD || "";
  */
 const businessId = arg("business") || ENV.MIGRATION_BUSINESS_ID || null;
 
+/**
+ * The server-to-backend secret. The Convex side refuses every migration call
+ * without it, so the script must send exactly the same value that the
+ * deployment has configured. The value itself is never logged.
+ */
+const serverSecret =
+  ENV.SMARTBUZ_SERVER_SECRET || ENV.RESEND_API_KEY || ENV.SESSION_SECRET || "";
+
 if (!email || !password) {
   console.error(
     "Usage: node scripts/migrate-to-multitenancy.mjs --email <login> --password <password>\n" +
       "       (or set MIGRATION_EMAIL / MIGRATION_PASSWORD in .env.local)"
+  );
+  process.exit(1);
+}
+
+if (!serverSecret || serverSecret.length < 16) {
+  console.error(
+    "No server secret is configured. The migration can only be run by the server.\n" +
+      "Set SMARTBUZ_SERVER_SECRET (or RESEND_API_KEY / SESSION_SECRET) in .env.local,\n" +
+      "using the same value the Convex deployment has configured."
   );
   process.exit(1);
 }
@@ -71,7 +94,7 @@ async function main() {
   };
 
   /* ── 3. status before ────────────────────────────────────────────── */
-  const before = await convex("query", "migration:migrationStatus", {}, token);
+  const before = await convex("query", "migration:migrationStatus", { serverSecret }, token);
   console.log("\nBefore migration:");
   console.log(
     ok(before)
@@ -92,7 +115,7 @@ async function main() {
 
   /* ── 4. copy the business profiles ───────────────────────────────── */
   console.log("\n→ Copying legacy business profiles…");
-  const profiles = await call("migration:migrateBusinessProfiles", {});
+  const profiles = await call("migration:migrateBusinessProfiles", { serverSecret });
   console.log(
     `   ${profiles.profiles} profile(s) → ${profiles.businesses} business(es).`
   );
@@ -107,6 +130,7 @@ async function main() {
   const members = await call("migration:migrateMemberships", {
     mapping: profiles.mapping,
     businessId: targetBusinessId ?? undefined,
+    serverSecret,
   });
   console.log(
     `   ${members.membershipsCreated} membership(s) created, ${members.activeBusinessSet} user(s) given an active business.`
@@ -117,6 +141,7 @@ async function main() {
   const stamped = await call("migration:migrateTenantRows", {
     mapping: profiles.mapping,
     businessId: targetBusinessId ?? undefined,
+    serverSecret,
   });
   for (const [table, count] of Object.entries(stamped.report)) {
     if (count > 0) console.log(`   ${table}: ${count} row(s)`);
@@ -126,7 +151,7 @@ async function main() {
   }
 
   /* ── 7. status after ─────────────────────────────────────────────── */
-  const after = await convex("query", "migration:migrationStatus", {}, token);
+  const after = await convex("query", "migration:migrationStatus", { serverSecret }, token);
   console.log("\nAfter migration:");
   console.log(
     ok(after)

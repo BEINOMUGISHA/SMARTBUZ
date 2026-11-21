@@ -28,7 +28,7 @@
  * duplicate is refused.
  */
 
-import { action, internalQuery, mutation, query } from "../_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
@@ -175,7 +175,7 @@ export const initiatePayment = action({
             result = await provider.initiate(context, request);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            await ctx.runMutation(api.integrations.payments.recordPaymentOutcome, {
+            await ctx.runMutation(internal.integrations.payments.recordPaymentOutcome, {
                 businessId,
                 adapterKey: args.adapterKey,
                 reference,
@@ -194,7 +194,7 @@ export const initiatePayment = action({
             throw new ConvexError(message);
         }
 
-        await ctx.runMutation(api.integrations.payments.recordPaymentOutcome, {
+        await ctx.runMutation(internal.integrations.payments.recordPaymentOutcome, {
             businessId,
             adapterKey: args.adapterKey,
             reference,
@@ -229,7 +229,7 @@ export const initiatePayment = action({
  *
  * An action cannot write to the database, so the action calls this.
  */
-export const recordPaymentOutcome = mutation({
+export const recordPaymentOutcome = internalMutation({
     args: {
         businessId: v.id("businesses"),
         adapterKey: v.string(),
@@ -321,7 +321,7 @@ export const recordPaymentOutcome = mutation({
  * paths end up here, and both end up writing down who or what confirmed
  * it.
  */
-export const confirmPayment = mutation({
+export const confirmPayment = internalMutation({
     args: {
         businessId: v.id("businesses"),
         reference: v.string(),
@@ -463,7 +463,7 @@ export const verifyPaymentWithProvider = action({
             result = await provider.verify(context, args.reference);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            await ctx.runMutation(api.integrations.payments.recordProviderError, {
+            await ctx.runMutation(internal.integrations.payments.recordProviderError, {
                 businessId,
                 adapterKey: intent.adapterKey,
                 reference: args.reference,
@@ -474,7 +474,7 @@ export const verifyPaymentWithProvider = action({
         }
 
         if (result.status === "succeeded" || result.status === "failed") {
-            await ctx.runMutation(api.integrations.payments.confirmPayment, {
+            await ctx.runMutation(internal.integrations.payments.confirmPayment, {
                 businessId,
                 reference: args.reference,
                 providerReference: result.providerReference,
@@ -494,8 +494,16 @@ export const verifyPaymentWithProvider = action({
     },
 });
 
-/** Write down a provider call that failed. */
-export const recordProviderError = mutation({
+/**
+ * Write down a provider call that failed.
+ *
+ * This is **internal**: it records what happened during a payment attempt
+ * that the server itself made. As a public mutation it was a hole — anybody
+ * could write a failed-payment event against any business, which is both a
+ * way to pollute another tenant's records and a way to make the operator
+ * believe a payment failed when it did not.
+ */
+export const recordProviderError = internalMutation({
     args: {
         businessId: v.id("businesses"),
         adapterKey: v.string(),
