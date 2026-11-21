@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendAuthEmail } from "@/lib/email";
 import { CONVEX_URL, IS_CONVEX_URL_CONFIGURED } from "@/lib/convex-url";
+import { clientIp, throttleKey } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
@@ -68,12 +69,17 @@ export async function POST(request: NextRequest) {
     // Step 1: generate the reset code server-side.
     // `serverSecret` proves this call comes from our own server, so the
     // Convex mutation only reveals the code to us — never to a browser.
+    // `clientIp` lets the backend cap how much mail one caller can cause.
     const convexRes = await fetch(`${CONVEX_URL}/api/mutation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         path: "users:requestPasswordReset",
-        args: { email: normalizedEmail, serverSecret: secret },
+        args: {
+          email: normalizedEmail,
+          serverSecret: secret,
+          clientIp: throttleKey("ip", clientIp(request) ?? "unknown"),
+        },
         format: "json",
       }),
     });

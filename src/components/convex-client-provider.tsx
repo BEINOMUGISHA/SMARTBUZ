@@ -3,9 +3,20 @@
 
 import { ReactNode, useEffect } from "react";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { toast } from "sonner";
 import { CONVEX_URL, warnIfConvexUnconfigured } from "@/lib/convex-url";
 
 const convex = new ConvexReactClient(CONVEX_URL);
+
+/**
+ * Whether the operator has already been told that the session could not be
+ * confirmed.
+ *
+ * The Convex client asks for a new token repeatedly, so the failure is
+ * reported once — a toast that repeats itself every few seconds is worse
+ * than no toast at all.
+ */
+let tokenFailureReported = false;
 
 /**
  * Fetch a fresh access token for the signed-in user.
@@ -34,11 +45,27 @@ async function fetchAccessToken(): Promise<string | null> {
         `[SMARTBUZ] could not get a Convex access token (HTTP ${res.status}):`,
         body?.error ?? "no error message"
       );
+
+      // The console is not where the operator is looking. Without this the
+      // screen simply stops filling in, and nothing says why.
+      if (!tokenFailureReported) {
+        tokenFailureReported = true;
+        toast.error(
+          "The server could not confirm your session, so your data cannot be loaded. Please try again in a moment."
+        );
+      }
       return null;
     }
     const data = await res.json();
+    tokenFailureReported = false;
     return typeof data?.token === "string" ? data.token : null;
   } catch {
+    if (!tokenFailureReported) {
+      tokenFailureReported = true;
+      toast.error(
+        "The server could not be reached, so your data cannot be loaded. Check your connection and try again."
+      );
+    }
     return null;
   }
 }

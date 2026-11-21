@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendAuthEmail } from "@/lib/email";
 import { CONVEX_URL, IS_CONVEX_URL_CONFIGURED } from "@/lib/convex-url";
+import { clientIp, throttleKey } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +68,11 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         path: "users:requestVerification",
-        args: { email: normalizedEmail, serverSecret: secret },
+        args: {
+          email: normalizedEmail,
+          serverSecret: secret,
+          clientIp: throttleKey("ip", clientIp(request) ?? "unknown"),
+        },
         format: "json",
       }),
     });

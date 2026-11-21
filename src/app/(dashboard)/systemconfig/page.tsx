@@ -41,6 +41,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { formatError, cn } from "@/lib/utils";
+import { reportError } from "@/components/error-feedback";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AuditLogsManager } from "./audit-logs";
@@ -933,6 +934,30 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
         }
     };
 
+    /**
+     * The quantity stepper and the remove button fire straight at the server.
+     *
+     * A refusal there used to vanish into the console, leaving the operator
+     * looking at a quantity that had not actually changed — or at a product
+     * that was still attached to the promotion.
+     */
+    const handleQuantityChange = async (productId: Id<"promotionProducts">, quantity: number) => {
+        try {
+            await updateQuantity({ id: productId, quantity, userId: user!._id });
+        } catch (error) {
+            reportError(error, "The required quantity could not be changed.");
+        }
+    };
+
+    const handleRemove = async (productId: Id<"promotionProducts">) => {
+        try {
+            await removeProduct({ id: productId, userId: user!._id });
+            toast.success("Product removed from the promotion");
+        } catch (error) {
+            reportError(error, "The product could not be removed from the promotion.");
+        }
+    };
+
     return (
         <div className="space-y-6">
             <form onSubmit={handleAdd} className="bg-muted/20 p-2 rounded-lg border grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
@@ -1006,7 +1031,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                                             variant="outline"
                                             size="icon"
                                             className="h-6 w-6"
-                                            onClick={() => updateQuantity({ id: pp._id, quantity: pp.requiredQuantity - 1, userId: user!._id })}
+                                            onClick={() => handleQuantityChange(pp._id, pp.requiredQuantity - 1)}
                                             disabled={pp.requiredQuantity <= 1}
                                         >
                                             <Minus className="h-3 w-3" />
@@ -1016,7 +1041,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                                             variant="outline"
                                             size="icon"
                                             className="h-6 w-6"
-                                            onClick={() => updateQuantity({ id: pp._id, quantity: pp.requiredQuantity + 1, userId: user!._id })}
+                                            onClick={() => handleQuantityChange(pp._id, pp.requiredQuantity + 1)}
                                         >
                                             <Plus className="h-3 w-3" />
                                         </Button>
@@ -1026,7 +1051,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => removeProduct({ id: pp._id, userId: user!._id })}
+                                        onClick={() => handleRemove(pp._id)}
                                         className="text-destructive hover:bg-destructive/10 hover:text-destructive h-9 w-9 rounded-full transition-all"
                                     >
                                         <Trash2 className="h-4 w-4" />

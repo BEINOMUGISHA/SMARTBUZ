@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { businessCurrency } from "@/lib/currency";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Loader2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { describeError, isReported } from "@/components/error-feedback";
 
 /* ───────────────────────── page header ───────────────────────── */
 
@@ -284,7 +286,13 @@ export function FormDialog({
             setValues({});
             onOpenChange(false);
         } catch (err: any) {
-            setError(err?.message ?? "Could not save. Please try again.");
+            // The raw Convex message carries a request id and a stack trace.
+            // The operator needs the sentence, not the telemetry. A failure
+            // the caller has already reported is left alone, so the same
+            // sentence is not shown twice.
+            if (!isReported(err)) {
+                setError(describeError(err, "Could not save. Please try again."));
+            }
         } finally {
             setSubmitting(false);
         }
@@ -420,8 +428,8 @@ export function RecordList({
 
 /* ───────────────────────── formatters ───────────────────────── */
 
-export function ugx(amount: number | undefined | null): string {
-    return `UGX ${Math.round(amount ?? 0).toLocaleString("en-UG")}`;
+export function ugx(amount: number | undefined | null, currency?: string | null): string {
+    return `${businessCurrency(currency)} ${Math.round(amount ?? 0).toLocaleString("en-UG")}`;
 }
 
 export function shortDate(value?: string | null): string {

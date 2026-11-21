@@ -50,3 +50,9 @@ next-env.d.ts
 .next-dev.log
 scripts/fixtures/export/
 scripts/fixtures/*.zip
+
+# The scratch directory the QA audit kept its raw output in, and the test
+# log. Neither belongs in the repository: the first is a large machine
+# report and the second is overwritten on every run.
+.qa-audit/
+.test-out.txt

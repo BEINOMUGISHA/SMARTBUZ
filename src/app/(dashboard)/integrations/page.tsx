@@ -99,6 +99,38 @@ function verificationBadge(status: string) {
     }
 }
 
+/**
+ * The sandbox/live wording for an adapter.
+ *
+ * Every adapter starts pointed at the provider's sandbox, because a sandbox
+ * is the only place a new integration can be tried without risk. The danger
+ * is that nobody notices: an owner switches the adapter on, believes real
+ * money is moving, and watches a sandbox account instead. So the interface
+ * says plainly which side of that line the adapter is on.
+ */
+function sandboxNotice(adapter: any) {
+    if (!adapter.enabled) return null;
+
+    if (adapter.sandbox) {
+        return {
+            short: "Sandbox",
+            label:
+                adapter.category === "payment"
+                    ? "Sandbox — this will not move real money"
+                    : "Sandbox — messages will not reach a real handset",
+            className:
+                "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+        };
+    }
+
+    return {
+        short: "Live",
+        label: "Live",
+        className:
+            "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20",
+    };
+}
+
 /** The icon for an adapter's category. */
 function categoryIcon(category: string) {
     switch (category) {
@@ -128,6 +160,15 @@ export default function IntegrationsPage() {
         canView ? {} : "skip"
     );
     const packages = useQuery(api.packages.manage.listPackages, canView ? {} : "skip");
+
+    // The payments taken through an adapter. The query needs the finance
+    // permission, so it is skipped rather than allowed to fail for a role
+    // that is allowed to configure an adapter but not to read the takings.
+    const canSeePayments = can("finance.view");
+    const paymentHistory = useQuery(
+        api.integrations.payments.listPaymentIntents,
+        canSeePayments ? { limit: 25 } : "skip"
+    );
 
     const saveConfig = useMutation(api.integrations.manage.saveAdapterConfig);
     const setEnabled = useMutation(api.integrations.manage.setAdapterEnabled);
@@ -296,6 +337,77 @@ export default function IntegrationsPage() {
                                 ))}
                             </div>
 
+                            {/* ── Payment history ─────────────────────────── */}
+                            {/*
+                             * The sandbox flag is repeated on every payment,
+                             * not only on the adapter. A row in this list is
+                             * the evidence a business shows a customer that
+                             * they paid, so it must say on its own whether
+                             * any real money moved.
+                             */}
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-semibold flex items-center gap-2">
+                                    <Banknote className="h-4 w-4" />
+                                    Payment history
+                                </h3>
+
+                                {!canSeePayments ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        Your role can configure the payment providers but
+                                        cannot read the payments taken through them.
+                                    </p>
+                                ) : paymentHistory === undefined ? (
+                                    <LoadingState rows={2} />
+                                ) : paymentHistory.length === 0 ? (
+                                    <EmptyState
+                                        title="No payments yet"
+                                        hint="Payments taken through a provider appear here, with the environment they were taken in."
+                                    />
+                                ) : (
+                                    <div className="space-y-2">
+                                        {paymentHistory.map((payment: any) => (
+                                            <div
+                                                key={payment.id}
+                                                className="rounded-xl border bg-card p-3 shadow-sm"
+                                            >
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="font-mono text-xs">
+                                                        {payment.reference}
+                                                    </span>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={
+                                                            payment.sandbox
+                                                                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                                                : "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20"
+                                                        }
+                                                    >
+                                                        {payment.sandbox
+                                                            ? "Sandbox — no real money moved"
+                                                            : "Live — real money"}
+                                                    </Badge>
+                                                    <Badge variant="outline">
+                                                        {payment.status}
+                                                    </Badge>
+                                                </div>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    {payment.adapterKey} ·{" "}
+                                                    {payment.currency}{" "}
+                                                    {Number(payment.amount).toLocaleString()} ·
+                                                    created{" "}
+                                                    {new Date(
+                                                        payment.createdAt
+                                                    ).toLocaleString()}
+                                                    {payment.phone
+                                                        ? ` · ${payment.phone}`
+                                                        : ""}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="space-y-3">
                                 <h3 className="text-sm font-semibold flex items-center gap-2">
                                     <MessageSquare className="h-4 w-4" />
@@ -405,6 +517,7 @@ function AdapterCard({
     const badge = verificationBadge(adapter.verificationStatus);
     const BadgeIcon = badge.icon;
     const Icon = categoryIcon(adapter.category);
+    const environment = sandboxNotice(adapter);
 
     const pendingConfig: Record<string, unknown> = {};
     const pendingSecrets: Record<string, string> = {};
@@ -438,6 +551,14 @@ function AdapterCard({
                                     <BadgeIcon className="h-3 w-3 mr-1" />
                                     {badge.label}
                                 </Badge>
+                                {environment && (
+                                    <Badge
+                                        variant="outline"
+                                        className={environment.className}
+                                    >
+                                        {environment.label}
+                                    </Badge>
+                                )}
                             </CardTitle>
                             <CardDescription className="mt-1">
                                 {adapter.summary}
@@ -478,6 +599,69 @@ function AdapterCard({
             </CardHeader>
 
             <CardContent className="space-y-3">
+                {/*
+                 * The sandbox warning.
+                 *
+                 * It is in the body, not behind a hover, because the moment
+                 * it is missed is the moment a business believes it has
+                 * taken a payment it never took.
+                 */}
+                {adapter.enabled && adapter.sandbox && (
+                    <div
+                        role="alert"
+                        className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3"
+                    >
+                        <div className="flex items-start gap-2">
+                            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <div className="text-xs min-w-0 space-y-1.5">
+                                <p className="font-semibold text-amber-800 dark:text-amber-200">
+                                    Sandbox —{" "}
+                                    {adapter.category === "payment"
+                                        ? "this will not move real money."
+                                        : "messages will not reach a real handset."}
+                                </p>
+                                <p className="text-muted-foreground">
+                                    This adapter is switched on, but it is still pointed at
+                                    the provider&apos;s sandbox. Nothing it does reaches a
+                                    real account.
+                                </p>
+                                <p className="text-muted-foreground">
+                                    {canManage ? (
+                                        <>
+                                            To go live, open{" "}
+                                            <span className="font-medium text-foreground">
+                                                Configure
+                                            </span>
+                                            , set{" "}
+                                            <span className="font-medium text-foreground">
+                                                Environment
+                                            </span>{" "}
+                                            to{" "}
+                                            <span className="font-medium text-foreground">
+                                                Live
+                                            </span>
+                                            , save, and then run the verification test
+                                            again.
+                                        </>
+                                    ) : (
+                                        <>
+                                            To go live, an administrator has to set{" "}
+                                            <span className="font-medium text-foreground">
+                                                Environment
+                                            </span>{" "}
+                                            to{" "}
+                                            <span className="font-medium text-foreground">
+                                                Live
+                                            </span>{" "}
+                                            and re-verify the adapter.
+                                        </>
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* What has to happen before it works */}
                 <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
                     <div className="flex items-start gap-2">

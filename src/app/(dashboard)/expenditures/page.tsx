@@ -33,6 +33,7 @@ import { format, startOfMonth, endOfMonth, endOfDay, startOfDay } from "date-fns
 import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/date-range-picker";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
+import { describeError } from "@/components/error-feedback";
 
 type ExpenseForm = {
     amount: string;
@@ -149,7 +150,9 @@ export default function ExpendituresPage() {
             resetForm();
         } catch (error) {
             console.error(error);
-            toast.error("Failed to save expense");
+            // "Failed to save expense" tells the operator nothing about why
+            // the server refused it, so the reason is carried through.
+            toast.error(describeError(error, "The expense could not be saved."));
         }
     };
 
@@ -162,7 +165,7 @@ export default function ExpendituresPage() {
             toast.success("Expense deleted successfully");
         } catch (error) {
             console.error(error);
-            toast.error("Failed to delete expense");
+            toast.error(describeError(error, "The expense could not be deleted."));
         }
     };
 

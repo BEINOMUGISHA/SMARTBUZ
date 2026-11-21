@@ -13,6 +13,8 @@
  * exports should not pay for the libraries on every page load.
  */
 
+import { businessCurrency } from "./currency";
+
 export interface ExportColumn {
     /** The heading shown for this column. */
     header: string;
@@ -217,11 +219,18 @@ export function number(value: unknown): string {
     return n.toLocaleString();
 }
 
-/** Format a number as UGX. */
-export function ugx(value: unknown): string {
+/**
+ * Format a number as money.
+ *
+ * The currency is the business's own. It used to be the constant "UGX",
+ * which meant an exported statement for a dollar business was labelled in
+ * shillings — and, worse, nobody could tell which currency the figures
+ * were actually in.
+ */
+export function ugx(value: unknown, currency?: string | null): string {
     const n = Number(value ?? 0);
     if (!Number.isFinite(n)) return "";
-    return `UGX ${n.toLocaleString()}`;
+    return `${businessCurrency(currency)} ${n.toLocaleString()}`;
 }
 
 /** Format a number as a percentage. */

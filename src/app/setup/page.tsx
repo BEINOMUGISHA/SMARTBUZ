@@ -114,7 +114,6 @@ export default function SetupPage() {
     const { user } = useAuth();
     const existingProfile = useQuery(api.businesses.getActive, {});
     const plans = useQuery(api.plans.list, {});
-    const chosenPlan = (plans ?? []).find((p) => p.key === planKey) ?? null;
 
     const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
     const [selected, setSelected] = useState<CategoryId | null>(null);
@@ -125,6 +124,12 @@ export default function SetupPage() {
     const [openingFloat, setOpeningFloat] = useState("0");
     const [seedProducts, setSeedProducts] = useState(true);
     const [saving, setSaving] = useState(false);
+
+    // The selected plan is resolved only after `planKey` has been declared.
+    // Reading it earlier is a temporal-dead-zone crash, and because the read
+    // hides inside the `.find()` callback neither TypeScript nor ESLint sees
+    // it — the wizard simply threw on every load.
+    const chosenPlan = (plans ?? []).find((p) => p.key === planKey) ?? null;
 
     const createBusiness = useMutation(api.businesses.createForCurrentUser);
     const setCategory = useMutation(api.businesses.setCategory);

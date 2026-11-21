@@ -21,8 +21,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
-import { useActiveCategory } from "@/hooks/use-active-category";
-import { groupNavigation } from "@/lib/category-nav";
+import { useActiveCategory, type ActiveCategory } from "@/hooks/use-active-category";
+import { groupNavigation, type NavItem } from "@/lib/category-nav";
 import { cn } from "@/lib/utils";
 import { OfflineStatusBanner } from "@/components/offline/sync-status";
 import { SyncProvider } from "@/components/offline/sync-provider";
@@ -41,64 +41,57 @@ const reportsSubItems = [
     { href: "/reports/profit", label: "Profit Margin" },
 ];
 
-export default function DashboardLayout({
-    children,
-}: {
-    children: React.ReactNode;
-}) {
-    const { logout, user, isLoading, activeBusiness } = useAuth();
-    const router = useRouter();
-    const pathname = usePathname();
-    const [isMobileOpen, setIsMobileOpen] = useState(false);
-    const [isCollapsed, setIsCollapsed] = useState(false);
-    const [isReportsOpen, setIsReportsOpen] = useState(false);
+/**
+ * What the sidebar needs from the shell.
+ *
+ * The sidebar is rendered twice — once in the desktop rail and once in the
+ * mobile sheet — so everything it shows has to arrive as a prop.
+ */
+interface SidebarContentProps {
+    businessName: string;
+    businessSubtitle: string;
+    category: ActiveCategory["category"];
+    accent: ActiveCategory["accent"];
+    navigation: NavItem[];
+    navGroups: ReturnType<typeof groupNavigation>;
+    pathname: string;
+    isCollapsed: boolean;
+    isReportsOpen: boolean;
+    isPlatformAdmin: boolean;
+    user: { first_name?: string; last_name?: string; email?: string };
+    onToggleReports: () => void;
+    onToggleCollapsed: () => void;
+    onNavigate: () => void;
+    onLogout: () => void;
+}
 
-    const { category, profile, navigation, accent } = useActiveCategory(activeBusiness?.role);
-
-    // The platform console is for the SMARTBUZ team, not for tenants.
-    const whoami = useQuery(api.platform.whoami, {});
-    const isPlatformAdmin = Boolean(whoami?.platformRole);
-
-    const businessName = profile?.name || "SMARTBUZ POS";
-    const businessSubtitle = category?.name || "Point of Sale";
-
-    useEffect(() => {
-        if (!isLoading && !user) {
-            router.push("/auth/login");
-        }
-    }, [user, isLoading, router]);
-
-    // Auto-expand Reports if on a reports route
-    useEffect(() => {
-        if (pathname.startsWith("/reports")) {
-            setIsReportsOpen(true);
-        }
-    }, [pathname]);
-
-    if (isLoading || !user) {
-        return (
-            <div className="flex h-screen w-full items-center justify-center bg-background">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 text-2xl font-black text-white shadow-lg animate-pulse">
-                        {businessName.charAt(0)}
-                    </div>
-                    <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        {businessName}
-                    </div>
-                    <div className="h-1 w-32 overflow-hidden rounded-full bg-muted">
-                        <div
-                            className="h-full w-1/2 animate-loading-bar bg-primary"
-                            style={{ width: "50%" }}
-                        />
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    const navGroups = groupNavigation(navigation);
-
-    const SidebarContent = () => (
+/**
+ * The sidebar body.
+ *
+ * It lives at module scope deliberately. A component declared inside the
+ * layout function is a brand new component type on every render, so React
+ * unmounts and remounts the whole subtree and the operator's navigation
+ * state is thrown away every time anything in the shell changes.
+ */
+export function SidebarContent(props: SidebarContentProps) {
+    const {
+        isCollapsed,
+        accent,
+        category,
+        businessName,
+        businessSubtitle,
+        navGroups,
+        pathname,
+        navigation,
+        isReportsOpen,
+        isPlatformAdmin,
+        user,
+        onToggleReports,
+        onToggleCollapsed,
+        onNavigate,
+        onLogout,
+    } = props;
+    return (
         <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
             {/* Logo Area */}
             <div
@@ -160,7 +153,7 @@ export default function DashboardLayout({
                                     <Link
                                         key={item.href}
                                         href={item.href}
-                                        onClick={() => setIsMobileOpen(false)}
+                                        onClick={() => onNavigate()}
                                         className={cn(
                                             "group flex items-center rounded-xl py-3 text-sm font-medium transition-all duration-200 ease-in-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                                             isActive
@@ -195,7 +188,7 @@ export default function DashboardLayout({
                         <div className="pt-2">
                             {!isCollapsed && (
                                 <button
-                                    onClick={() => setIsReportsOpen(!isReportsOpen)}
+                                    onClick={() => onToggleReports()}
                                     className={cn(
                                         "flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-all hover:bg-sidebar-accent",
                                         pathname.startsWith("/reports")
@@ -232,7 +225,7 @@ export default function DashboardLayout({
                                             <Link
                                                 key={item.href}
                                                 href={item.href}
-                                                onClick={() => setIsMobileOpen(false)}
+                                                onClick={() => onNavigate()}
                                                 className={cn(
                                                     "flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium transition-all hover:bg-sidebar-accent/50",
                                                     isActive
@@ -255,7 +248,7 @@ export default function DashboardLayout({
             <div className="space-y-2 border-t border-sidebar-border/50 p-4">
                 <Link
                     href="/subscription"
-                    onClick={() => setIsMobileOpen(false)}
+                    onClick={() => onNavigate()}
                     className={cn(
                         "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         pathname === "/subscription" && "bg-sidebar-accent text-sidebar-accent-foreground",
@@ -269,7 +262,7 @@ export default function DashboardLayout({
 
                 <Link
                     href="/devices"
-                    onClick={() => setIsMobileOpen(false)}
+                    onClick={() => onNavigate()}
                     className={cn(
                         "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         pathname === "/devices" && "bg-sidebar-accent text-sidebar-accent-foreground",
@@ -283,7 +276,7 @@ export default function DashboardLayout({
 
                 <Link
                     href="/integrations"
-                    onClick={() => setIsMobileOpen(false)}
+                    onClick={() => onNavigate()}
                     className={cn(
                         "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         pathname === "/integrations" && "bg-sidebar-accent text-sidebar-accent-foreground",
@@ -297,7 +290,7 @@ export default function DashboardLayout({
 
                 <Link
                     href="/settings"
-                    onClick={() => setIsMobileOpen(false)}
+                    onClick={() => onNavigate()}
                     className={cn(
                         "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         pathname === "/settings" && "bg-sidebar-accent text-sidebar-accent-foreground",
@@ -312,7 +305,7 @@ export default function DashboardLayout({
                 {isPlatformAdmin && (
                     <Link
                         href="/platform"
-                        onClick={() => setIsMobileOpen(false)}
+                        onClick={() => onNavigate()}
                         className={cn(
                             "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                             pathname === "/platform" && "bg-sidebar-accent text-sidebar-accent-foreground",
@@ -350,7 +343,7 @@ export default function DashboardLayout({
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => logout()}
+                            onClick={() => onLogout()}
                             title="Logout"
                         >
                             <LogOut className="h-4 w-4" />
@@ -363,7 +356,7 @@ export default function DashboardLayout({
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => logout()}
+                            onClick={() => onLogout()}
                             title="Logout"
                         >
                             <LogOut className="h-4 w-4" />
@@ -377,7 +370,7 @@ export default function DashboardLayout({
                     variant="outline"
                     size="icon"
                     className="h-6 w-6 rounded-full border bg-background shadow-md"
-                    onClick={() => setIsCollapsed(!isCollapsed)}
+                    onClick={() => onToggleCollapsed()}
                 >
                     <ChevronRight
                         className={cn(
@@ -389,6 +382,85 @@ export default function DashboardLayout({
             </div>
         </div>
     );
+}
+
+export default function DashboardLayout({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    const { logout, user, isLoading, activeBusiness } = useAuth();
+    const router = useRouter();
+    const pathname = usePathname();
+    const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isReportsOpen, setIsReportsOpen] = useState(false);
+
+    const { category, profile, navigation, accent } = useActiveCategory(activeBusiness?.role);
+
+    // The platform console is for the SMARTBUZ team, not for tenants.
+    const whoami = useQuery(api.platform.whoami, {});
+    const isPlatformAdmin = Boolean(whoami?.platformRole);
+
+    const businessName = profile?.name || "SMARTBUZ POS";
+    const businessSubtitle = category?.name || "Point of Sale";
+
+    useEffect(() => {
+        if (!isLoading && !user) {
+            router.push("/auth/login");
+        }
+    }, [user, isLoading, router]);
+
+    // Auto-expand Reports if on a reports route
+    useEffect(() => {
+        if (pathname.startsWith("/reports")) {
+            setIsReportsOpen(true);
+        }
+    }, [pathname]);
+
+    if (isLoading || !user) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-background">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 text-2xl font-black text-white shadow-lg animate-pulse">
+                        {businessName.charAt(0)}
+                    </div>
+                    <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        {businessName}
+                    </div>
+                    <div className="h-1 w-32 overflow-hidden rounded-full bg-muted">
+                        <div
+                            className="h-full w-1/2 animate-loading-bar bg-primary"
+                            style={{ width: "50%" }}
+                        />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    const navGroups = groupNavigation(navigation);
+
+    // The sidebar is rendered twice — in the desktop rail and in the mobile
+    // sheet — so both copies are given the same props. They are the same
+    // component type, which is what keeps the navigation state alive.
+    const sidebarProps: SidebarContentProps = {
+        businessName,
+        businessSubtitle,
+        category,
+        accent,
+        navigation,
+        navGroups,
+        pathname,
+        isCollapsed,
+        isReportsOpen,
+        isPlatformAdmin,
+        user,
+        onToggleReports: () => setIsReportsOpen((open) => !open),
+        onToggleCollapsed: () => setIsCollapsed((collapsed) => !collapsed),
+        onNavigate: () => setIsMobileOpen(false),
+        onLogout: () => void logout(),
+    };
 
     return (
         <SyncProvider>
@@ -400,7 +472,7 @@ export default function DashboardLayout({
                     isCollapsed ? "w-[80px]" : "w-[280px]"
                 )}
             >
-                <SidebarContent />
+                <SidebarContent {...sidebarProps} />
             </aside>
 
             {/* Main Content Area */}
@@ -430,7 +502,7 @@ export default function DashboardLayout({
                                 </Button>
                             </SheetTrigger>
                             <SheetContent side="left" className="w-[300px] border-r-0 p-0">
-                                <SidebarContent />
+                                <SidebarContent {...sidebarProps} />
                             </SheetContent>
                         </Sheet>
                     </div>

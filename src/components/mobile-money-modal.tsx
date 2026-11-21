@@ -16,6 +16,8 @@ import {
     formatUgandaPhone,
     type MobileMoneyNetwork,
 } from "@/lib/mobile-money";
+import { useAuth } from "@/context/auth-context";
+import { businessCurrency, formatMoney } from "@/lib/currency";
 import { toast } from "sonner";
 
 interface MoMoModalProps {
@@ -43,6 +45,16 @@ export function MobileMoneyModal({
     onPaymentStarted,
 }: MoMoModalProps) {
     const convex = useConvex();
+    const { activeBusiness } = useAuth();
+
+    // The currency the business trades in.
+    //
+    // It used to be sent to the provider as "UGX" whatever the business
+    // was set up for. A provider given the wrong currency code refuses the
+    // transaction, so a business trading in dollars could not take a
+    // mobile-money payment at all.
+    const currency = businessCurrency(activeBusiness?.currency);
+
     const [phone, setPhone] = useState(initialPhone);
     const [network, setNetwork] = useState<MobileMoneyNetwork>("MTN");
     const [status, setStatus] = useState<ModalStatus>("IDLE");
@@ -111,7 +123,7 @@ export function MobileMoneyModal({
                 {
                     adapterKey: adapterKeyForNetwork(network),
                     amount,
-                    currency: "UGX",
+                    currency: currency,
                     phone: msisdn,
                     description: "POS Sale Payment",
                 }
@@ -254,7 +266,7 @@ export function MobileMoneyModal({
                     {/* Amount Callout */}
                     <div className="p-3 rounded-xl bg-muted/60 border flex items-center justify-between">
                         <span className="text-xs font-semibold text-muted-foreground uppercase">Amount Due:</span>
-                        <span className="text-xl font-black text-primary">UGX {amount.toLocaleString()}</span>
+                        <span className="text-xl font-black text-primary">{formatMoney(amount, currency)}</span>
                     </div>
 
                     {/* Network Selection */}

@@ -166,13 +166,14 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     const [isMoMoModalOpen, setIsMoMoModalOpen] = useState(false);
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
 
-    // Auto-select "Loan" payment method when isLoan is true
+    // Auto-select "Loan" payment method when isLoan is true.
+    //
+    // The updater form is used deliberately: reading `paymentMethod` inside
+    // the effect closes over the value from the render that created the
+    // effect, so the switch could leave the till on the wrong method — and
+    // the method is what the money is recorded against.
     useEffect(() => {
-        if (isLoan) {
-            setPaymentMethod("Loan");
-        } else if (paymentMethod === "Loan") {
-            setPaymentMethod("Cash");
-        }
+        setPaymentMethod((method) => (isLoan ? "Loan" : method === "Loan" ? "Cash" : method));
     }, [isLoan]);
 
     // Pagination State

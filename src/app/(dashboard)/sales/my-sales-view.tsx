@@ -112,19 +112,69 @@ export function MySalesView() {
         { initialNumItems: rowsPerPage }
     );
 
+    const totalItems = useQuery(api.sales.mySalesCount, queryArgs) || 0;
+
+    /**
+     * Is the operator searching?
+     *
+     * The server filters each page it sends, so a search that stops after
+     * the first page can only ever see the matches that happened to fall
+     * into it.
+     */
+    const isSearching = searchTerm.trim().length > 0;
+
     // Sync Load
     useEffect(() => {
+        // While searching, the whole list is read instead — see below.
+        if (isSearching) return;
         if (status === "CanLoadMore" && results && results.length < rowsPerPage) {
             loadMore(rowsPerPage - results.length);
         }
-    }, [rowsPerPage, results, status, loadMore]);
+    }, [isSearching, rowsPerPage, results, status, loadMore]);
 
-    const totalItems = useQuery(api.sales.mySalesCount, queryArgs) || 0;
+    /**
+     * Read the whole list while searching.
+     *
+     * The pages are filtered by the server before they are sent, so every
+     * page has to be asked for: a match on the last page is reached the
+     * same way a match on the first page is. The page the operator sees is
+     * cut afterwards, from the rows that matched.
+     */
+    useEffect(() => {
+        if (!isSearching) return;
+        if (status !== "CanLoadMore") return;
+        loadMore(rowsPerPage);
+    }, [isSearching, status, rowsPerPage, loadMore, results?.length]);
+
+    /**
+     * A new filter starts a new list.
+     *
+     * Without this, searching while sitting on page four of the previous
+     * result set shows an empty page even though the matches are on the
+     * first one — the operator reads it as "no results".
+     */
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [
+        searchTerm,
+        filterType,
+        filterPackageType,
+        filterDeliveryStatus,
+        filterTransactionType,
+        selectedCustomerId,
+        queryArgs.from,
+        queryArgs.to,
+    ]);
 
     // View Slicing
-    const totalPages = Math.ceil(totalItems / rowsPerPage);
+    //
+    // While searching, the rows on the client are the rows that matched,
+    // so they are what the pages are cut from. The unfiltered count
+    // describes a list the operator is not looking at.
+    const effectiveTotalItems = isSearching ? results?.length || 0 : totalItems;
+    const totalPages = Math.max(1, Math.ceil(effectiveTotalItems / rowsPerPage));
     const startIndex = (currentPage - 1) * rowsPerPage;
-    const endIndex = Math.min(startIndex + rowsPerPage, totalItems);
+    const endIndex = Math.min(startIndex + rowsPerPage, effectiveTotalItems);
 
     // Loaded check
     const loadedCount = results?.length || 0;
@@ -634,7 +684,7 @@ export function MySalesView() {
                         </div>
 
                         <div className="text-xs font-medium mr-2">
-                            {Math.min(startIndex + 1, totalItems)}-{Math.min(endIndex, totalItems)} of {totalItems}
+                            {Math.min(startIndex + 1, effectiveTotalItems)}-{Math.min(endIndex, effectiveTotalItems)} of {effectiveTotalItems}
                         </div>
 
                         <Button

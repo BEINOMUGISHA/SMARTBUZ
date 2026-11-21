@@ -41,6 +41,7 @@ import {
 import { Loader2, Plus, Trash2, Check, ChevronsUpDown, Save, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { describeError } from "@/components/error-feedback";
 
 interface EditItem {
     stockId: Id<"stocks">;
@@ -220,7 +221,9 @@ export function EditSaleSheet({ sale, open, onOpenChange, onSaved }: EditSaleShe
             onSaved?.();
         } catch (err: any) {
             console.error(err);
-            toast.error(err?.message || "Failed to update sale");
+            // The raw Convex message carries a request id and a stack trace;
+            // the operator needs the sentence that says what went wrong.
+            toast.error(describeError(err, "The sale could not be updated."));
         } finally {
             setIsSaving(false);
         }

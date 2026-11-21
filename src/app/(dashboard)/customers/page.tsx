@@ -68,6 +68,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { reportError } from "@/components/error-feedback";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { FormDialog, ugx, shortDate } from "@/components/vertical/ui-kit";
 
@@ -230,14 +231,23 @@ export default function CustomersPage() {
     const handlePayment = async (values: Record<string, string>) => {
         if (!payFor) return;
         const amount = Number(values.amount);
-        await recordPayment({
-            customerId: payFor._id,
-            amount,
-            date: values.date || undefined,
-            method: values.method || undefined,
-            reference: values.reference || undefined,
-            note: values.note || undefined,
-        });
+        try {
+            await recordPayment({
+                customerId: payFor._id,
+                amount,
+                date: values.date || undefined,
+                method: values.method || undefined,
+                reference: values.reference || undefined,
+                note: values.note || undefined,
+            });
+        } catch (err) {
+            // The dialog is re-thrown into so it keeps its contents and the
+            // amount does not have to be typed again — but the refusal is
+            // reported first, because a payment that was not recorded must
+            // not look like one that was.
+            reportError(err, "The payment could not be recorded.");
+            throw err;
+        }
         toast.success(`Payment of ${ugx(amount)} recorded`, {
             description: `Applied to ${payFor.name}'s oldest credit sales first.`,
         });
@@ -247,11 +257,16 @@ export default function CustomersPage() {
     const handleCreditLimit = async (values: Record<string, string>) => {
         if (!limitFor) return;
         const amount = Number(values.creditLimit);
-        await setCreditLimit({
-            customerId: limitFor._id,
-            creditLimit: amount,
-            reason: values.reason || undefined,
-        });
+        try {
+            await setCreditLimit({
+                customerId: limitFor._id,
+                creditLimit: amount,
+                reason: values.reason || undefined,
+            });
+        } catch (err) {
+            reportError(err, "The credit limit could not be changed.");
+            throw err;
+        }
         toast.success(`Credit limit set to ${ugx(amount)}`, {
             description: limitFor.name,
         });

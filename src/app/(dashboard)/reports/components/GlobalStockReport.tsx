@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Search, Package, Zap, History, Store } from "lucide-react";
@@ -120,16 +120,53 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
     const totalStockCount = useQuery(api.reports.getStockSummaryCount, { halfPrice, search: search || undefined, searchType: searchType }) || 0;
     const stockWithDetails = useQuery(api.stocks.getStock, viewingStockId ? { id: viewingStockId } : "skip");
 
+    /**
+     * The rows as they should be shown.
+     *
+     * A product is identified by its document id, and a product appears in
+     * the table exactly once. If the server hands back a page it has
+     * already sent, the duplicate is dropped here rather than being drawn
+     * twice in the operator's inventory.
+     */
+    const uniqueStockRecords = useMemo(() => {
+        const seen = new Set<string>();
+        return stockRecords.filter((row) => {
+            const id = row._id as string;
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+    }, [stockRecords]);
+
     const handleViewDetails = (stock: any) => {
         setViewingStockId(stock._id);
         setIsViewSheetOpen(true);
     };
 
+    /**
+     * How many distinct rows the last request produced.
+     *
+     * It is kept so that a request which adds nothing new is not repeated:
+     * asking again for a page the server has already sent only piles up
+     * copies of the same rows.
+     */
+    const requestedRowCount = useRef(0);
+
     useEffect(() => {
-        if (stockStatus === "CanLoadMore" && stockRecords.length < (page * rowsPerPage)) {
-            loadMoreStock(rowsPerPage);
-        }
-    }, [page, rowsPerPage, stockRecords.length, stockStatus, loadMoreStock]);
+        // Only the server knows whether more rows exist — the number of
+        // rows already on the client says nothing, because a repeated page
+        // has the same number of rows as the one before it. So the
+        // pagination status decides that, and the row count is used only
+        // to decide whether the page the operator is looking at is full.
+        const neededRows = page * rowsPerPage;
+        if (stockStatus !== "CanLoadMore") return;
+        if (uniqueStockRecords.length >= neededRows) return;
+        if (uniqueStockRecords.length >= totalStockCount) return;
+        if (uniqueStockRecords.length === requestedRowCount.current) return;
+
+        requestedRowCount.current = uniqueStockRecords.length;
+        loadMoreStock(rowsPerPage);
+    }, [page, rowsPerPage, uniqueStockRecords.length, totalStockCount, stockStatus, loadMoreStock]);
 
     const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
 
@@ -138,7 +175,7 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
             <ReportTable
                 title={`${halfPrice ? "HP" : "Regular"} Inventory Status`}
                 subtitle={`Combined view of HQ and all shop holdings (${halfPrice ? "Half Price" : "Regular"})`}
-                data={stockRecords?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
+                data={uniqueStockRecords.slice((page - 1) * rowsPerPage, page * rowsPerPage)}
                 summaryData={summaryData}
                 isLoading={stockLoading}
                 variant="stock"

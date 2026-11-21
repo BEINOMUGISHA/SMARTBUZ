@@ -46,8 +46,14 @@ async function convexMutation(path: string, args: Record<string, unknown>) {
 }
 
 /**
- * Simple in-memory login throttling.
- * Blocks credential-stuffing / brute-force attempts against a single account.
+ * A cheap first line of defence, in the memory of this instance.
+ *
+ * The authoritative throttle lives in the Convex backend
+ * (`convex/loginThrottle.ts`), because it is shared by every instance and
+ * survives a deploy. This one only stops a flood of requests from reaching
+ * the backend at all — and it is deliberately *not* the source of truth,
+ * so that a serverless instance being recycled cannot silently reset
+ * somebody's lockout.
  */
 const MAX_LOGIN_ATTEMPTS = 8;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
@@ -60,6 +66,20 @@ function recordFailedLogin(email: string, now: number) {
   } else {
     existing.count += 1;
   }
+}
+
+/**
+ * Pull the backend's error message out of a response body, if there is one.
+ *
+ * Convex reports a thrown mutation as HTTP 200 with `{status: "error"}` in
+ * the body, so the body has to be read whether or not the status was OK.
+ */
+function extractConvexErrorMessage(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const record = data as { errorMessage?: unknown; message?: unknown };
+  if (typeof record.errorMessage === "string") return record.errorMessage;
+  if (typeof record.message === "string") return record.message;
+  return undefined;
 }
 
 /**
@@ -156,33 +176,37 @@ export async function POST(request: NextRequest) {
     });
 
     if (!convexRes) {
-      recordFailedLogin(normalizedEmail, now);
+      // The backend was unreachable. That is *not* a wrong password, and
+      // it must not be counted as one — otherwise an outage locks every
+      // honest user out of their own account.
       return NextResponse.json(
         { success: false, error: "Could not reach the server. Please try again." },
         { status: 503 }
       );
     }
 
-    if (!convexRes.ok) {
-      const text = await convexRes.text();
-      console.error("Convex login error:", text);
-      recordFailedLogin(normalizedEmail, now);
-      return NextResponse.json(
-        { success: false, error: "Invalid email or password" },
-        { status: 401 }
-      );
-    }
-
-    const data = await convexRes.json();
+    const data = await convexRes.json().catch(() => null);
 
     // Convex mutations return { status: "success", value: ... }
-    if (data.status !== "success" || !data.value) {
+    if (!convexRes.ok || !data || data.status !== "success" || !data.value) {
+      const message = extractConvexErrorMessage(data);
+
+      // The backend has locked the address out. Say so, and say how long
+      // is left — otherwise the person has no idea why their correct
+      // password is being refused.
+      if (typeof message === "string" && /too many failed sign-in attempts/i.test(message)) {
+        recordFailedLogin(normalizedEmail, now);
+        return NextResponse.json(
+          { success: false, error: message },
+          { status: 429 }
+        );
+      }
+
       // The account may simply need its email verified. The backend only
       // says that *after* the password has been checked, so surfacing the
       // message reveals nothing that a correct password does not already
       // prove — and it is the only way the person can learn what to do
       // next.
-      const message: string | undefined = data.errorMessage;
       if (typeof message === "string" && /verify your email/i.test(message)) {
         return NextResponse.json(
           { success: false, error: message },
@@ -190,6 +214,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      if (!convexRes.ok) {
+        console.error("Convex login error:", message ?? "(no message)");
+      }
       recordFailedLogin(normalizedEmail, now);
       return NextResponse.json(
         { success: false, error: "Invalid email or password" },
