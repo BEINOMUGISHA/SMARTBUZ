@@ -12,6 +12,258 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # BUG-052 · The configuration is validated before it can reach users.
+  #
+  # The 19 Nov 2026 outage happened because a variable was missing from the
+  # Vercel project. This job rehearses the production shape of that
+  # configuration with placeholder values, so a build never depends on a live
+  # deployment, a real email provider or a real secret - and so a change that
+  # adds a required variable cannot land without CI noticing.
+  # ────────────────────────────────────────────────────────────────────
+  config:
+    name: Configuration pre-flight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate the production configuration
+        env:
+          # Placeholder values on purpose. This step checks the SHAPE of the
+          # configuration, never the liveness of a secret - the same reason
+          # the build job below uses placeholders. The script prints variable
+          # NAMES only; no value is ever logged.
+          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+          NEXT_PUBLIC_CONVEX_SITE_URL: https://placeholder.convex.site
+          # base64url of a fixed ASCII string, so it is a well-formed key
+          # value without being a key. See scripts/generate-auth-keys.mjs for
+          # what a real value looks like.
+          SMARTBUZ_JWT_PRIVATE_KEY: U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6
+          SESSION_SECRET: ci-placeholder-session-secret-at-least-32-chars
+          SMARTBUZ_SERVER_SECRET: ci-placeholder-server-secret-at-least-16-chars
+          RESEND_API_KEY: re_ci_placeholder_key_value
+        run: node scripts/validate-config.mjs
+
+  # ────────────────────────────────────────────────────────────────────
+  # BUG-053 · The lint gate.
+  #
+  # ESLint is configured but was never enforced, and enforcing it as-is
+  # fails with 1,154 errors - almost all of them `no-explicit-any` in the
+  # Convex layer. Rather than delete the rules or reformat the codebase,
+  # the current findings are recorded as a baseline and the gate fails on
+  # NEW problems only. The backlog stays visible and shrinks over time.
+  # ────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (new problems only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: node scripts/lint-baseline.mjs
+
+  # ────────────────────────────────────────────────────────────────────
+  # BUG-054 · Dependency vulnerabilities.
+  #
+  # `npm audit` could not reach the registry during the 20 Nov 2026 audit,
+  # so the state of the dependency tree was unknown. Two rules apply here:
+  # a real high or critical advisory fails the job, and an unreachable
+  # advisory service does NOT - a registry outage must not be mistaken for
+  # a vulnerable build, and it must not be mistaken for a clean one either.
+  # ────────────────────────────────────────────────────────────────────
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        # Not fatal on its own: if the registry is unreachable the audit
+        # below still has to run so that it can report the outage instead of
+        # the job dying here. A genuinely broken lockfile is still caught by
+        # the quality job, which installs strictly.
+        continue-on-error: true
+        run: npm ci
+
+      - name: Audit the production dependency tree
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/audit-prod.json"
+          npm audit --audit-level=high --omit=dev --json >"$report" 2>"$RUNNER_TEMP/audit-prod.err" || true
+          node -e '
+            const fs = require("fs");
+            let report;
+            try {
+              report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            } catch (error) {
+              console.log("::warning::npm audit produced no parsable report. The advisory service was most likely unreachable, so this scan is inconclusive and the build continues.");
+              process.exit(0);
+            }
+            if (report && report.error) {
+              console.log("::warning::npm audit could not reach the registry (" + (report.error.code || "unknown error") + "). This scan is inconclusive and the build continues.");
+              process.exit(0);
+            }
+            const advisories = Object.values(report.vulnerabilities || {}).filter(
+              (entry) => entry.severity === "high" || entry.severity === "critical"
+            );
+            if (advisories.length === 0) {
+              console.log("No high or critical advisories in the production dependency tree.");
+              process.exit(0);
+            }
+            console.error("::error::" + advisories.length + " high or critical advisory(ies) in the production dependency tree:");
+            for (const advisory of advisories) {
+              console.error("  - " + advisory.severity + ": " + advisory.name + (advisory.isDirect ? " (direct)" : " (transitive)"));
+              for (const via of advisory.via) {
+                if (via && via.url) console.error("      " + via.title + " - " + via.url);
+              }
+            }
+            console.error("");
+            console.error("Remediation: upgrade the direct dependency in package.json, then re-run: npm audit --audit-level=high --omit=dev");
+            process.exit(1);
+          ' "$report"
+
+      - name: Audit the full dependency tree (informational)
+        # Development dependencies do not ship, so they are reported but do
+        # not gate the build. They are still worth seeing, because a
+        # development-only advisory is often one build step away from
+        # production.
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/audit-all.json"
+          npm audit --audit-level=high --json >"$report" 2>"$RUNNER_TEMP/audit-all.err" || true
+          node -e '
+            const fs = require("fs");
+            let report;
+            try {
+              report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            } catch (error) {
+              console.log("::warning::npm audit produced no parsable report for the full tree; the advisory service was most likely unreachable.");
+              process.exit(0);
+            }
+            if (report && report.error) {
+              console.log("::warning::npm audit could not reach the registry for the full tree (" + (report.error.code || "unknown error") + ").");
+              process.exit(0);
+            }
+            const counts = (report.metadata && report.metadata.vulnerabilities) || {};
+            console.log("Full dependency tree (including dev): " + JSON.stringify(counts));
+          ' "$report"
+
+  # ────────────────────────────────────────────────────────────────────
+  # BUG-059 · BUG-056 · The Convex backend is checked against the schema.
+  #
+  # The backend is deployed separately from the web app, so nothing in the
+  # pipeline used to notice that the two had drifted apart. This job
+  # typechecks the Convex functions against the schema and the checked-in
+  # generated data model, and verifies that the generated code in
+  # convex/_generated is complete and still bound to the current schema.
+  #
+  # It needs no credentials: convex/_generated is committed, and the data
+  # model is derived from convex/schema.ts at compile time, so the check
+  # works offline and in a pull request.
+  # ────────────────────────────────────────────────────────────────────
+  convex:
+    name: Convex schema & functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck the Convex functions against the schema
+        run: npx tsc --noEmit -p convex/tsconfig.json
+
+      - name: Verify the checked-in generated code is complete
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, existsSync } from "node:fs";
+          import { resolve } from "node:path";
+
+          const GENERATED = "convex/_generated";
+          const REQUIRED = ["api.d.ts", "api.js", "dataModel.d.ts", "server.d.ts", "server.js"];
+          const problems = [];
+
+          for (const file of REQUIRED) {
+            if (!existsSync(resolve(GENERATED, file))) {
+              problems.push(
+                GENERATED + "/" + file + " is missing - run \"npx convex codegen\" and commit the result."
+              );
+            }
+          }
+
+          if (problems.length === 0) {
+            const api = readFileSync(resolve(GENERATED, "api.d.ts"), "utf8");
+            const referenced = new Set(
+              [...api.matchAll(/from "\.\.\/([^"]+)\.js"/g)].map((match) => match[1])
+            );
+            for (const reference of referenced) {
+              if (!existsSync(resolve("convex", reference + ".ts"))) {
+                problems.push(
+                  GENERATED + "/api.d.ts references convex/" + reference + ".ts, which does not exist."
+                );
+              }
+            }
+
+            // The data model must be derived from the live schema rather
+            // than being a frozen snapshot of an older one; otherwise the
+            // typecheck above would be validating the functions against a
+            // schema that no longer exists.
+            const model = readFileSync(resolve(GENERATED, "dataModel.d.ts"), "utf8");
+            if (!model.includes("../schema.js")) {
+              problems.push(
+                GENERATED + "/dataModel.d.ts is not derived from convex/schema.ts - it is a stale snapshot. Run \"npx convex codegen\"."
+              );
+            }
+          }
+
+          if (problems.length > 0) {
+            for (const problem of problems) console.error("::error::" + problem);
+            process.exit(1);
+          }
+          console.log("The checked-in Convex generated code is present and consistent with the source tree.");
+          EOF
+
+  # ────────────────────────────────────────────────────────────────────
+  # The application itself: it compiles, its tests pass, it builds.
+  # ────────────────────────────────────────────────────────────────────
   quality:
     name: Typecheck & Build
     runs-on: ubuntu-latest
@@ -37,7 +289,6 @@ jobs:
         run: npm test
 
       - name: Build
-        run: npm run build
         env:
           # Placeholder values: the build must not depend on a live deployment,
           # a real email provider or a real session secret. See

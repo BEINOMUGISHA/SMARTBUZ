@@ -1,0 +1,535 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-21T09:02:00.807Z",
+  "targets": [
+    "src",
+    "convex",
+    "scripts"
+  ],
+  "totals": {
+    "files": 311,
+    "problems": 1465,
+    "byRule": {
+      "@typescript-eslint/no-explicit-any": 1135,
+      "@typescript-eslint/no-unused-vars": 292,
+      "react-hooks/set-state-in-effect": 12,
+      "react/no-unescaped-entities": 9,
+      "prefer-const": 8,
+      "react-hooks/exhaustive-deps": 4,
+      "react-hooks/purity": 3,
+      "react-hooks/static-components": 1,
+      "react-hooks/refs": 1
+    }
+  },
+  "files": {
+    "convex/activityLogs.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "convex/analytics.ts": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 17
+    },
+    "convex/audit.ts": {
+      "@typescript-eslint/no-unused-vars": 2
+    },
+    "convex/banking.ts": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "convex/billing.ts": {
+      "@typescript-eslint/no-explicit-any": 6
+    },
+    "convex/branches.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "convex/customers.ts": {
+      "@typescript-eslint/no-explicit-any": 28,
+      "@typescript-eslint/no-unused-vars": 4
+    },
+    "convex/dashboard.ts": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 10
+    },
+    "convex/employees.ts": {
+      "@typescript-eslint/no-explicit-any": 4,
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "convex/entitlements.ts": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 20
+    },
+    "convex/finance.ts": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 56
+    },
+    "convex/financeCore.ts": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 17
+    },
+    "convex/integrations/engine.ts": {
+      "@typescript-eslint/no-unused-vars": 3
+    },
+    "convex/integrations/hardware.ts": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "prefer-const": 1
+    },
+    "convex/integrations/internal.ts": {
+      "@typescript-eslint/no-explicit-any": 6
+    },
+    "convex/integrations/messaging.ts": {
+      "@typescript-eslint/no-unused-vars": 3
+    },
+    "convex/integrations/payments.ts": {
+      "@typescript-eslint/no-unused-vars": 4
+    },
+    "convex/integrations/registry.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "convex/integrations/webhooks.ts": {
+      "@typescript-eslint/no-unused-vars": 5
+    },
+    "convex/license.ts": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "convex/loans.ts": {
+      "@typescript-eslint/no-explicit-any": 51,
+      "prefer-const": 1,
+      "@typescript-eslint/no-unused-vars": 2
+    },
+    "convex/migration.ts": {
+      "@typescript-eslint/no-explicit-any": 7
+    },
+    "convex/packages/manage.ts": {
+      "@typescript-eslint/no-explicit-any": 6
+    },
+    "convex/packages/restaurant.ts": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "convex/plans.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "convex/platform.ts": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "convex/promotions.ts": {
+      "@typescript-eslint/no-explicit-any": 13,
+      "@typescript-eslint/no-unused-vars": 4
+    },
+    "convex/purchasing.ts": {
+      "@typescript-eslint/no-unused-vars": 5,
+      "@typescript-eslint/no-explicit-any": 34
+    },
+    "convex/reports.ts": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 12,
+      "prefer-const": 2
+    },
+    "convex/sales.ts": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 63
+    },
+    "convex/salesCore.ts": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "convex/seed.ts": {
+      "@typescript-eslint/no-explicit-any": 31
+    },
+    "convex/shops.ts": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 1,
+      "prefer-const": 3
+    },
+    "convex/stocks.ts": {
+      "@typescript-eslint/no-unused-vars": 4
+    },
+    "convex/subscriptions.ts": {
+      "@typescript-eslint/no-unused-vars": 5,
+      "@typescript-eslint/no-explicit-any": 30
+    },
+    "convex/subscriptionState.ts": {
+      "@typescript-eslint/no-explicit-any": 11
+    },
+    "convex/suppliers.ts": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 16
+    },
+    "convex/sync.ts": {
+      "@typescript-eslint/no-explicit-any": 31
+    },
+    "convex/tenancy.ts": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "convex/users.ts": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 9
+    },
+    "convex/utils.ts": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "convex/verticals/batches.ts": {
+      "prefer-const": 1,
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "convex/verticals/members.ts": {
+      "@typescript-eslint/no-unused-vars": 5
+    },
+    "convex/verticals/operations.ts": {
+      "@typescript-eslint/no-unused-vars": 8
+    },
+    "convex/verticals/scheduling.ts": {
+      "@typescript-eslint/no-unused-vars": 5
+    },
+    "convex/warehouses.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "scripts/codemods/tenant-scope-verticals-pass2.mjs": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "scripts/phase2-nav-roles-codemod.mjs": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "scripts/probe-getsale.mjs": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "scripts/vertical-e2e.mjs": {
+      "@typescript-eslint/no-unused-vars": 2
+    },
+    "src/app/(dashboard)/appointments/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/app/(dashboard)/assets/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 9
+    },
+    "src/app/(dashboard)/attendance/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/app/(dashboard)/batches/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 11,
+      "@typescript-eslint/no-explicit-any": 8
+    },
+    "src/app/(dashboard)/classes/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 6
+    },
+    "src/app/(dashboard)/customers/page.tsx": {
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/app/(dashboard)/deliveries/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/app/(dashboard)/devices/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "@typescript-eslint/no-explicit-any": 7
+    },
+    "src/app/(dashboard)/expenditures/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 7
+    },
+    "src/app/(dashboard)/finance/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 16
+    },
+    "src/app/(dashboard)/fuel/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/app/(dashboard)/integrations/page.tsx": {
+      "@typescript-eslint/no-explicit-any": 29,
+      "react-hooks/static-components": 1
+    },
+    "src/app/(dashboard)/inventory/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/app/(dashboard)/layout.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/app/(dashboard)/members/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/app/(dashboard)/menu/page.tsx": {
+      "@typescript-eslint/no-explicit-any": 8
+    },
+    "src/app/(dashboard)/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 5,
+      "@typescript-eslint/no-explicit-any": 13
+    },
+    "src/app/(dashboard)/platform/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "@typescript-eslint/no-explicit-any": 23
+    },
+    "src/app/(dashboard)/prescriptions/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 11,
+      "@typescript-eslint/no-explicit-any": 4
+    },
+    "src/app/(dashboard)/production/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 4,
+      "react-hooks/purity": 2
+    },
+    "src/app/(dashboard)/purchase-orders/page.tsx": {
+      "@typescript-eslint/no-explicit-any": 22
+    },
+    "src/app/(dashboard)/rentals/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/app/(dashboard)/reports/analysis/page.tsx": {
+      "@typescript-eslint/no-explicit-any": 20
+    },
+    "src/app/(dashboard)/reports/components/ActivityLogView.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 4
+    },
+    "src/app/(dashboard)/reports/components/CustomersReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 17
+    },
+    "src/app/(dashboard)/reports/components/DetailedSalesReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 18
+    },
+    "src/app/(dashboard)/reports/components/ExpensesReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 5,
+      "@typescript-eslint/no-explicit-any": 10
+    },
+    "src/app/(dashboard)/reports/components/GlobalStockReport.tsx": {
+      "@typescript-eslint/no-explicit-any": 16,
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/app/(dashboard)/reports/components/LoansReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 48
+    },
+    "src/app/(dashboard)/reports/components/OverviewReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/app/(dashboard)/reports/components/ProductsReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 5,
+      "@typescript-eslint/no-explicit-any": 15
+    },
+    "src/app/(dashboard)/reports/components/ProfitMarginReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 15
+    },
+    "src/app/(dashboard)/reports/components/ReportFilters.tsx": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/app/(dashboard)/reports/components/reports-table.tsx": {
+      "@typescript-eslint/no-explicit-any": 7
+    },
+    "src/app/(dashboard)/reports/components/ReportSummary.tsx": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/app/(dashboard)/reports/components/ShopIssuedReport.tsx": {
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/app/(dashboard)/reports/components/ShopsReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 5,
+      "@typescript-eslint/no-explicit-any": 33
+    },
+    "src/app/(dashboard)/reports/components/StockEnteredReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 15
+    },
+    "src/app/(dashboard)/reports/components/UsersReport.tsx": {
+      "@typescript-eslint/no-unused-vars": 5,
+      "@typescript-eslint/no-explicit-any": 15
+    },
+    "src/app/(dashboard)/rooms/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/app/(dashboard)/sales/edit-sale-sheet.tsx": {
+      "@typescript-eslint/no-explicit-any": 7,
+      "react-hooks/exhaustive-deps": 1,
+      "react/no-unescaped-entities": 2
+    },
+    "src/app/(dashboard)/sales/loans-view.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "@typescript-eslint/no-explicit-any": 33,
+      "react/no-unescaped-entities": 1
+    },
+    "src/app/(dashboard)/sales/my-sales-view.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 42,
+      "react-hooks/set-state-in-effect": 2,
+      "react/no-unescaped-entities": 2
+    },
+    "src/app/(dashboard)/sales/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 18
+    },
+    "src/app/(dashboard)/sales/promotions-report-view.tsx": {
+      "@typescript-eslint/no-unused-vars": 7,
+      "react-hooks/set-state-in-effect": 1,
+      "@typescript-eslint/no-explicit-any": 6
+    },
+    "src/app/(dashboard)/service-tickets/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/app/(dashboard)/settings/active-sessions.tsx": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/app/(dashboard)/settings/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3
+    },
+    "src/app/(dashboard)/shops/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/app/(dashboard)/stock/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/app/(dashboard)/subscription/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 6
+    },
+    "src/app/(dashboard)/suppliers/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "@typescript-eslint/no-explicit-any": 10
+    },
+    "src/app/(dashboard)/systemconfig/audit-logs.tsx": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/app/(dashboard)/systemconfig/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 5
+    },
+    "src/app/(dashboard)/systemconfig/security-audit.tsx": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/app/(dashboard)/tables/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 12,
+      "@typescript-eslint/no-explicit-any": 8
+    },
+    "src/app/(dashboard)/till/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 4,
+      "@typescript-eslint/no-explicit-any": 6
+    },
+    "src/app/api/auth/convex-token/route.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/app/api/auth/route.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/app/api/auth/send-verification/route.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/app/api/send-reset-email/route.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/app/auth/forgot-password/page.tsx": {
+      "@typescript-eslint/no-explicit-any": 1,
+      "react/no-unescaped-entities": 4
+    },
+    "src/app/auth/login/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 7
+    },
+    "src/app/auth/register/page.tsx": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/app/auth/reset-password/page.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/app/setup/page.tsx": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/components/animated-number.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/components/business-management.tsx": {
+      "@typescript-eslint/no-explicit-any": 3,
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/components/business-switcher.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/components/business-vertical-settings.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/components/category-widgets.tsx": {
+      "@typescript-eslint/no-unused-vars": 3,
+      "@typescript-eslint/no-explicit-any": 12
+    },
+    "src/components/date-range-picker.tsx": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/components/finance/report-filters.tsx": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/components/mobile-money-modal.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "react-hooks/set-state-in-effect": 3
+    },
+    "src/components/offline/sync-provider.tsx": {
+      "react-hooks/refs": 1
+    },
+    "src/components/offline/sync-status.tsx": {
+      "@typescript-eslint/no-unused-vars": 2
+    },
+    "src/components/promo-cart-banner.tsx": {
+      "@typescript-eslint/no-unused-vars": 2
+    },
+    "src/components/ReceiptModal.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/components/ReceiptTemplate.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/components/ui/resizable.tsx": {
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/components/ui/sidebar.tsx": {
+      "react-hooks/purity": 1
+    },
+    "src/components/vertical/ui-kit.tsx": {
+      "@typescript-eslint/no-unused-vars": 6,
+      "@typescript-eslint/no-explicit-any": 3
+    },
+    "src/context/auth-context.tsx": {
+      "react-hooks/set-state-in-effect": 3,
+      "react-hooks/exhaustive-deps": 3
+    },
+    "src/lib/business-categories.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/lib/category-nav.ts": {
+      "@typescript-eslint/no-unused-vars": 6
+    },
+    "src/lib/convex-token.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    },
+    "src/lib/escpos.ts": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/lib/export-utils.ts": {
+      "@typescript-eslint/no-explicit-any": 11,
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/lib/export.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/lib/offline/sync.ts": {
+      "@typescript-eslint/no-explicit-any": 2
+    },
+    "src/lib/restock-pdf.ts": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  }
+}

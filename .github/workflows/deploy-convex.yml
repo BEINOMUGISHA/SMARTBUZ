@@ -1,0 +1,101 @@
+name: Deploy Convex
+
+# ────────────────────────────────────────────────────────────────────────
+# BUG-056 · The Convex backend was deployed by hand, so the web build and
+# the backend could sit at different commits with nothing to say so.
+#
+# This workflow deploys the backend on a push to `main`, but ONLY when the
+# repository has the deploy secrets configured. Without them the job runs and
+# does nothing: the backend is left exactly as it was, and the run says so.
+#
+# Secrets cannot be referenced directly in an `if:` condition, so they are
+# exposed to the job as environment variables and the steps are guarded on
+# those. That is the pattern GitHub documents for the same reason.
+# ────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two backend deploys overlap: Convex applies a deploy as a unit
+# and an interleaved one leaves the backend in an unpredictable state.
+concurrency:
+  group: convex-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy the Convex backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # The deploy key is what authorises the push; the URL is which
+      # deployment is being pushed to. Both must be present.
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_URL: ${{ secrets.CONVEX_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Report whether the backend can be deployed
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ] || [ -z "$CONVEX_URL" ]; then
+            echo "::notice::CONVEX_DEPLOY_KEY and/or CONVEX_URL are not configured as repository secrets. The Convex backend was NOT deployed; it is unchanged."
+            exit 0
+          fi
+          echo "Convex deploy secrets are present. The backend will be deployed."
+
+      - name: Typecheck the Convex functions before deploying them
+        # A backend that does not compile must never reach the deployment.
+        if: ${{ env.CONVEX_DEPLOY_KEY != '' && env.CONVEX_URL != '' }}
+        run: npx tsc --noEmit -p convex/tsconfig.json
+
+      - name: Deploy the Convex functions and schema
+        if: ${{ env.CONVEX_DEPLOY_KEY != '' && env.CONVEX_URL != '' }}
+        run: npx convex deploy
+
+      # ──────────────────────────────────────────────────────────────────
+      # Give the tenants that have no subscription row one.
+      #
+      # The entitlement gate now fails closed: a business with no
+      # subscription is not licensed and cannot record anything new. That
+      # is the correct behaviour, but it would catch any tenant that was
+      # registered through the path that never created one.
+      #
+      # So the backfill runs immediately after the deploy, which makes the
+      # window in which such a tenant is blocked a matter of seconds rather
+      # than of however long somebody takes to notice.
+      # ──────────────────────────────────────────────────────────────────
+      - name: Give the tenants without a subscription one
+        if: ${{ env.CONVEX_DEPLOY_KEY != '' && env.CONVEX_URL != '' }}
+        env:
+          # The script talks to the deployment that was just published.
+          NEXT_PUBLIC_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          SMARTBUZ_SERVER_SECRET: ${{ secrets.SMARTBUZ_SERVER_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: node scripts/backfill-subscriptions.mjs
+
+      - name: Verify the deployment answers
+        if: ${{ env.CONVEX_DEPLOY_KEY != '' && env.CONVEX_URL != '' }}
+        run: |
+          set -euo pipefail
+          site_url="${CONVEX_URL%.convex.cloud}.convex.site"
+          echo "Deployment version:"
+          curl -fsS --max-time 15 "$CONVEX_URL/version"
+          echo ""
+          echo "Published signing keys (must be a JSON document with a keys array):"
+          curl -fsS --max-time 15 "$site_url/auth/jwks" | head -c 300
+          echo ""
