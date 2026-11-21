@@ -25,9 +25,28 @@
  * This script is how the businesses that **already** exist get a
  * subscription, so that closing the gate does not lock them out.
  *
- * It is a server operation and needs the server-to-backend secret. Run it
- * **before** deploying the new backend, so that the tenants are ready the
- * moment the gate starts failing closed.
+ * It is a server operation and needs the server-to-backend secret.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * When to run it
+ *
+ * **After** the new backend is published, not before. The script calls
+ * `subscriptions:listUnsubscribed` and `subscriptions:backfillSubscription`,
+ * and those functions only exist in the new backend — running the script
+ * against the old one fails with "Could not find public function".
+ *
+ * So the order is: deploy, then backfill immediately. The window in which a
+ * tenant has no subscription is seconds rather than however long it takes
+ * somebody to notice.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * Which deployment it talks to
+ *
+ * The script uses `NEXT_PUBLIC_CONVEX_URL` — the same deployment the web app
+ * uses. That matters: `npx convex deploy` publishes to the project's
+ * production deployment, which is not necessarily the one the app points at.
+ * See `docs/RUNBOOK.md` §2.
+ * ────────────────────────────────────────────────────────────────────────
  */
 import { convex, ok, errText, ENV } from "./lib/harness.mjs";
 

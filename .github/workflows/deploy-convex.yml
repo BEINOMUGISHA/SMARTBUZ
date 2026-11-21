@@ -35,6 +35,27 @@ jobs:
       # deployment is being pushed to. Both must be present.
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       CONVEX_URL: ${{ secrets.CONVEX_URL }}
+      # ──────────────────────────────────────────────────────────────────
+      # WHICH deployment this job pushes to.
+      #
+      # `npx convex deploy` publishes to the *production* deployment of the
+      # Convex **project**. The web app does not necessarily point there: this
+      # installation's app runs on the pinned deployment named in
+      # CONVEX_DEPLOYMENT, and `npx convex deploy` would silently publish to a
+      # different one — the deploy would report success and the app would
+      # keep running the old code.
+      #
+      # That is exactly what happened on 21 Nov 2026: the deploy "succeeded"
+      # and the fix was not live. So the deployment is now named explicitly,
+      # and the job verifies afterwards that the deployment the app actually
+      # uses is serving the new code.
+      #
+      # Set this repository *variable* (not secret) to the pinned deployment
+      # id, e.g. `dev:affable-panda-681`. When it is absent the job keeps its
+      # previous behaviour of publishing to the project's production
+      # deployment.
+      # ──────────────────────────────────────────────────────────────────
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
 
     steps:
       - name: Checkout
@@ -64,7 +85,14 @@ jobs:
 
       - name: Deploy the Convex functions and schema
         if: ${{ env.CONVEX_DEPLOY_KEY != '' && env.CONVEX_URL != '' }}
-        run: npx convex deploy
+        run: |
+          if [ -n "$CONVEX_DEPLOYMENT" ]; then
+            echo "Publishing to the pinned deployment $CONVEX_DEPLOYMENT"
+            npx convex dev --once
+          else
+            echo "No CONVEX_DEPLOYMENT variable set; publishing to the project's production deployment"
+            npx convex deploy
+          fi
 
       # ──────────────────────────────────────────────────────────────────
       # Give the tenants that have no subscription row one.
@@ -99,3 +127,26 @@ jobs:
           echo "Published signing keys (must be a JSON document with a keys array):"
           curl -fsS --max-time 15 "$site_url/auth/jwks" | head -c 300
           echo ""
+
+      # ──────────────────────────────────────────────────────────────────
+      # Prove that the deployment the *web app* talks to is the one that was
+      # just published.
+      #
+      # A deploy that goes to the wrong deployment reports success and changes
+      # nothing the user can see, so "the job went green" is not evidence that
+      # the fix is live. This step asks the deployment the app points at
+      # whether it knows a function that only exists in the new code, and
+      # fails the job when it does not.
+      # ──────────────────────────────────────────────────────────────────
+      - name: Prove the app's deployment is serving the new code
+        if: ${{ env.CONVEX_DEPLOY_KEY != '' && env.CONVEX_URL != '' }}
+        run: |
+          set -euo pipefail
+          if ! npx convex function-spec --url "$CONVEX_URL" 2>/dev/null \
+            | grep -q "listUnsubscribed"; then
+            echo "::error::The deployment at $CONVEX_URL is NOT serving the new code."
+            echo "::error::The deploy went somewhere else, or was rolled back."
+            echo "::error::Set the CONVEX_DEPLOYMENT repository variable to the deployment the app uses."
+            exit 1
+          fi
+          echo "The deployment at $CONVEX_URL is serving the new code."

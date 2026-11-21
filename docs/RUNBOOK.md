@@ -35,10 +35,43 @@ document exists for:
 
 ### What "deployed" means for the backend
 
-`npx convex deploy` pushes the contents of `convex/` to the deployment named by
-`CONVEX_URL` (or the one in `.env.local`). It is **not** run by CI and it is
-**not** run by Vercel. A commit that changes `convex/schema.ts` or any function
-under `convex/` changes nothing in production until someone runs the command.
+A commit that changes `convex/schema.ts` or any function under `convex/`
+changes nothing in production until someone publishes the functions.
+
+**Which deployment you publish to is the single easiest thing to get wrong
+here, and on 21 Nov 2026 it was got wrong in a way that reported success.**
+
+This installation has **two** Convex deployments:
+
+| Deployment | URL | Role |
+|---|---|---|
+| `affable-panda-681` (`CONVEX_DEPLOYMENT=dev:affable-panda-681`) | `affable-panda-681.convex.cloud` | **The one the web app points at.** Holds the real data. The CLI treats it as the *dev* deployment. |
+| `shocking-mule-553` | `shocking-mule-553.convex.cloud` | The *production* deployment of the Convex project. Not used by the app. |
+
+`npx convex deploy` publishes to the project's **production** deployment —
+`shocking-mule-553` — **not** to the one `NEXT_PUBLIC_CONVEX_URL` points at.
+The deploy prints "✔ Deployed Convex functions" and the app keeps serving the
+old code.
+
+To publish to the deployment the app actually uses:
+
+```bash
+npx convex dev --once
+```
+
+`convex dev --once` pushes the functions to the deployment named by
+`CONVEX_DEPLOYMENT` and exits without starting the watcher.
+
+**Always verify which deployment is serving the code** — the check the CI
+workflow now performs (§7):
+
+```bash
+# Prints the deployment's function list; a fresh deploy contains this function.
+npx convex function-spec --url https://affable-panda-681.convex.cloud \
+  | grep -c listUnsubscribed
+```
+
+A `0` means the deployment is still running the old code.
 
 ---
 
@@ -86,14 +119,23 @@ git checkout main
 git pull
 npm ci
 
-# The backend is deployed against the deployment in your environment.
-# CONVEX_URL must point at the deployment you intend to change.
-npx convex deploy
+# Publish to the deployment the app points at. `npx convex deploy` would
+# publish to the project's *production* deployment, which is a different one
+# — see §1, "What deployed means for the backend".
+npx convex dev --once
 ```
 
-`npx convex deploy` prints the deployment it pushed to. Read it back and
+`npx convex dev --once` prints the deployment it pushed to. Read it back and
 confirm it is `affable-panda-681.convex.cloud` before you walk away. Convex
 requires an authenticated session (`npx convex login`) or `CONVEX_DEPLOY_KEY`.
+
+Then verify the deployment is really serving the new code — a deploy can
+report success and still leave the app on the old one:
+
+```bash
+npx convex function-spec --url https://affable-panda-681.convex.cloud \
+  | grep -c listUnsubscribed      # must be 1, not 0
+```
 
 Then release the web app as in §2.1.
 
