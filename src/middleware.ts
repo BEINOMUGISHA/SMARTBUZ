@@ -28,6 +28,16 @@ const PUBLIC_PATHS = [
   "/auth/forgot-password",
   "/auth/reset-password",
   "/api/auth",
+  /*
+   * The health check.
+   *
+   * It has to be reachable without a session, because the thing it watches
+   * for is the application being unable to serve a session — and a monitor
+   * that has to sign in to ask "are you up?" cannot report the outage it
+   * exists to report. It says whether its dependencies answer and nothing
+   * about what they hold.
+   */
+  "/api/health",
   "/_next",
   "/favicon.ico",
   "/manifest.json",

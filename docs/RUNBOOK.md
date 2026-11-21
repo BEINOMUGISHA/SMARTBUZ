@@ -115,9 +115,16 @@ Then release the web app as in §2.1.
 >
 > It needs the server-to-backend secret (`SMARTBUZ_SERVER_SECRET`, or
 > `RESEND_API_KEY` / `SESSION_SECRET` as fallbacks) in the environment, and
-> `NEXT_PUBLIC_CONVEX_URL` pointing at the deployment. When the backend
-> deploy runs from CI, the workflow does this automatically on the step
-> straight after `npx convex deploy`.
+> `NEXT_PUBLIC_CONVEX_URL` pointing at the deployment.
+>
+> **Set `SMARTBUZ_SERVER_SECRET` in the Convex deployment's environment
+> before you deploy.** The backfill calls a function that checks the secret
+> against the value the *deployment* holds, and the migration and the
+> seeder are gated on the same one. If the deployment does not have it, the
+> backfill is refused and the tenants that need it stay blocked.
+>
+> When the backend deploy runs from CI, the workflow does this automatically
+> on the step straight after `npx convex deploy`.
 >
 > A business that already has a subscription is left alone — the backfill
 > only fills gaps.
