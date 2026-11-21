@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { AlertTriangle, X } from "lucide-react";
 import { formatError } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { connectionFailure, connectionFailureMessage } from "@/lib/connection-state";
 
 /**
  * The backend refuses a request when the caller's session is no longer good.
@@ -12,6 +13,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
  * it looks like any other refusal — so it is worth recognising on its own.
  */
 export function isSessionExpired(error: unknown): boolean {
+    // When the server cannot mint a token at all, every request comes back
+    // "you must be signed in" — and it is not the session that has expired.
+    // The person is signed in; the deployment is misconfigured. Saying
+    // "sign in again" would send them to the sign-in page, where exactly
+    // the same thing would happen again.
+    if (connectionFailure()) return false;
+
     const message = error instanceof Error ? error.message : String(error ?? "");
     return /unauthori[sz]ed/i.test(message) || /must be signed in/i.test(message);
 }
@@ -24,6 +32,11 @@ export function isSessionExpired(error: unknown): boolean {
  * and what the screen was trying to do when the server gave no reason.
  */
 export function describeError(error: unknown, fallback?: string): string {
+    // The server said why it could not mint a token. That is the real
+    // reason the call failed, and it is the one the owner has to act on.
+    const failure = connectionFailure();
+    if (failure) return connectionFailureMessage(failure);
+
     if (isSessionExpired(error)) {
         return "Your session has expired. Please sign in again.";
     }

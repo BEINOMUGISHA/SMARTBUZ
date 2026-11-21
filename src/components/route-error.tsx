@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { AlertTriangle, Home, LogIn, RefreshCw } from "lucide-react";
+import { AlertTriangle, Home, LogIn, RefreshCw, ServerCrash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isSessionExpired } from "@/components/error-feedback";
+import {
+    connectionFailure,
+    connectionFailureMessage,
+    subscribeToConnectionFailure,
+} from "@/lib/connection-state";
 
 /**
  * What every route-level error boundary shows.
@@ -30,9 +35,32 @@ export function RouteError({
     // them round in circles — they have to sign in again.
     const sessionExpired = isSessionExpired(error);
 
+    // The server cannot issue an access token at all — the deployment is
+    // missing its signing key. The person is signed in; the server cannot
+    // confirm who they are. Saying "your session has expired" would send
+    // them to the sign-in page, where the same thing would happen again.
+    const failure = useSyncExternalStore(
+        subscribeToConnectionFailure,
+        connectionFailure,
+        () => null
+    );
+    const serverMisconfigured = Boolean(failure);
+
     useEffect(() => {
         console.error("[SMARTBUZ] route error:", error, error?.digest ?? "");
     }, [error]);
+
+    const title = serverMisconfigured
+        ? "The server is not configured yet"
+        : sessionExpired
+          ? "Your session has expired"
+          : "This screen could not be loaded";
+
+    const explanation = serverMisconfigured
+        ? connectionFailureMessage(failure)
+        : sessionExpired
+          ? "The server refused the request because the session is no longer valid. Sign in again and you will pick up where you left off."
+          : "Something went wrong on our side. Nothing you entered has been lost — you can try again, or go back and start from a different screen.";
 
     return (
         <div
@@ -40,24 +68,31 @@ export function RouteError({
             className="flex min-h-[60vh] w-full items-center justify-center p-6"
         >
             <div className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-sm">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-                    <AlertTriangle className="h-6 w-6" />
+                <div
+                    className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${
+                        serverMisconfigured
+                            ? "bg-amber-500/15 text-amber-600"
+                            : "bg-destructive/10 text-destructive"
+                    }`}
+                >
+                    {serverMisconfigured ? (
+                        <ServerCrash className="h-6 w-6" />
+                    ) : (
+                        <AlertTriangle className="h-6 w-6" />
+                    )}
                 </div>
 
-                <h1 className="mt-4 text-xl font-bold tracking-tight">
-                    {sessionExpired
-                        ? "Your session has expired"
-                        : "This screen could not be loaded"}
-                </h1>
+                <h1 className="mt-4 text-xl font-bold tracking-tight">{title}</h1>
 
-                <p className="mt-2 text-sm text-muted-foreground">
-                    {sessionExpired
-                        ? "The server refused the request because the session is no longer valid. Sign in again and you will pick up where you left off."
-                        : "Something went wrong on our side. Nothing you entered has been lost — you can try again, or go back and start from a different screen."}
-                </p>
+                <p className="mt-2 text-sm text-muted-foreground">{explanation}</p>
 
                 <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-                    {sessionExpired ? (
+                    {serverMisconfigured ? (
+                        <Button onClick={reset}>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Try again
+                        </Button>
+                    ) : sessionExpired ? (
                         <Button asChild>
                             <Link href="/auth/login">
                                 <LogIn className="mr-2 h-4 w-4" />
