@@ -2427,6 +2427,27 @@ stockConflicts: defineTable({
     customerId: v.optional(v.id("customers")),
     /** True only once the provider's own callback confirmed it. */
     confirmedByProvider: v.optional(v.boolean()),
+    /**
+     * How many times the automatic repair has asked the provider about
+     * this payment.
+     *
+     * A payment whose callback never arrived is not a lost payment: the
+     * customer may well have paid. The repair asks the provider what
+     * happened, and this counts the asking.
+     */
+    repairAttempts: v.optional(v.number()),
+    /** When the repair last asked the provider. */
+    lastRepairAt: v.optional(v.string()),
+    /**
+     * Set when the repair could not settle this payment and a person has to
+     * look at it.
+     *
+     * The repair does not give up quietly. It tries, it counts, and after a
+     * few attempts it says out loud that this one needs a human — because a
+     * payment nobody is looking at is a payment that quietly disappears
+     * from the books.
+     */
+    needsReview: v.optional(v.boolean()),
     description: v.optional(v.string()),
     /** The raw provider payload, for the audit. */
     providerPayload: v.optional(v.any()),

@@ -22,7 +22,7 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import {
     getSyncEngine,
@@ -58,6 +58,16 @@ const SyncContext = createContext<SyncContextValue | null>(null);
 export function SyncProvider({ children }: { children: ReactNode }) {
     const registerDeviceMutation = useMutation(api.sync.registerDevice);
     const pushTransactionsMutation = useMutation(api.sync.pushTransactions);
+    /**
+     * Settle the payments that are still waiting for the provider.
+     *
+     * A mobile-money collection whose callback never arrived leaves the
+     * customer having paid and the books not knowing. The repair asks the
+     * provider what happened — and the till asks for it every time it
+     * talks to the server, so the payment is settled by the next moment of
+     * contact rather than by somebody remembering.
+     */
+    const repairPayments = useAction(api.integrations.payments.repairUnsettledPayments);
 
     const [status, setStatus] = useState<SyncStatus>({
         online: false,
@@ -127,6 +137,31 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         await refresh();
         return outcome;
     }, [refresh]);
+
+    /**
+     * Ask the server to settle the payments that are waiting.
+     *
+     * Best-effort on purpose: a repair that cannot run leaves the payments
+     * pending and the next heartbeat tries again. It is never worth
+     * interrupting a sync to report that a payment is still waiting.
+     */
+    const repair = useCallback(async () => {
+        try {
+            await repairPayments({});
+        } catch {
+            // Nothing to say: the payments are still pending, and the next
+            // time the till talks to the server it will try again.
+        }
+    }, [repairPayments]);
+
+    // The till repairs the payments while it is online anyway: every time a
+    // sync finishes, the payments that are waiting are settled too.
+    const wasSyncing = useRef(false);
+    useEffect(() => {
+        const finished = wasSyncing.current && !status.syncing;
+        wasSyncing.current = status.syncing;
+        if (finished && status.online) void repair();
+    }, [status.syncing, status.online, repair]);
 
     const retry = useCallback(
         async (transactionId: string) => {

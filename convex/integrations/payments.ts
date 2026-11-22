@@ -28,7 +28,7 @@
  * duplicate is refused.
  */
 
-import { action, internalMutation, internalQuery, mutation, query } from "../_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
@@ -37,6 +37,13 @@ import { requirePermission, requireTenant } from "../tenancy";
 import { loadIntegration, requireUsableIntegration } from "./config";
 import { paymentProvider } from "./engine";
 import { findAdapter } from "./registry";
+import {
+    classifyProviderStatus,
+    isOldEnoughToAsk,
+    needsHumanReview,
+    DEFAULT_REPAIR_MAX_ATTEMPTS,
+    DEFAULT_REPAIR_MIN_AGE_MINUTES,
+} from "./paymentRepair";
 import type { PaymentInitiation, PaymentStatus } from "./types";
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -421,7 +428,37 @@ export const verifyPaymentWithProvider = action({
             }
         );
 
-        const businessId = prepared.businessId;
+        return await ctx.runAction(
+            internal.integrations.payments.verifyPaymentInternal,
+            {
+                businessId: prepared.businessId,
+                reference: args.reference,
+                userId: prepared.userId,
+            }
+        );
+    },
+});
+
+/**
+ * Ask the provider about one payment, without checking who is asking.
+ *
+ * The caller has already been checked — by `verifyPaymentWithProvider` for
+ * an operator, and by `repairUnsettledPayments` for the sweep. The check
+ * belongs at the edge, so that the work itself can be shared.
+ */
+export const verifyPaymentInternal = internalAction({
+    args: {
+        businessId: v.id("businesses"),
+        reference: v.string(),
+        userId: v.optional(v.id("users")),
+    },
+    handler: async (ctx, args): Promise<{
+        reference: string;
+        status: string;
+        message?: string;
+        providerReference?: string;
+    }> => {
+        const businessId = args.businessId;
 
         const intent = await ctx.runQuery(
             internal.integrations.internal.findIntentForReference,
@@ -468,7 +505,7 @@ export const verifyPaymentWithProvider = action({
                 adapterKey: intent.adapterKey,
                 reference: args.reference,
                 error: message,
-                userId: prepared.userId,
+                userId: args.userId,
             });
             throw new ConvexError(message);
         }
@@ -481,7 +518,7 @@ export const verifyPaymentWithProvider = action({
                 status: result.status,
                 providerPayload: result.raw,
                 confirmedBy: "provider",
-                userId: prepared.userId,
+                userId: args.userId,
             });
         }
 
@@ -587,8 +624,7 @@ export const listPaymentIntents = query({
  *
  * These are the ones that need a person to look at them.
  */
-export const listPendingPayments = query({
-    args: { businessId: v.optional(v.id("businesses")) },
+export const listPendingPayments = query({    args: { businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
@@ -650,6 +686,291 @@ export const PAYMENT_STATUSES: PaymentStatus[] = [
     "failed",
     "cancelled",
 ];
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The automatic repair
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * What one repair pass did.
+ *
+ * The counts are stated separately because they mean different things:
+ * `repaired` is money that was found to have been taken and is now in the
+ * books, `failed` is money that was not taken, and `unreachable` is money
+ * nobody could find out about — which is the one that needs a person.
+ */
+export interface RepairSummary {
+    /** How many payments were looked at. */
+    checked: number;
+    /** Settled: the provider says the money was taken. */
+    repaired: number;
+    /** Closed: the provider says the money was not taken. */
+    failed: number;
+    /** The provider could not be asked. */
+    unreachable: number;
+    /** Of those, how many now need a person. */
+    needsReview: number;
+}
+
+/**
+ * ────────────────────────────────────────────────────────────────────────
+ * A payment whose callback never arrived
+ *
+ * The customer pressed their PIN. The money left their account. The
+ * provider's callback never reached us — a dropped connection, a gateway
+ * restart, a till that went offline between the charge and the receipt.
+ *
+ * The sale stays at `pending_verification`, and the money is in the
+ * customer's account but not in the books. Nothing in the system used to go
+ * and ask the provider what happened, so the payment sat there for ever:
+ * the customer had paid, the business had not been paid, and the books
+ * showed a sale that had not settled.
+ *
+ * So the repair asks. It goes to the provider with the reference, and the
+ * provider — which is the only party that knows — says whether the money
+ * was taken. If it was, the sale is confirmed and the money is in the
+ * books. If it was not, the payment is failed and nothing is owed. If the
+ * provider cannot be reached, the payment is left alone and the attempt is
+ * counted, and after a few attempts it is flagged for a person.
+ *
+ * It never invents an answer, and it never gives up silently.
+ * ────────────────────────────────────────────────────────────────────────
+ */
+
+/**
+ * The payments the repair should ask about.
+ *
+ * Only the ones that have been waiting long enough to have missed their
+ * callback — a payment that is thirty seconds old is still in flight.
+ */
+export const listUnsettledIntents = internalQuery({
+    args: {
+        businessId: v.id("businesses"),
+        /** How long a payment must have been waiting before it is asked about. */
+        olderThanMinutes: v.optional(v.number()),
+        /** How many to ask about at once. */
+        limit: v.optional(v.number()),
+    },
+    handler: async (ctx, args) => {
+        const minAgeMinutes = args.olderThanMinutes ?? DEFAULT_REPAIR_MIN_AGE_MINUTES;
+        const now = Date.now();
+
+        const rows = await ctx.db
+            .query("paymentIntents")
+            .withIndex("by_businessId_status", (q) =>
+                q.eq("businessId", args.businessId).eq("status", "pending")
+            )
+            .collect();
+
+        return rows
+            .filter((row) => isOldEnoughToAsk(row.createdAt, now, minAgeMinutes))
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+            .slice(0, Math.min(args.limit ?? 25, 100))
+            .map((row) => ({
+                reference: row.reference,
+                adapterKey: row.adapterKey,
+                amount: row.amount,
+                createdAt: row.createdAt,
+                attempts: row.repairAttempts ?? 0,
+            }));
+    },
+});
+
+/**
+ * Write down that the repair tried, and whether a person is needed.
+ */
+export const recordRepairAttempt = internalMutation({
+    args: {
+        businessId: v.id("businesses"),
+        reference: v.string(),
+        error: v.optional(v.string()),
+        needsReview: v.optional(v.boolean()),
+    },
+    handler: async (ctx, args) => {
+        const intent = await ctx.db
+            .query("paymentIntents")
+            .withIndex("by_reference", (q) => q.eq("reference", args.reference))
+            .unique();
+
+        if (!intent) return null;
+        if (intent.businessId !== args.businessId) return null;
+
+        const attempts = (intent.repairAttempts ?? 0) + 1;
+        await ctx.db.patch(intent._id, {
+            repairAttempts: attempts,
+            lastRepairAt: new Date().toISOString(),
+            needsReview: args.needsReview ?? intent.needsReview,
+            error: args.error ?? intent.error,
+        });
+
+        return { attempts };
+    },
+});
+
+/**
+ * Settle the payments that are waiting.
+ *
+ * This is the action that does the work. It is called by
+ * `repairUnsettledPayments`, which has already checked who is asking.
+ */
+export const repairUnsettledPaymentsInternal = internalAction({
+    args: {
+        businessId: v.id("businesses"),
+        olderThanMinutes: v.optional(v.number()),
+        /** How many times to ask before a person has to look. */
+        maxAttempts: v.optional(v.number()),
+        limit: v.optional(v.number()),
+        userId: v.optional(v.id("users")),
+    },
+    handler: async (ctx, args): Promise<RepairSummary> => {
+        const unsettled = await ctx.runQuery(
+            internal.integrations.payments.listUnsettledIntents,
+            {
+                businessId: args.businessId,
+                olderThanMinutes: args.olderThanMinutes,
+                limit: args.limit,
+            }
+        );
+
+        const maxAttempts = args.maxAttempts ?? DEFAULT_REPAIR_MAX_ATTEMPTS;
+        let repaired = 0;
+        let failed = 0;
+        let unreachable = 0;
+        let needsReview = 0;
+
+        for (const intent of unsettled) {
+            try {
+                const result = await ctx.runAction(
+                    internal.integrations.payments.verifyPaymentInternal,
+                    {
+                        businessId: args.businessId,
+                        reference: intent.reference,
+                        userId: args.userId,
+                    }
+                );
+
+                const outcome = classifyProviderStatus(result.status);
+                if (outcome === "repaired") repaired += 1;
+                else if (outcome === "failed") failed += 1;
+            } catch (err) {
+                // The provider could not be reached, or would not answer.
+                // That is not the same as "the payment failed": the money
+                // may well have been taken. So the payment is left alone,
+                // the attempt is counted, and after enough attempts it is
+                // put in front of a person.
+                unreachable += 1;
+                const attempts = intent.attempts + 1;
+                const review = needsHumanReview(attempts, maxAttempts);
+                await ctx.runMutation(
+                    internal.integrations.payments.recordRepairAttempt,
+                    {
+                        businessId: args.businessId,
+                        reference: intent.reference,
+                        error: err instanceof Error ? err.message : String(err),
+                        needsReview: review,
+                    }
+                );
+                if (review) needsReview += 1;
+            }
+        }
+
+        return {
+            checked: unsettled.length,
+            repaired,
+            failed,
+            unreachable,
+            needsReview,
+        };
+    },
+});
+
+/**
+ * Settle the payments that are waiting, for anybody who may verify them.
+ *
+ * The till calls this when it next talks to the server. The business's own
+ * payments are settled by the next moment of contact, without anybody
+ * remembering to.
+ */
+export const repairUnsettledPayments = action({
+    args: {
+        businessId: v.optional(v.id("businesses")),
+        olderThanMinutes: v.optional(v.number()),
+        maxAttempts: v.optional(v.number()),
+        limit: v.optional(v.number()),
+    },
+    handler: async (ctx, args): Promise<RepairSummary> => {
+        // The permission is `sales.create`, not `payments.verify`, and the
+        // reason matters.
+        //
+        // Deciding that a payment succeeded is a financial act, and that
+        // belongs to the people who may read the books. *Asking the
+        // provider* is not: the repair has no judgement of its own. It
+        // sends the reference to the provider and does whatever the
+        // provider says — which is the same rule the system follows
+        // everywhere else, that a payment is confirmed by the provider and
+        // never by us.
+        //
+        // So a till may ask. It cannot make a payment succeed that the
+        // provider says failed.
+        const prepared = await ctx.runQuery(
+            internal.integrations.internal.resolveActionContext,
+            {
+                businessId: args.businessId,
+                permission: "sales.create",
+            }
+        );
+
+        return await ctx.runAction(
+            internal.integrations.payments.repairUnsettledPaymentsInternal,
+            {
+                businessId: prepared.businessId,
+                olderThanMinutes: args.olderThanMinutes,
+                maxAttempts: args.maxAttempts,
+                limit: args.limit,
+                userId: prepared.userId,
+            }
+        );
+    },
+});
+
+/**
+ * The payments that need a person to look at them.
+ *
+ * A payment the repair could not settle is not a payment to forget: it is
+ * one where the customer may have paid and the books do not know.
+ */
+export const listPaymentsNeedingReview = query({
+    args: { businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "finance.view");
+
+        const rows = await ctx.db
+            .query("paymentIntents")
+            .withIndex("by_businessId_status", (q) =>
+                q.eq("businessId", businessId).eq("status", "pending")
+            )
+            .collect();
+
+        return rows
+            .filter((row) => row.needsReview)
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+            .map((row) => ({
+                id: row._id,
+                reference: row.reference,
+                adapterKey: row.adapterKey,
+                amount: row.amount,
+                currency: row.currency,
+                phone: row.phone,
+                saleId: row.saleId,
+                createdAt: row.createdAt,
+                attempts: row.repairAttempts ?? 0,
+                lastRepairAt: row.lastRepairAt,
+                error: row.error,
+            }));
+    },
+});
 
 /** The Id type is used in the argument shapes above. */
 export type PaymentBusinessId = Id<"businesses">;

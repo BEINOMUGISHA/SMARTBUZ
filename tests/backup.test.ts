@@ -205,7 +205,7 @@ describe("putting a backup back", () => {
         );
 
         assert.ok(error, "the call must be refused");
-        assert.match(String(error.message), /not a table a backup covers/);
+        assert.match(messageOf(error), /not a table a backup covers/);
     });
 
     it("will not do it without the server secret", async () => {

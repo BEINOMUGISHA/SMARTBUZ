@@ -137,6 +137,11 @@ const TABLES = [
   // Phase 7
   "syncLogs",
   "stockConflicts",
+  // The payment lifecycle. A collection that has been started but not yet
+  // confirmed by the provider is an intent, and the automatic repair looks
+  // at the intents that are still waiting.
+  "paymentIntents",
+  "integrationEvents",
   // The throttle tables. The sign-in throttle and the email throttle keep
   // their state in the database so that every instance of the server
   // shares the limit and a deploy does not reset it.
