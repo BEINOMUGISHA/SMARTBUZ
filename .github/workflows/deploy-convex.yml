@@ -86,12 +86,69 @@ jobs:
       - name: Deploy the Convex functions and schema
         if: ${{ env.CONVEX_DEPLOY_KEY != '' && env.CONVEX_URL != '' }}
         run: |
-          if [ -n "$CONVEX_DEPLOYMENT" ]; then
-            echo "Publishing to the pinned deployment $CONVEX_DEPLOYMENT"
-            npx convex dev --once
+          set -euo pipefail
+
+          # ──────────────────────────────────────────────────────────────
+          # WHICH deployment to publish to
+          #
+          # `npx convex deploy` publishes to the *production* deployment of
+          # the Convex **project**. The web app does not necessarily point
+          # there: this installation's app runs on the pinned deployment
+          # affable-panda-681, and `npx convex deploy` silently publishes to
+          # a different one — the deploy reports success and the app keeps
+          # running the old code.
+          #
+          # That is exactly what happened on 21 Nov 2026: the deploy
+          # "succeeded", the job went green, and the fix was not live.
+          #
+          # So the deployment is named explicitly:
+          #
+          #   1. the CONVEX_DEPLOYMENT repository variable, if it is set;
+          #   2. otherwise the deployment whose URL the app is configured to
+          #      use, derived from the CONVEX_URL secret.
+          #
+          # Deriving it from CONVEX_URL is the important part: the secret
+          # already names the deployment the app talks to, so there is
+          # nothing left to configure and nothing left to get wrong.
+          # ──────────────────────────────────────────────────────────────
+          target="$CONVEX_DEPLOYMENT"
+          if [ -z "$target" ]; then
+            name="$(printf '%s' "$CONVEX_URL" | sed -E 's#^https?://([^.]+)\..*$#\1#')"
+            if [ -z "$name" ] || [ "$name" = "$CONVEX_URL" ]; then
+              echo "::error::Could not work out which deployment $CONVEX_URL names."
+              exit 1
+            fi
+            echo "No CONVEX_DEPLOYMENT variable set; using the deployment the app uses: $name"
           else
-            echo "No CONVEX_DEPLOYMENT variable set; publishing to the project's production deployment"
-            npx convex deploy
+            name="$(printf '%s' "$target" | sed -E 's#^(dev|prod):##')"
+            echo "Publishing to the pinned deployment $target"
+          fi
+
+          # `convex dev --once` is the command that publishes to a named
+          # deployment. It needs the deployment in the environment, so it is
+          # handed over in an env file rather than through a variable the
+          # CLI would not read.
+          env_file="$RUNNER_TEMP/convex-target.env"
+
+          # A cloud deployment is either the project's development
+          # deployment or its production one, and the prefix has to match.
+          # Try both forms and take the one that works, rather than
+          # publishing to whichever the CLI happens to default to.
+          published=0
+          for prefix in dev prod; do
+            printf 'CONVEX_DEPLOYMENT=%s:%s\n' "$prefix" "$name" > "$env_file"
+            echo "Publishing to $prefix:$name ..."
+            if npx convex dev --once --env-file "$env_file"; then
+              published=1
+              break
+            fi
+            echo "::warning::Could not publish to $prefix:$name."
+          done
+
+          if [ "$published" -ne 1 ]; then
+            echo "::error::Could not publish to $name in either form."
+            echo "::error::The deployment the app uses is NOT running this commit's code."
+            exit 1
           fi
 
       # ──────────────────────────────────────────────────────────────────
@@ -142,11 +199,12 @@ jobs:
         if: ${{ env.CONVEX_DEPLOY_KEY != '' && env.CONVEX_URL != '' }}
         run: |
           set -euo pipefail
-          if ! npx convex function-spec --url "$CONVEX_URL" 2>/dev/null \
-            | grep -q "listUnsubscribed"; then
-            echo "::error::The deployment at $CONVEX_URL is NOT serving the new code."
-            echo "::error::The deploy went somewhere else, or was rolled back."
-            echo "::error::Set the CONVEX_DEPLOYMENT repository variable to the deployment the app uses."
-            exit 1
-          fi
-          echo "The deployment at $CONVEX_URL is serving the new code."
+
+          # The check compares the *whole* function list: what this commit
+          # defines, against what the deployment the app points at serves.
+          #
+          # It used to look for one function's name — a name that was
+          # already on the deployment from an earlier deploy — so a deploy
+          # that went to the wrong deployment still passed. Every function
+          # this commit defines has to be there, or the job fails.
+          node scripts/verify-deployment.mjs "$CONVEX_URL"

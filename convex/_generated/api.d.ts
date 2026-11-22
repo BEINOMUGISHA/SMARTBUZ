@@ -18,6 +18,7 @@ import type * as billing from "../billing.js";
 import type * as branches from "../branches.js";
 import type * as businesses from "../businesses.js";
 import type * as categories from "../categories.js";
+import type * as counterStock from "../counterStock.js";
 import type * as crypto from "../crypto.js";
 import type * as customers from "../customers.js";
 import type * as dashboard from "../dashboard.js";
@@ -104,6 +105,7 @@ declare const fullApi: ApiFromModules<{
   branches: typeof branches;
   businesses: typeof businesses;
   categories: typeof categories;
+  counterStock: typeof counterStock;
   crypto: typeof crypto;
   customers: typeof customers;
   dashboard: typeof dashboard;

@@ -582,45 +582,78 @@ export const migrationStatus = query({
  */
 export const stripCounterStockCopies = mutation({
   args: {
-    businessId: v.id("businesses"),
+    /** The business to clean. Every business is cleaned when it is absent. */
+    businessId: v.optional(v.id("businesses")),
     /** The server-to-backend secret. Only the SMARTBUZ server has it. */
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireMigrationOperator(ctx, args.serverSecret);
+    // The server secret is the whole gate here.
+    //
+    // The legacy migration below also asks for a signed-in administrator,
+    // because it rewrites who owns what. This one only removes redundant
+    // copies of data that already exists elsewhere, so the secret — which
+    // a browser never holds — is enough, and the cleanup can be run by the
+    // server without anybody's password.
+    if (!serverSecretMatches(args.serverSecret)) {
+      throw new ConvexError(
+        "Forbidden: this can only be run by the SMARTBUZ server. " +
+          "Run scripts/strip-counter-copies.mjs instead of calling this from a browser."
+      );
+    }
 
-    const shops = await ctx.db
-      .query("shops")
-      .withIndex("by_businessId", (q) => q.eq("businessId", args.businessId))
-      .collect();
+    const businesses = args.businessId
+      ? [{ _id: args.businessId }]
+      : await ctx.db.query("businesses").collect();
 
     let countersTouched = 0;
     let rowsCleaned = 0;
+    let countersChecked = 0;
+    const businessesTouched: string[] = [];
 
-    for (const shop of shops) {
-      const issued = shop.issuedStocks ?? [];
-      const dirty = issued.filter(
-        (item) =>
-          item.name !== undefined ||
-          item.price !== undefined ||
-          item.productCode !== undefined ||
-          item.pv !== undefined ||
-          item.bv !== undefined ||
-          item.halfPrice !== undefined
-      );
-      if (dirty.length === 0) continue;
+    for (const business of businesses) {
+      const shops = await ctx.db
+        .query("shops")
+        .withIndex("by_businessId", (q) => q.eq("businessId", business._id))
+        .collect();
 
-      await ctx.db.patch(shop._id, {
-        issuedStocks: issued.map((item) => ({
-          stockId: item.stockId,
-          qty: item.qty,
-        })),
-      });
+      countersChecked += shops.length;
+      let touchedHere = 0;
 
-      countersTouched += 1;
-      rowsCleaned += dirty.length;
+      for (const shop of shops) {
+        const issued = shop.issuedStocks ?? [];
+        const dirty = issued.filter(
+          (item) =>
+            item.name !== undefined ||
+            item.price !== undefined ||
+            item.productCode !== undefined ||
+            item.pv !== undefined ||
+            item.bv !== undefined ||
+            item.halfPrice !== undefined
+        );
+        if (dirty.length === 0) continue;
+
+        await ctx.db.patch(shop._id, {
+          issuedStocks: issued.map((item) => ({
+            stockId: item.stockId,
+            qty: item.qty,
+          })),
+        });
+
+        countersTouched += 1;
+        rowsCleaned += dirty.length;
+        touchedHere += dirty.length;
+      }
+
+      if (touchedHere > 0) businessesTouched.push(business._id);
     }
 
-    return { countersTouched, rowsCleaned, countersChecked: shops.length };
+    return {
+      countersTouched,
+      rowsCleaned,
+      countersChecked,
+      businessesChecked: businesses.length,
+      businessesTouched,
+    };
   },
 });

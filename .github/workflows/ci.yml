@@ -45,8 +45,11 @@ jobs:
           NEXT_PUBLIC_CONVEX_SITE_URL: https://placeholder.convex.site
           # base64url of a fixed ASCII string, so it is a well-formed key
           # value without being a key. See scripts/generate-auth-keys.mjs for
-          # what a real value looks like.
-          SMARTBUZ_JWT_PRIVATE_KEY: U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6
+          # what a real value looks like. It has to satisfy the same length
+          # check a real key does (at least 256 characters), or the
+          # pre-flight would fail on the placeholder rather than on a
+          # genuinely missing variable.
+          SMARTBUZ_JWT_PRIVATE_KEY: U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6
           SESSION_SECRET: ci-placeholder-session-secret-at-least-32-chars
           SMARTBUZ_SERVER_SECRET: ci-placeholder-server-secret-at-least-16-chars
           RESEND_API_KEY: re_ci_placeholder_key_value
