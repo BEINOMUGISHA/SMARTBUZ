@@ -8,7 +8,7 @@ import { api } from "../../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { Eye, EyeOff, ArrowLeft, MailCheck } from "lucide-react";
@@ -125,14 +125,14 @@ export default function RegisterPage() {
 
   if (awaitingVerification) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
         <div className="w-full max-w-xl">
           <Card className="shadow-xl border">
             <CardHeader className="space-y-1">
               <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
                 <MailCheck className="h-6 w-6 text-primary" />
               </div>
-              <CardTitle className="text-3xl font-black">Verify your email</CardTitle>
+              <h1 className="text-3xl font-black leading-none">Verify your email</h1>
               <CardDescription>
                 We sent a 6-digit code to {form.email}. Enter it below to activate
                 your account.
@@ -174,12 +174,12 @@ export default function RegisterPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-xl">
         <div className="mb-4">
           <Link href="/auth/login" className="inline-flex items-center text-sm font-bold text-muted-foreground hover:text-primary transition-colors group">
@@ -190,7 +190,7 @@ export default function RegisterPage() {
 
         <Card className="shadow-xl border">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-3xl font-black">Create your account</CardTitle>
+            <h1 className="text-3xl font-black leading-none">Create your account</h1>
             <CardDescription>Register a new SMART_BUZ user to get started.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -290,6 +290,6 @@ export default function RegisterPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   );
 }

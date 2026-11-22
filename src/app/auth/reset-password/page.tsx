@@ -17,7 +17,7 @@ import { formatError } from "@/lib/utils";
 
 export default function ResetPasswordPage() {
     return (
-        <div className="flex min-h-screen w-full lg:grid lg:grid-cols-2 bg-muted/30">
+        <main className="flex min-h-screen w-full lg:grid lg:grid-cols-2 bg-muted/30">
             {/* Left side: Hero Section (Desktop only) */}
             <div className="hidden bg-muted lg:block relative">
                 <Image
@@ -66,7 +66,7 @@ export default function ResetPasswordPage() {
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
     );
 }
 

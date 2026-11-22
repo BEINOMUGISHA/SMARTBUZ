@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { OfflineStatusBanner } from "@/components/offline/sync-status";
 import { SyncProvider } from "@/components/offline/sync-provider";
 import { BusinessSwitcher } from "@/components/business-switcher";
+import { RouteAnnouncer } from "@/components/route-announcer";
 
 const reportsSubItems = [
     { href: "/reports/overview", label: "Overview" },
@@ -137,7 +138,7 @@ export function SidebarContent(props: SidebarContentProps) {
 
             {/* Navigation — driven by the active business category */}
             <div className="flex-1 overflow-y-auto px-4 py-6">
-                <nav className="space-y-4">
+                <nav className="space-y-4" aria-label="Main">
                     {navGroups.map((group) => (
                         <div key={group.group} className="space-y-1.5">
                             {group.label && !isCollapsed && (
@@ -464,7 +465,16 @@ export default function DashboardLayout({
 
     return (
         <SyncProvider>
+        <RouteAnnouncer />
         <div className="flex min-h-screen w-full bg-background/50">
+            {/* Skip to the content — the navigation is long, and a person
+                who cannot see it has no other way past it. */}
+            <a
+                href="#main-content"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground"
+            >
+                Skip to the content
+            </a>
             {/* Desktop Sidebar */}
             <aside
                 className={cn(
@@ -508,7 +518,11 @@ export default function DashboardLayout({
                     </div>
                 </div>
 
-                <main className="flex-1 p-4 lg:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <main
+                    id="main-content"
+                    tabIndex={-1}
+                    className="flex-1 p-4 lg:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 focus:outline-none"
+                >
                     <div className="mx-auto max-w-7xl space-y-4">
                         <div className="hidden justify-end lg:flex">
                             <OfflineStatusBanner />

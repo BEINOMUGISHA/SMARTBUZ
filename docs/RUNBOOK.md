@@ -471,6 +471,18 @@ The body is JSON and it never contains a secret value:
    vercel redeploy <deployment-url> --prod
    ```
 
+   Or, without the CLI: Vercel dashboard → **Deployments** → the current
+   deployment → **Redeploy** → *Production*.
+
+   Or — and this is the one that needs nobody's authenticator — **push a
+   commit**. The project is connected to GitHub, so a push builds a new
+   deployment with the new variables in it. Vercel asks for a six-digit
+   code from your authenticator before it will *redeploy* an existing
+   build, but it does not ask before it *builds* a new one from a push.
+
+   That is how the 22 Nov 2026 outage was closed: the variable was added
+   in the dashboard and the next push carried it into a new deployment.
+
 5. Re-check:
 
    ```bash
@@ -487,6 +499,22 @@ npx convex env list
 
 `SMARTBUZ_SERVER_SECRET` and `RESEND_API_KEY` must match the Vercel values
 exactly.
+
+To confirm that the two sides agree without printing either value, hash them
+and compare the first twelve characters:
+
+```bash
+# The Convex deployment
+npx convex env get SMARTBUZ_SERVER_SECRET --deployment-name affable-panda-681 \
+  | node -e "const c=require('crypto');let d='';process.stdin.on('data',x=>d+=x).on('end',()=>console.log(c.createHash('sha256').update(d.trim()).digest('hex').slice(0,12)))"
+
+# The local .env.local
+grep '^SMARTBUZ_SERVER_SECRET=' .env.local | cut -d= -f2- \
+  | node -e "const c=require('crypto');let d='';process.stdin.on('data',x=>d+=x).on('end',()=>console.log(c.createHash('sha256').update(d.trim()).digest('hex').slice(0,12)))"
+```
+
+Two matching hashes mean the two sides agree. The values themselves are
+never printed.
 
 ### 5.3 The Convex backend is not answering
 

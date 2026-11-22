@@ -507,7 +507,7 @@ export function MySalesView() {
 
                     <Card className="bg-emerald-50/50 border-emerald-100">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-emerald-700 uppercase tracking-wider">Today's Collection</CardTitle>
+                            <CardTitle className="text-sm font-medium text-emerald-700 uppercase tracking-wider">Today&apos;s Collection</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold text-emerald-600">{currency} {fmt(stats?.totalCollected || 0)}</div>

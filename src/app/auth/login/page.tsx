@@ -74,7 +74,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full lg:grid lg:grid-cols-2 bg-muted/30">
+    <main className="flex min-h-screen w-full lg:grid lg:grid-cols-2 bg-muted/30">
       {/* Left side: Hero Section (Desktop only) */}
       <div className="hidden bg-muted lg:block relative overflow-hidden">
         <Image
@@ -263,6 +263,6 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
