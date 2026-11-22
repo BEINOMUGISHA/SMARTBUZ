@@ -226,7 +226,7 @@ export const update = mutation({
 
         const { id, userId, businessId: _ignored, ...rest } = args;
         const shop = await ctx.db.get(id);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
@@ -256,7 +256,7 @@ export const remove = mutation({
         await requirePermission(ctx, tenant.businessId, "branches.manage");
 
         const shop = await ctx.db.get(args.id);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
@@ -296,7 +296,7 @@ export const issueStock = mutation({
         const now = new Date().toISOString();
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
@@ -440,7 +440,7 @@ export const removeStock = mutation({
         await requirePermission(ctx, tenant.businessId, "inventory.transfer");
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
@@ -472,7 +472,7 @@ export const clearStocks = mutation({
         await requirePermission(ctx, tenant.businessId, "inventory.adjust");
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
@@ -505,13 +505,13 @@ export const adjustShopStock = mutation({
         const businessId = tenant.businessId;
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
 
         const stockIndex = shop.issuedStocks.findIndex(s => s.stockId === args.stockId);
-        if (stockIndex === -1) throw new Error("Item not found in shop");
+        if (stockIndex === -1) throw new ConvexError("Item not found in shop");
 
         const currentQty = shop.issuedStocks[stockIndex].qty;
         const delta = args.newQty - currentQty;
@@ -529,10 +529,10 @@ export const adjustShopStock = mutation({
 
         if (delta > 0) {
             // INCREASE: Deduct from Warehouse, Add to Shop
-            if (!warehouseStock) throw new Error("Stock not found in warehouse");
+            if (!warehouseStock) throw new ConvexError("Stock not found in warehouse");
 
             if (warehouseStock.qty < delta) {
-                throw new Error(`Insufficient warehouse stock. Available: ${warehouseStock.qty}, Required: ${delta}`);
+                throw new ConvexError(`Insufficient warehouse stock. Available: ${warehouseStock.qty}, Required: ${delta}`);
             }
 
             // Update Warehouse
@@ -625,13 +625,13 @@ export const returnShopStock = mutation({
         const businessId = tenant.businessId;
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
 
         const stockItem = shop.issuedStocks.find(s => s.stockId === args.stockId);
-        if (!stockItem) throw new Error("Item not found in shop");
+        if (!stockItem) throw new ConvexError("Item not found in shop");
 
         // Return quantity to warehouse
         const warehouseStock = await ctx.db.get(args.stockId);
@@ -698,17 +698,17 @@ export const transferStock = mutation({
         const businessId = tenant.businessId;
 
         // 1. Validation
-        if (args.quantity <= 0) throw new Error("Quantity must be greater than zero");
+        if (args.quantity <= 0) throw new ConvexError("Quantity must be greater than zero");
 
         const stock = await ctx.db.get(args.stockId);
-        if (!stock) throw new Error("Stock item not found in warehouse");
+        if (!stock) throw new ConvexError("Stock item not found in warehouse");
         if (stock.businessId !== businessId) {
             throw new ConvexError("Forbidden: that product belongs to another business.");
         }
-        if (stock.qty < args.quantity) throw new Error(`Insufficient warehouse stock. Available: ${stock.qty}`);
+        if (stock.qty < args.quantity) throw new ConvexError(`Insufficient warehouse stock. Available: ${stock.qty}`);
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
@@ -807,7 +807,7 @@ export const batchTransferStock = mutation({
         const businessId = tenant.businessId;
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }
@@ -817,11 +817,11 @@ export const batchTransferStock = mutation({
 
         for (const itemRequest of args.items) {
             const stock = await ctx.db.get(itemRequest.stockId);
-            if (!stock) throw new Error(`Stock item ${itemRequest.stockId} not found`);
+            if (!stock) throw new ConvexError(`Stock item ${itemRequest.stockId} not found`);
             if (stock.businessId !== businessId) {
                 throw new ConvexError("Forbidden: that product belongs to another business.");
             }
-            if (stock.qty < itemRequest.quantity) throw new Error(`Insufficient stock for ${stock.name}`);
+            if (stock.qty < itemRequest.quantity) throw new ConvexError(`Insufficient stock for ${stock.name}`);
 
             // Deduct from warehouse
             await ctx.db.patch(itemRequest.stockId, {
@@ -881,7 +881,7 @@ export const getShopIssueRecords = query({
         const businessId = tenant.businessId;
 
         const shop = await ctx.db.get(args.shopId);
-        if (!shop) throw new Error("Shop not found");
+        if (!shop) throw new ConvexError("Shop not found");
         if (shop.businessId !== businessId) {
             throw new ConvexError("Forbidden: that shop belongs to another business.");
         }

@@ -20,8 +20,10 @@ import {
     SheetTitle,
     SheetDescription,
 } from "@/components/ui/sheet";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ProfitMarginReport() {
+    const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -59,19 +61,19 @@ export function ProfitMarginReport() {
     const customStats = summary ? [
         {
             title: "Total Revenue",
-            value: `UGX ${summary.totalRevenue.toLocaleString()}`,
+            value: `${currency} ${summary.totalRevenue.toLocaleString()}`,
             description: "GROSS SALES",
             color: "border-l-emerald-500",
         },
         {
             title: "Total Cost",
-            value: `UGX ${summary.totalCost.toLocaleString()}`,
+            value: `${currency} ${summary.totalCost.toLocaleString()}`,
             description: "COST OF GOODS SOLD",
             color: "border-l-red-500",
         },
         {
             title: "Net Profit",
-            value: `UGX ${summary.totalProfit.toLocaleString()}`,
+            value: `${currency} ${summary.totalProfit.toLocaleString()}`,
             description: `MARGIN: ${summary.overallMargin.toFixed(1)}%`,
             color: summary.totalProfit >= 0 ? "border-l-blue-500" : "border-destructive",
         },
@@ -174,7 +176,7 @@ export function ProfitMarginReport() {
                     {
                         header: "Revenue",
                         accessor: (p: any) => (
-                            <span className="font-black text-emerald-700 text-sm">UGX {p.totalRevenue.toLocaleString()}</span>
+                            <span className="font-black text-emerald-700 text-sm">{currency} {p.totalRevenue.toLocaleString()}</span>
                         ),
                         exportValue: (p: any) => p.totalRevenue.toLocaleString(),
                         className: "text-right",
@@ -182,7 +184,7 @@ export function ProfitMarginReport() {
                     {
                         header: "Cost",
                         accessor: (p: any) => (
-                            <span className="font-bold text-red-600 text-sm">UGX {p.totalCost.toLocaleString()}</span>
+                            <span className="font-bold text-red-600 text-sm">{currency} {p.totalCost.toLocaleString()}</span>
                         ),
                         exportValue: (p: any) => p.totalCost.toLocaleString(),
                         className: "text-right",
@@ -191,7 +193,7 @@ export function ProfitMarginReport() {
                         header: "Profit",
                         accessor: (p: any) => (
                             <span className={cn("font-bold text-sm", p.totalProfit >= 0 ? "text-emerald-600" : "text-destructive")}>
-                                UGX {p.totalProfit.toLocaleString()}
+                                {currency} {p.totalProfit.toLocaleString()}
                             </span>
                         ),
                         exportValue: (p: any) => p.totalProfit.toLocaleString(),
@@ -244,16 +246,16 @@ export function ProfitMarginReport() {
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Total Revenue</span>
-                                        <span className="font-bold text-lg text-emerald-600">UGX {viewingProduct.totalRevenue.toLocaleString()}</span>
+                                        <span className="font-bold text-lg text-emerald-600">{currency} {viewingProduct.totalRevenue.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Total Cost</span>
-                                        <span className="font-bold text-lg text-red-600">UGX {viewingProduct.totalCost.toLocaleString()}</span>
+                                        <span className="font-bold text-lg text-red-600">{currency} {viewingProduct.totalCost.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between pt-2 border-t">
                                         <span className="text-sm font-bold text-muted-foreground">Net Profit</span>
                                         <span className={cn("font-bold text-2xl", viewingProduct.totalProfit >= 0 ? "text-emerald-600" : "text-destructive")}>
-                                            UGX {viewingProduct.totalProfit.toLocaleString()}
+                                            {currency} {viewingProduct.totalProfit.toLocaleString()}
                                         </span>
                                     </div>
                                 </div>
@@ -273,11 +275,11 @@ export function ProfitMarginReport() {
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Avg Price per Unit</span>
-                                        <span className="font-semibold">UGX {Math.round(viewingProduct.totalRevenue / viewingProduct.totalQuantity).toLocaleString()}</span>
+                                        <span className="font-semibold">{currency} {Math.round(viewingProduct.totalRevenue / viewingProduct.totalQuantity).toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Avg Cost per Unit</span>
-                                        <span className="font-semibold">UGX {Math.round(viewingProduct.totalCost / viewingProduct.totalQuantity).toLocaleString()}</span>
+                                        <span className="font-semibold">{currency} {Math.round(viewingProduct.totalCost / viewingProduct.totalQuantity).toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>

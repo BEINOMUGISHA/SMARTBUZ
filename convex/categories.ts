@@ -61,7 +61,7 @@ export const remove = mutation({
         await requirePermission(ctx, tenant.businessId, "products.update");
 
         const category = await ctx.db.get(args.id);
-        if (!category) throw new Error("Category not found");
+        if (!category) throw new ConvexError("Category not found");
         if (category.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that category belongs to another business.");
         }
@@ -91,7 +91,7 @@ export const update = mutation({
         await requirePermission(ctx, tenant.businessId, "products.update");
 
         const category = await ctx.db.get(args.id);
-        if (!category) throw new Error("Category not found");
+        if (!category) throw new ConvexError("Category not found");
         if (category.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that category belongs to another business.");
         }

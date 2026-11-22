@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Scissors, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 const JOB_STATUSES = [
     { value: "all", label: "All" },
@@ -37,6 +38,7 @@ const JOB_STATUSES = [
 ];
 
 export default function ServiceTicketsPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [status, setStatus] = useState("all");
     const [createOpen, setCreateOpen] = useState(false);
@@ -188,7 +190,7 @@ export default function ServiceTicketsPage() {
                     { name: "description", label: "Job description", type: "textarea", full: true },
                     {
                         name: "estimatedCost",
-                        label: "Estimated cost (UGX)",
+                        label: `Estimated cost (${currency})`,
                         type: "number",
                         min: 0,
                     },

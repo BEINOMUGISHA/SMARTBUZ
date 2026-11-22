@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface SummaryData {
     totalRevenue: number;
@@ -34,6 +35,8 @@ interface ReportSummaryProps {
 }
 
 export function ReportSummary({ data, isLoading, variant = "overview", customStats }: ReportSummaryProps) {
+    const { currency } = useCurrency();
+
     if (isLoading) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -47,7 +50,7 @@ export function ReportSummary({ data, isLoading, variant = "overview", customSta
     if (!data && !customStats) return null;
 
     // Use custom stats if provided, otherwise generate based on variant
-    const stats = customStats || getStatsForVariant(variant, data!);
+    const stats = customStats || getStatsForVariant(variant, data!, currency);
 
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -68,14 +71,21 @@ export function ReportSummary({ data, isLoading, variant = "overview", customSta
     );
 }
 
-export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
+/**
+ * The summary tiles for a report.
+ *
+ * The currency is passed in rather than read from a context: this is a
+ * plain function that other reports call, and the currency it should use
+ * is the currency of the business the report is about.
+ */
+export function getStatsForVariant(variant: SummaryVariant, data: SummaryData, currency: string) {
     switch (variant) {
         case "sales":
         case "overview":
             return [
                 {
                     title: "Total Sales",
-                    value: `UGX ${data.totalRevenue.toLocaleString()}`,
+                    value: `${currency} ${data.totalRevenue.toLocaleString()}`,
                     description: `${data.itemCount} ITEMS SOLD`,
                     color: "border-l-emerald-500"
                 },
@@ -87,14 +97,14 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
                 },
                 {
                     title: "Est. Net Profit",
-                    value: `UGX ${data.totalProfit.toLocaleString()}`,
+                    value: `${currency} ${data.totalProfit.toLocaleString()}`,
                     description: "AFTER COS & EXPENSES",
                     color: "border-l-blue-500"
                 },
                 {
                     title: "Inventory Value",
-                    value: `UGX ${data.totalInventorySellingPrice.toLocaleString()}`,
-                    description: `COST: UGX ${data.totalInventoryCostPrice.toLocaleString()}`,
+                    value: `${currency} ${data.totalInventorySellingPrice.toLocaleString()}`,
+                    description: `COST: ${currency} ${data.totalInventoryCostPrice.toLocaleString()}`,
                     color: "border-l-purple-500"
                 }
             ];
@@ -103,7 +113,7 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
             return [
                 {
                     title: "Total Sales",
-                    value: `UGX ${data.totalRevenue.toLocaleString()}`,
+                    value: `${currency} ${data.totalRevenue.toLocaleString()}`,
                     description: `${data.itemCount} TRANSACTIONS`,
                     color: "border-l-emerald-500"
                 },
@@ -115,13 +125,13 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
                 },
                 {
                     title: "Est. Net Profit",
-                    value: `UGX ${data.totalProfit.toLocaleString()}`,
+                    value: `${currency} ${data.totalProfit.toLocaleString()}`,
                     description: "AFTER COS & EXPENSES",
                     color: "border-l-blue-500"
                 },
                 {
                     title: "Expenses",
-                    value: `UGX ${data.totalExpenses.toLocaleString()}`,
+                    value: `${currency} ${data.totalExpenses.toLocaleString()}`,
                     description: "TOTAL RECORDED",
                     color: "border-l-red-500"
                 }
@@ -131,13 +141,13 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
             return [
                 {
                     title: "Inventory Value",
-                    value: `UGX ${data.totalInventorySellingPrice.toLocaleString()}`,
+                    value: `${currency} ${data.totalInventorySellingPrice.toLocaleString()}`,
                     description: "SELLING PRICE TOTAL",
                     color: "border-l-emerald-500"
                 },
                 {
                     title: "Cost Value",
-                    value: `UGX ${data.totalInventoryCostPrice.toLocaleString()}`,
+                    value: `${currency} ${data.totalInventoryCostPrice.toLocaleString()}`,
                     description: "PURCHASE PRICE TOTAL",
                     color: "border-l-blue-500"
                 },
@@ -161,13 +171,13 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
             return [
                 {
                     title: "Total Loaned",
-                    value: `UGX ${totalLoaned.toLocaleString()}`,
+                    value: `${currency} ${totalLoaned.toLocaleString()}`,
                     description: `${data.loanCount || 0} LOAN RECORDS`,
                     color: "border-l-red-500"
                 },
                 {
                     title: "Outstanding",
-                    value: `UGX ${totalOutstanding.toLocaleString()}`,
+                    value: `${currency} ${totalOutstanding.toLocaleString()}`,
                     description: "BALANCE DUE",
                     color: "border-l-orange-500"
                 },
@@ -179,7 +189,7 @@ export function getStatsForVariant(variant: SummaryVariant, data: SummaryData) {
                 },
                 {
                     title: "Paid Amount",
-                    value: `UGX ${Math.max(0, totalLoaned - totalOutstanding).toLocaleString()}`,
+                    value: `${currency} ${Math.max(0, totalLoaned - totalOutstanding).toLocaleString()}`,
                     description: "ALREADY COLLECTED",
                     color: "border-l-emerald-500"
                 }

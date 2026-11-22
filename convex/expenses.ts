@@ -99,7 +99,7 @@ export const remove = mutation({
         await requirePermission(ctx, tenant.businessId, "finance.expenses.create");
 
         const expense = await ctx.db.get(args.id);
-        if (!expense) throw new Error("Expense not found");
+        if (!expense) throw new ConvexError("Expense not found");
         if (expense.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that expense belongs to another business.");
         }
@@ -133,7 +133,7 @@ export const update = mutation({
         await requirePermission(ctx, tenant.businessId, "finance.expenses.create");
 
         const existing = await ctx.db.get(args.id);
-        if (!existing) throw new Error("Expense not found");
+        if (!existing) throw new ConvexError("Expense not found");
         if (existing.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that expense belongs to another business.");
         }

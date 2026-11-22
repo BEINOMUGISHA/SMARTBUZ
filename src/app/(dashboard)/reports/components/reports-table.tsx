@@ -8,6 +8,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { getStatsForVariant, SummaryVariant } from "./ReportSummary";
+import { useCurrency } from "@/hooks/use-currency";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Printer, FileSpreadsheet, FileText, Eye } from "lucide-react";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
@@ -70,6 +71,7 @@ export function ReportTable<T>({
 }: ReportTableProps<T>) {
     const internalId = React.useId().replace(/:/g, "");
     const actualPrintId = printId || `report-print-${internalId}`;
+    const { currency } = useCurrency();
 
     const activeProfile = useQuery(api.businesses.getActive, {});
     const businessName = activeProfile?.name || "SMARTBUZ POS";
@@ -117,7 +119,7 @@ export function ReportTable<T>({
                         variant="outline"
                         size="sm"
                         onClick={async () => {
-                            const stats = summaryData ? getStatsForVariant(variant || "overview", summaryData) : [];
+                            const stats = summaryData ? getStatsForVariant(variant || "overview", summaryData, currency) : [];
 
                             // Fetch logo
                             let logoBase64 = undefined;
@@ -322,7 +324,7 @@ export function ReportTable<T>({
                 {/* SUMMARY CARDS IN PRINT (Dynamic based on Variant) */}
                 {summaryData && (
                     <div className="grid grid-cols-4 gap-4 mb-4 border-b border-gray-100 pb-4">
-                        {getStatsForVariant(variant || "overview", summaryData).map((stat, idx) => (
+                        {getStatsForVariant(variant || "overview", summaryData, currency).map((stat, idx) => (
                             <div key={idx} className={cn("flex flex-col pl-4 border-l border-gray-100 first:pl-0 first:border-0")}>
                                 <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">{stat.title}</p>
                                 <p className="text-xs font-black text-black">{stat.value}</p>

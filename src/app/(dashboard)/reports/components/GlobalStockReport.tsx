@@ -20,6 +20,7 @@ import {
     SheetDescription,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function GlobalStockReport() {
     const [subTab, setSubTab] = useState("regular");
@@ -104,6 +105,7 @@ export function GlobalStockReport() {
 }
 
 function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice: boolean; search: string; searchType: string; summaryData: any }) {
+    const { currency } = useCurrency();
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
@@ -168,7 +170,7 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
         loadMoreStock(rowsPerPage);
     }, [page, rowsPerPage, uniqueStockRecords.length, totalStockCount, stockStatus, loadMoreStock]);
 
-    const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
+    const formatPrice = (p: number) => `${currency} ${p.toLocaleString()}`;
 
     return (
         <>
@@ -305,11 +307,11 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Purchase Price</span>
-                                    <span className="font-semibold">UGX {stockWithDetails.purchasePrice?.toLocaleString() || 0}</span>
+                                    <span className="font-semibold">{currency} {stockWithDetails.purchasePrice?.toLocaleString() || 0}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Selling Price</span>
-                                    <span className="font-semibold">UGX {stockWithDetails.price?.toLocaleString() || 0}</span>
+                                    <span className="font-semibold">{currency} {stockWithDetails.price?.toLocaleString() || 0}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">PV</span>

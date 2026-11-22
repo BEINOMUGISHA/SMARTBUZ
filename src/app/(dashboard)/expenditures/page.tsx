@@ -34,6 +34,7 @@ import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/date-range-picker";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
 import { describeError } from "@/components/error-feedback";
+import { useCurrency } from "@/hooks/use-currency";
 
 type ExpenseForm = {
     amount: string;
@@ -57,6 +58,7 @@ const EXPENSE_TYPES = [
 ];
 
 export default function ExpendituresPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [dateMode, setDateMode] = useState<"audit" | "range">("audit");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
@@ -220,7 +222,7 @@ export default function ExpendituresPage() {
             { header: "Expense", accessor: "expense" },
             { header: "Type", accessor: "type" },
             { header: "Received By", accessor: "receivedBy" },
-            { header: "Amount (UGX)", accessor: (e: any) => e.amount.toLocaleString() },
+            { header: `Amount (${currency})`, accessor: (e: any) => e.amount.toLocaleString() },
         ];
         exportToExcel(filteredExpenses, columns, `Expenditures_${format(new Date(), "yyyy-MM-dd")}`);
     };
@@ -231,7 +233,7 @@ export default function ExpendituresPage() {
             { header: "Expense", accessor: "expense" },
             { header: "Type", accessor: "type" },
             { header: "Received By", accessor: "receivedBy" },
-            { header: "Amount (UGX)", accessor: (e: any) => e.amount.toLocaleString() },
+            { header: `Amount (${currency})`, accessor: (e: any) => e.amount.toLocaleString() },
         ];
         exportToPDF(filteredExpenses, columns, "Expenditures Report", `Expenditures_${format(new Date(), "yyyy-MM-dd")}`);
     };
@@ -250,7 +252,7 @@ export default function ExpendituresPage() {
                         <CardTitle className="text-sm font-medium text-emerald-700 uppercase tracking-wider">Total Expenditure</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-emerald-600">UGX {totalAmount.toLocaleString()}</div>
+                        <div className="text-2xl font-bold text-emerald-600">{currency} {totalAmount.toLocaleString()}</div>
                         <p className="text-[10px] text-emerald-600/70 mt-1">Total amount spent</p>
                     </CardContent>
                 </Card>
@@ -362,7 +364,7 @@ export default function ExpendituresPage() {
                                     <TableHead>Expense</TableHead>
                                     <TableHead>Type</TableHead>
                                     <TableHead>Received By</TableHead>
-                                    <TableHead className="text-right">Amount (UGX)</TableHead>
+                                    <TableHead className="text-right">Amount ({currency})</TableHead>
                                     <TableHead className="w-[150px] text-center">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -433,7 +435,7 @@ export default function ExpendituresPage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="amount">Amount (UGX) *</Label>
+                            <Label htmlFor="amount">Amount ({currency}) *</Label>
                             <Input
                                 id="amount"
                                 type="number"
@@ -522,7 +524,7 @@ export default function ExpendituresPage() {
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Amount</span>
-                                    <span className="font-bold text-lg text-emerald-600">UGX {expenseWithUser.amount.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-emerald-600">{currency} {expenseWithUser.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Received By</span>

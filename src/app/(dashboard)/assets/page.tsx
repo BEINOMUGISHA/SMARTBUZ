@@ -30,8 +30,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Boxes, Bus, Route, Plus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function AssetsPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [tab, setTab] = useState("assets");
     const [search, setSearch] = useState("");
@@ -380,14 +382,14 @@ export default function AssetsPage() {
                     { name: "purchaseDate", label: "Purchase date", type: "date", defaultValue: editingAsset?.purchaseDate },
                     {
                         name: "purchaseCost",
-                        label: "Purchase cost (UGX)",
+                        label: `Purchase cost (${currency})`,
                         type: "number",
                         min: 0,
                         defaultValue: editingAsset?.purchaseCost,
                     },
                     {
                         name: "currentValue",
-                        label: "Current value (UGX)",
+                        label: `Current value (${currency})`,
                         type: "number",
                         min: 0,
                         defaultValue: editingAsset?.currentValue,
@@ -471,7 +473,7 @@ export default function AssetsPage() {
                     { name: "to", label: "To", defaultValue: editingFare?.to },
                     {
                         name: "fare",
-                        label: "Fare (UGX)",
+                        label: `Fare (${currency})`,
                         type: "number",
                         required: true,
                         min: 0,

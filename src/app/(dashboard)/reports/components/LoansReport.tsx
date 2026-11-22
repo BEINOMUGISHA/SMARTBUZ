@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function LoansReport() {
     const [subTab, setSubTab] = useState<"loans" | "collections" | "aged">("loans");
@@ -131,6 +132,7 @@ function LoansTab({
     shops, customers, page, setPage, rowsPerPage, setRowsPerPage,
     viewingLoanId, setViewingLoanId, isViewSheetOpen, setIsViewSheetOpen,
 }: any) {
+    const { currency } = useCurrency();
     const loansArgs = {
         startDate: dateRange.from,
         endDate: dateRange.to,
@@ -342,11 +344,11 @@ function LoansTab({
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
-                                    <span className="font-bold text-lg text-emerald-600">UGX {loanWithDetails.amount.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-emerald-600">{currency} {loanWithDetails.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Balance Due</span>
-                                    <span className="font-bold text-lg text-destructive">UGX {loanWithDetails.balance.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-destructive">{currency} {loanWithDetails.balance.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Status</span>
@@ -432,6 +434,7 @@ function CollectionsTab({
     selectedShop, setSelectedShop, customerId, setCustomerId,
     search, setSearch, shops, customers,
 }: any) {
+    const { currency } = useCurrency();
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
@@ -460,19 +463,19 @@ function CollectionsTab({
     const customStats = summary ? [
         {
             title: "Total Collected",
-            value: `UGX ${summary.totalCollected.toLocaleString()}`,
+            value: `${currency} ${summary.totalCollected.toLocaleString()}`,
             description: `${summary.paymentCount} PAYMENTS RECEIVED`,
             color: "border-l-emerald-500",
         },
         {
             title: "Avg Payment",
-            value: `UGX ${Math.round(summary.avgPayment).toLocaleString()}`,
+            value: `${currency} ${Math.round(summary.avgPayment).toLocaleString()}`,
             description: `${summary.uniqueCustomers} UNIQUE CUSTOMERS`,
             color: "border-l-blue-500",
         },
         {
             title: "Total Outstanding",
-            value: `UGX ${summary.totalOutstanding.toLocaleString()}`,
+            value: `${currency} ${summary.totalOutstanding.toLocaleString()}`,
             description: "STILL OWED ACROSS ALL LOANS",
             color: "border-l-red-500",
         },
@@ -598,7 +601,7 @@ function CollectionsTab({
                     {
                         header: "Amount Paid",
                         accessor: (p: any) => (
-                            <span className="font-black text-emerald-700 text-sm">UGX {p.amount.toLocaleString()}</span>
+                            <span className="font-black text-emerald-700 text-sm">{currency} {p.amount.toLocaleString()}</span>
                         ),
                         exportValue: (p: any) => p.amount.toLocaleString(),
                         className: "text-right",
@@ -608,9 +611,9 @@ function CollectionsTab({
                         accessor: (p: any) => (
                             <div className="text-right">
                                 <div className={cn("font-black", p.balance > 0 ? "text-destructive" : "text-emerald-600")}>
-                                    UGX {p.balance.toLocaleString()}
+                                    {currency} {p.balance.toLocaleString()}
                                 </div>
-                                <div className="text-[9px] text-muted-foreground">of UGX {p.loanAmount.toLocaleString()}</div>
+                                <div className="text-[9px] text-muted-foreground">of {currency} {p.loanAmount.toLocaleString()}</div>
                             </div>
                         ),
                         exportValue: (p: any) => p.balance.toLocaleString(),
@@ -656,12 +659,12 @@ function CollectionsTab({
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Amount Paid</span>
-                                    <span className="font-bold text-lg text-emerald-600">UGX {viewingPayment.amount.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-emerald-600">{currency} {viewingPayment.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Remaining Balance</span>
                                     <span className={cn("font-bold text-lg", viewingPayment.balance > 0 ? "text-destructive" : "text-emerald-600")}>
-                                        UGX {viewingPayment.balance.toLocaleString()}
+                                        {currency} {viewingPayment.balance.toLocaleString()}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
@@ -700,7 +703,7 @@ function CollectionsTab({
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Original Loan Amount</span>
-                                        <span className="font-semibold">UGX {viewingPayment.loanAmount.toLocaleString()}</span>
+                                        <span className="font-semibold">{currency} {viewingPayment.loanAmount.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Shop</span>
@@ -737,6 +740,7 @@ function AgedDebtorsTab({
     selectedShop, setSelectedShop, customerId, setCustomerId,
     search, setSearch, shops, customers,
 }: any) {
+    const { currency } = useCurrency();
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
     const [bucketFilter, setBucketFilter] = useState<string>("all");
@@ -757,25 +761,25 @@ function AgedDebtorsTab({
     const customStats = data ? [
         {
             title: "Current (0-30d)",
-            value: `UGX ${data.buckets.current.total.toLocaleString()}`,
+            value: `${currency} ${data.buckets.current.total.toLocaleString()}`,
             description: `${data.buckets.current.count} LOANS`,
             color: "border-l-emerald-500",
         },
         {
             title: "31-60 Days",
-            value: `UGX ${data.buckets["30"].total.toLocaleString()}`,
+            value: `${currency} ${data.buckets["30"].total.toLocaleString()}`,
             description: `${data.buckets["30"].count} LOANS`,
             color: "border-l-amber-500",
         },
         {
             title: "61-90 Days",
-            value: `UGX ${data.buckets["60"].total.toLocaleString()}`,
+            value: `${currency} ${data.buckets["60"].total.toLocaleString()}`,
             description: `${data.buckets["60"].count} LOANS`,
             color: "border-l-orange-500",
         },
         {
             title: "Over 90 Days",
-            value: `UGX ${(data.buckets["90"].total + data.buckets.over90.total).toLocaleString()}`,
+            value: `${currency} ${(data.buckets["90"].total + data.buckets.over90.total).toLocaleString()}`,
             description: `${data.buckets["90"].count + data.buckets.over90.count} LOANS - HIGH RISK`,
             color: "border-l-red-500",
         },
@@ -852,7 +856,7 @@ function AgedDebtorsTab({
 
             <ReportTable
                 title="Aged Debtors Report"
-                subtitle={`${data?.totalDebtors || 0} debtors with outstanding balances totaling UGX ${(data?.totalOutstanding || 0).toLocaleString()}`}
+                subtitle={`${data?.totalDebtors || 0} debtors with outstanding balances totaling ${currency} ${(data?.totalOutstanding || 0).toLocaleString()}`}
                 data={filteredLoans.slice((page - 1) * rowsPerPage, page * rowsPerPage)}
                 isLoading={data === undefined}
                 onViewDetails={handleViewDetails}
@@ -911,7 +915,7 @@ function AgedDebtorsTab({
                     {
                         header: "Original Amount",
                         accessor: (l: any) => (
-                            <span className="font-bold text-muted-foreground">UGX {l.originalAmount.toLocaleString()}</span>
+                            <span className="font-bold text-muted-foreground">{currency} {l.originalAmount.toLocaleString()}</span>
                         ),
                         exportValue: (l: any) => l.originalAmount.toLocaleString(),
                         className: "text-right",
@@ -919,7 +923,7 @@ function AgedDebtorsTab({
                     {
                         header: "Paid",
                         accessor: (l: any) => (
-                            <span className="font-bold text-emerald-700">UGX {l.paidAmount.toLocaleString()}</span>
+                            <span className="font-bold text-emerald-700">{currency} {l.paidAmount.toLocaleString()}</span>
                         ),
                         exportValue: (l: any) => l.paidAmount.toLocaleString(),
                         className: "text-right",
@@ -927,7 +931,7 @@ function AgedDebtorsTab({
                     {
                         header: "Outstanding",
                         accessor: (l: any) => (
-                            <span className="font-black text-destructive text-sm">UGX {l.outstandingBalance.toLocaleString()}</span>
+                            <span className="font-black text-destructive text-sm">{currency} {l.outstandingBalance.toLocaleString()}</span>
                         ),
                         exportValue: (l: any) => l.outstandingBalance.toLocaleString(),
                         className: "text-right",
@@ -967,15 +971,15 @@ function AgedDebtorsTab({
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Original Amount</span>
-                                    <span className="font-semibold">UGX {viewingLoan.originalAmount.toLocaleString()}</span>
+                                    <span className="font-semibold">{currency} {viewingLoan.originalAmount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Paid</span>
-                                    <span className="font-bold text-emerald-600">UGX {viewingLoan.paidAmount.toLocaleString()}</span>
+                                    <span className="font-bold text-emerald-600">{currency} {viewingLoan.paidAmount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Outstanding</span>
-                                    <span className="font-bold text-lg text-destructive">UGX {viewingLoan.outstandingBalance.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-destructive">{currency} {viewingLoan.outstandingBalance.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Age Bucket</span>

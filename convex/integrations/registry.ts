@@ -35,6 +35,7 @@ import type {
     HardwareKind,
     IndustryPackageDescriptor,
 } from "./types";
+import { ConvexError } from "convex/values";
 
 /* ────────────────────────────────────────────────────────────────────────
  * Shared configuration fields
@@ -941,7 +942,7 @@ export function findAdapter(key: string): AdapterDescriptor | undefined {
 export function requireAdapter(key: string): AdapterDescriptor {
     const adapter = ADAPTERS_BY_KEY[key];
     if (!adapter) {
-        throw new Error(`Unknown integration adapter: ${key}`);
+        throw new ConvexError(`Unknown integration adapter: ${key}`);
     }
     return adapter;
 }

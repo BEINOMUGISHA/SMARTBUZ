@@ -100,11 +100,11 @@ export const addBatch = mutation({
         const businessId = tenant.businessId;
         const userId = tenant.user._id;
 
-        if (args.qtyReceived <= 0) throw new Error("Quantity received must be greater than zero");
+        if (args.qtyReceived <= 0) throw new ConvexError("Quantity received must be greater than zero");
 
         // Increase the parent stock quantity and record the movement.
         const stock = await ctx.db.get(args.stockId);
-        if (!stock) throw new Error("Stock not found");
+        if (!stock) throw new ConvexError("Stock not found");
         if (stock.businessId !== businessId) {
             throw new ConvexError("Forbidden: that product belongs to another business.");
         }
@@ -183,7 +183,7 @@ export const consumeBatch = mutation({
         const businessId = tenant.businessId;
 
         const stock = await ctx.db.get(args.stockId);
-        if (!stock) throw new Error("Stock not found");
+        if (!stock) throw new ConvexError("Stock not found");
         if (stock.businessId !== businessId) {
             throw new ConvexError("Forbidden: that product belongs to another business.");
         }
@@ -215,7 +215,7 @@ export const consumeBatch = mutation({
         }
 
         if (remaining > 0) {
-            throw new Error(`Not enough unexpired batch stock. Short by ${remaining} units.`);
+            throw new ConvexError(`Not enough unexpired batch stock. Short by ${remaining} units.`);
         }
 
         await logActivity(
@@ -329,7 +329,7 @@ export const addSerial = mutation({
         const businessId = tenant.businessId;
 
         const stock = await ctx.db.get(args.stockId);
-        if (!stock) throw new Error("Stock not found");
+        if (!stock) throw new ConvexError("Stock not found");
         if (stock.businessId !== businessId) {
             throw new ConvexError("Forbidden: that product belongs to another business.");
         }
@@ -339,7 +339,7 @@ export const addSerial = mutation({
             .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
             .filter((q) => q.eq(q.field("serialNumber"), args.serialNumber))
             .first();
-        if (existing) throw new Error(`Serial ${args.serialNumber} is already registered`);
+        if (existing) throw new ConvexError(`Serial ${args.serialNumber} is already registered`);
 
         const id = await ctx.db.insert("productSerials", {
             businessId,
@@ -395,8 +395,8 @@ export const markSerialSold = mutation({
             .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
             .filter((q) => q.eq(q.field("serialNumber"), args.serialNumber))
             .first();
-        if (!serial) throw new Error("Serial not found");
-        if (serial.status === "sold") throw new Error("Serial is already marked as sold");
+        if (!serial) throw new ConvexError("Serial not found");
+        if (serial.status === "sold") throw new ConvexError("Serial is already marked as sold");
 
         await ctx.db.patch(serial._id, {
             status: "sold",

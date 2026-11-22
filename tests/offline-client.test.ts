@@ -12,6 +12,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { backoffMs, dueTransactions } from "../src/lib/offline/sync";
+import { sentSalesToPrune } from "../src/lib/offline/queue";
 import type { QueuedTransaction } from "../src/lib/offline/types";
 
 const NOW = Date.now();
@@ -139,5 +140,56 @@ describe("how long to wait between attempts", () => {
 
     it("is never negative", () => {
         assert.ok(backoffMs(0) > 0);
+    });
+});
+
+describe("what the till keeps of what it has done", () => {
+    it("lets go of the oldest sent sales once there are too many", () => {
+        const many = Array.from({ length: 10 }, (_, index) =>
+            queued({
+                transactionId: `sent-${index}`,
+                status: "synced",
+                queuedAt: new Date(NOW - (10 - index) * 1000).toISOString(),
+            })
+        );
+
+        const surplus = sentSalesToPrune(many, 3);
+
+        assert.equal(surplus.length, 7);
+        assert.equal(
+            surplus[0].transactionId,
+            "sent-0",
+            "the oldest goes first"
+        );
+    });
+
+    it("keeps everything when there is not too much", () => {
+        const few = Array.from({ length: 3 }, (_, index) =>
+            queued({ transactionId: `sent-${index}`, status: "synced" })
+        );
+
+        assert.equal(sentSalesToPrune(few, 10).length, 0);
+    });
+
+    it("never lets go of a sale that is still waiting", () => {
+        const waiting = Array.from({ length: 50 }, (_, index) =>
+            queued({
+                transactionId: `pending-${index}`,
+                status: "pending",
+                queuedAt: new Date(NOW - (50 - index) * 1000).toISOString(),
+            })
+        );
+
+        assert.equal(sentSalesToPrune(waiting, 5).length, 0);
+    });
+
+    it("never lets go of a sale that failed or was refused", () => {
+        const trouble = [
+            queued({ transactionId: "failed-1", status: "failed" }),
+            queued({ transactionId: "conflict-1", status: "conflict" }),
+            queued({ transactionId: "syncing-1", status: "syncing" }),
+        ];
+
+        assert.equal(sentSalesToPrune(trouble, 0).length, 0);
     });
 });

@@ -180,11 +180,11 @@ export const register = mutation({
     handler: async (ctx, args) => {
         const email = args.email.trim().toLowerCase();
         if (!email) {
-            throw new Error("Email is required");
+            throw new ConvexError("Email is required");
         }
 
         if (!args.password || args.password.length < MIN_PASSWORD_LENGTH) {
-            throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
+            throw new ConvexError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
         }
 
         const existing = await ctx.db
@@ -193,7 +193,7 @@ export const register = mutation({
             .unique();
 
         if (existing) {
-            throw new Error("An account with this email already exists");
+            throw new ConvexError("An account with this email already exists");
         }
 
         const hashedPassword = bcrypt.hashSync(args.password, PASSWORD_HASH_COST);
@@ -277,28 +277,28 @@ export const verifyEmail = mutation({
 
         const pending = verifications.find((v) => !v.verifiedAt);
         if (!pending) {
-            throw new Error("Invalid or expired verification code.");
+            throw new ConvexError("Invalid or expired verification code.");
         }
         if (pending.expiresAt < Date.now()) {
-            throw new Error("Invalid or expired verification code.");
+            throw new ConvexError("Invalid or expired verification code.");
         }
 
         const attempts = (pending.attempts ?? 0) + 1;
         if (attempts > MAX_VERIFICATION_ATTEMPTS) {
             await ctx.db.delete(pending._id);
-            throw new Error("Too many incorrect attempts. Request a new code.");
+            throw new ConvexError("Too many incorrect attempts. Request a new code.");
         }
         await ctx.db.patch(pending._id, { attempts });
 
         const matches = await bcrypt.compare(args.code, pending.codeHash);
         if (!matches) {
-            throw new Error("Invalid or expired verification code.");
+            throw new ConvexError("Invalid or expired verification code.");
         }
 
         await ctx.db.patch(pending._id, { verifiedAt: Date.now() });
 
         const user = await ctx.db.get(pending.userId);
-        if (!user) throw new Error("User not found");
+        if (!user) throw new ConvexError("User not found");
 
         await ctx.db.patch(user._id, {
             status: "active",
@@ -422,13 +422,13 @@ export const login = mutation({
             // then fail exactly as a wrong password fails.
             burnComparisonTime(args.password);
             await recordLoginFailure(ctx, email);
-            throw new Error("Invalid email or password");
+            throw new ConvexError("Invalid email or password");
         }
 
         const isValid = bcrypt.compareSync(args.password, user.password);
         if (!isValid) {
             await recordLoginFailure(ctx, email);
-            throw new Error("Invalid email or password");
+            throw new ConvexError("Invalid email or password");
         }
 
         // The password was right, so the episode is over. The next mistake
@@ -448,11 +448,11 @@ export const login = mutation({
         }
 
         if (user.status === "suspended") {
-            throw new Error("This account has been suspended. Contact your business owner.");
+            throw new ConvexError("This account has been suspended. Contact your business owner.");
         }
 
         if (user.status === "pending_verification") {
-            throw new Error(
+            throw new ConvexError(
                 "Please verify your email address before signing in. Check your inbox for the verification code."
             );
         }
@@ -568,7 +568,7 @@ export const resetPassword = mutation({
         const email = args.email.trim().toLowerCase();
 
         if (!args.newPassword || args.newPassword.length < MIN_PASSWORD_LENGTH) {
-            throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
+            throw new ConvexError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
         }
 
         const resets = await ctx.db
@@ -580,7 +580,7 @@ export const resetPassword = mutation({
         // not accepted a second time.
         const reset = resets.find((r) => !r.usedAt);
         if (!reset || reset.expiresAt < Date.now()) {
-            throw new Error("Invalid or expired reset code");
+            throw new ConvexError("Invalid or expired reset code");
         }
 
         // Brute-force protection: a 6-digit code is only 1,000,000 possibilities,
@@ -588,7 +588,7 @@ export const resetPassword = mutation({
         const attempts = (reset.attempts ?? 0) + 1;
         if (attempts > MAX_RESET_ATTEMPTS) {
             await ctx.db.delete(reset._id);
-            throw new Error("Too many incorrect attempts. Please request a new reset code.");
+            throw new ConvexError("Too many incorrect attempts. Please request a new reset code.");
         }
         await ctx.db.patch(reset._id, { attempts });
 
@@ -602,21 +602,21 @@ export const resetPassword = mutation({
         // simply asks for a new one, which costs them a minute.
         if (!reset.codeHash) {
             await ctx.db.delete(reset._id);
-            throw new Error(
+            throw new ConvexError(
                 "This reset code is no longer valid. Please request a new one."
             );
         }
 
         const matches = await bcrypt.compare(args.code, reset.codeHash);
         if (!matches) {
-            throw new Error("Invalid or expired reset code");
+            throw new ConvexError("Invalid or expired reset code");
         }
 
         const user = await ctx.db
             .query("users")
             .withIndex("by_email", (q) => q.eq("email", email))
             .unique();
-        if (!user) throw new Error("User not found");
+        if (!user) throw new ConvexError("User not found");
 
         const hashedPassword = bcrypt.hashSync(args.newPassword, PASSWORD_HASH_COST);
         await ctx.db.patch(user._id, {
@@ -1123,7 +1123,7 @@ export const setRoles = mutation({
         }
 
         const user = await ctx.db.get(args.userId);
-        if (!user) throw new Error("User not found");
+        if (!user) throw new ConvexError("User not found");
 
         const role = roleFromLegacyRoles(args.roles);
         await ctx.db.patch(membership._id, {
@@ -1438,7 +1438,7 @@ export const update = mutation({
         const isSelf = caller._id === id;
 
         const user = await ctx.db.get(id);
-        if (!user) throw new Error("User not found");
+        if (!user) throw new ConvexError("User not found");
 
         await ctx.db.patch(id, rest as any);
 
@@ -1517,7 +1517,7 @@ export const create = mutation({
             .query("users")
             .withIndex("by_email", (q) => q.eq("email", email))
             .unique();
-        if (existing) throw new Error("User with this email already exists");
+        if (existing) throw new ConvexError("User with this email already exists");
 
         const passwordToHash = args.password || "password123";
         const hashedPassword = bcrypt.hashSync(passwordToHash, PASSWORD_HASH_COST);
@@ -1711,7 +1711,7 @@ export const remove = mutation({
         }
 
         const user = await ctx.db.get(args.id);
-        if (!user) throw new Error("User not found");
+        if (!user) throw new ConvexError("User not found");
 
         const now = new Date().toISOString();
         await ctx.db.patch(membership._id, { status: "suspended", updatedAt: now });
@@ -1763,16 +1763,16 @@ export const changePassword = mutation({
         const { businessId } = await requireSelfOrAdmin(ctx, args.userId);
 
         const user = await ctx.db.get(args.userId);
-        if (!user) throw new Error("User not found");
+        if (!user) throw new ConvexError("User not found");
 
         const isValid = bcrypt.compareSync(args.currentPassword, user.password);
-        if (!isValid) throw new Error("Incorrect current password");
+        if (!isValid) throw new ConvexError("Incorrect current password");
 
         if (!args.newPassword || args.newPassword.length < MIN_PASSWORD_LENGTH) {
-            throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
+            throw new ConvexError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
         }
         if (args.currentPassword === args.newPassword) {
-            throw new Error("The new password must be different from the current one.");
+            throw new ConvexError("The new password must be different from the current one.");
         }
 
         const hashedPassword = bcrypt.hashSync(args.newPassword, PASSWORD_HASH_COST);

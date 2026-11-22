@@ -136,7 +136,7 @@ export const update = mutation({
 
         const { id, userId, businessId, ...rest } = args;
         const promotion = await ctx.db.get(id);
-        if (!promotion) throw new Error("Promotion not found");
+        if (!promotion) throw new ConvexError("Promotion not found");
         if (promotion.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that promotion belongs to another business.");
         }
@@ -173,7 +173,7 @@ export const remove = mutation({
         await requirePermission(ctx, tenant.businessId, "products.update");
 
         const promotion = await ctx.db.get(args.id);
-        if (!promotion) throw new Error("Promotion not found");
+        if (!promotion) throw new ConvexError("Promotion not found");
         if (promotion.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that promotion belongs to another business.");
         }
@@ -309,7 +309,7 @@ export const removeProduct = mutation({
         await requirePermission(ctx, tenant.businessId, "products.update");
 
         const product = await ctx.db.get(args.id);
-        if (!product) throw new Error("Promotion product not found");
+        if (!product) throw new ConvexError("Promotion product not found");
         if (product.businessId !== tenant.businessId) {
             throw new ConvexError(
                 "Forbidden: that promotion product belongs to another business."
@@ -344,7 +344,7 @@ export const updateProductQuantity = mutation({
         await requirePermission(ctx, tenant.businessId, "products.update");
 
         const product = await ctx.db.get(args.id);
-        if (!product) throw new Error("Promotion product not found");
+        if (!product) throw new ConvexError("Promotion product not found");
         if (product.businessId !== tenant.businessId) {
             throw new ConvexError(
                 "Forbidden: that promotion product belongs to another business."

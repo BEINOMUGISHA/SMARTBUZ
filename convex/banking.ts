@@ -40,7 +40,7 @@ export const update = mutation({
         await requirePermission(ctx, tenant.businessId, "settings.manage");
 
         const banking = await ctx.db.get(args.id);
-        if (!banking) throw new Error("Banking record not found");
+        if (!banking) throw new ConvexError("Banking record not found");
         if (banking.businessId !== tenant.businessId) {
             throw new ConvexError(
                 "Forbidden: that banking record belongs to another business."
@@ -73,7 +73,7 @@ export const remove = mutation({
         await requirePermission(ctx, tenant.businessId, "settings.manage");
 
         const banking = await ctx.db.get(args.id);
-        if (!banking) throw new Error("Banking record not found");
+        if (!banking) throw new ConvexError("Banking record not found");
         if (banking.businessId !== tenant.businessId) {
             throw new ConvexError(
                 "Forbidden: that banking record belongs to another business."

@@ -13,6 +13,7 @@ import {
 import { salePaymentModeToMethod } from "./paymentRules";
 import { restateLoanPaymentBalances, reverseSaleLines } from "./saleCompensation";
 import { stripIssuedStockCopies } from "./counterStock";
+import { DEFAULT_CURRENCY } from "./defaults";
 
 /**
 
@@ -190,7 +191,7 @@ export const editSale = mutation({
         const userId = tenant.user._id;
 
         const existingSale = await ctx.db.get(args.saleId);
-        if (!existingSale) throw new Error("Sale not found");
+        if (!existingSale) throw new ConvexError("Sale not found");
         if (existingSale.businessId !== businessId) {
             throw new ConvexError("Forbidden: that sale belongs to another business.");
         }
@@ -220,14 +221,14 @@ export const editSale = mutation({
         );
         const editTrustedItems = args.items.map((item) => {
             const stock = editPricingMap.get(item.stockId);
-            if (!stock) throw new Error(`Item ${item.name} not found`);
+            if (!stock) throw new ConvexError(`Item ${item.name} not found`);
             if (stock.businessId !== businessId) {
                 throw new ConvexError(
                     "Forbidden: that product belongs to another business."
                 );
             }
             if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
-                throw new Error(`Invalid quantity for ${item.name}`);
+                throw new ConvexError(`Invalid quantity for ${item.name}`);
             }
             const unitPrice = recordedOverrides.get(item.stockId) ?? stock.price;
             editComputedTotal += unitPrice * item.quantity;
@@ -235,7 +236,7 @@ export const editSale = mutation({
         });
 
         if (Math.abs(editComputedTotal - args.total) > 0.01) {
-            throw new Error(
+            throw new ConvexError(
                 `Sale total mismatch: client sent ${args.total} but the server computed ${editComputedTotal}.`
             );
         }
@@ -345,7 +346,7 @@ export const editSale = mutation({
             for (const item of editTrustedItems) {
                 const idx = updatedStocks.findIndex(s => s.stockId === item.stockId);
                 if (idx === -1) {
-                    throw new Error(`Item ${item.name} not found in shop stock`);
+                    throw new ConvexError(`Item ${item.name} not found in shop stock`);
                 }
                 updatedStocks[idx] = {
                     stockId: updatedStocks[idx].stockId,
@@ -361,7 +362,7 @@ export const editSale = mutation({
             );
             for (const item of editTrustedItems) {
                 const stock = stockMap.get(item.stockId);
-                if (!stock) throw new Error(`Item ${item.name} not found in warehouse`);
+                if (!stock) throw new ConvexError(`Item ${item.name} not found in warehouse`);
                 await ctx.db.patch(item.stockId, { qty: stock.qty - item.quantity });
             }
         }
@@ -1111,11 +1112,18 @@ export const swap = mutation({
         // We use the 'taken' items as the 'sale' items for indexing, but mark type as "Swap"
         const totalValue = args.takenItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
+        // The currency the swap was rung up in, recorded on the sale for the
+        // same reason a sale records it: a receipt printed later must say
+        // what the money was when it was taken.
+        const swapBusiness = await ctx.db.get(businessId);
+        const swapCurrency = (swapBusiness?.currency ?? "").trim().toUpperCase() || DEFAULT_CURRENCY;
+
         const saleId = await ctx.db.insert("sales", {
             businessId,
             userId,
             shopId: shop?._id || args.shopId,
             total: totalValue,
+            currency: swapCurrency,
             date,
             clientType: "Retail", // Default for swap
             paymentMode: "Swap",

@@ -20,8 +20,10 @@ import {
     SheetTitle,
     SheetDescription,
 } from "@/components/ui/sheet";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function UsersReport() {
+    const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -65,19 +67,19 @@ export function UsersReport() {
         },
         {
             title: "Total Revenue",
-            value: `UGX ${summary.totalRevenue.toLocaleString()}`,
+            value: `${currency} ${summary.totalRevenue.toLocaleString()}`,
             description: `${summary.totalSalesCount} TRANSACTIONS`,
             color: "border-l-emerald-500",
         },
         {
             title: "Avg per User",
-            value: `UGX ${Math.round(summary.avgRevenuePerUser).toLocaleString()}`,
+            value: `${currency} ${Math.round(summary.avgRevenuePerUser).toLocaleString()}`,
             description: "AVERAGE REVENUE",
             color: "border-l-purple-500",
         },
         {
             title: "Top Performer",
-            value: `UGX ${summary.topUser?.revenue.toLocaleString() || "0"}`,
+            value: `${currency} ${summary.topUser?.revenue.toLocaleString() || "0"}`,
             description: `${summary.topUser?.sales || 0} SALES`,
             color: "border-l-amber-500",
         },
@@ -176,7 +178,7 @@ export function UsersReport() {
                     {
                         header: "Revenue",
                         accessor: (u: any) => (
-                            <span className="font-black text-emerald-700 text-sm">UGX {u.totalRevenue.toLocaleString()}</span>
+                            <span className="font-black text-emerald-700 text-sm">{currency} {u.totalRevenue.toLocaleString()}</span>
                         ),
                         exportValue: (u: any) => u.totalRevenue.toLocaleString(),
                         className: "text-right",
@@ -184,7 +186,7 @@ export function UsersReport() {
                     {
                         header: "Avg per Sale",
                         accessor: (u: any) => (
-                            <span className="font-bold text-muted-foreground text-sm">UGX {Math.round(u.totalRevenue / u.totalSales).toLocaleString()}</span>
+                            <span className="font-bold text-muted-foreground text-sm">{currency} {Math.round(u.totalRevenue / u.totalSales).toLocaleString()}</span>
                         ),
                         exportValue: (u: any) => Math.round(u.totalRevenue / u.totalSales).toLocaleString(),
                         className: "text-right",
@@ -239,11 +241,11 @@ export function UsersReport() {
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Total Revenue</span>
-                                    <span className="font-bold text-lg text-emerald-600">UGX {viewingUser.totalRevenue.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-emerald-600">{currency} {viewingUser.totalRevenue.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Avg per Sale</span>
-                                    <span className="font-semibold">UGX {Math.round(viewingUser.totalRevenue / viewingUser.totalSales).toLocaleString()}</span>
+                                    <span className="font-semibold">{currency} {Math.round(viewingUser.totalRevenue / viewingUser.totalSales).toLocaleString()}</span>
                                 </div>
                             </div>
 

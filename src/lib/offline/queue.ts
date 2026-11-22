@@ -102,6 +102,58 @@ export async function queueSale(
   return enqueueTransaction(transaction);
 }
 
+/**
+ * How many sent sales the till keeps as a local record.
+ *
+ * The queue is the till's memory of what it has done, and it was growing
+ * for ever: a sale that had been sent was kept, a sale that was waiting was
+ * kept, and nothing was ever let go. On a till that is left switched off
+ * for a month, that is every sale the shop made, with every line of every
+ * one of them, in the browser's storage.
+ *
+ * So the queue has a bound. What is bound is the *history* — the sales
+ * that have been sent and are no longer waiting for anything. The sales
+ * that have not been sent are never discarded: they are goods that went
+ * out of the door and money that was taken, and the till is not allowed to
+ * forget them because it is running out of room.
+ */
+export const MAX_KEPT_SENT_SALES = 200;
+
+/**
+ * The sent sales that should be let go.
+ *
+ * The oldest go first, and the ones that are still waiting for the server
+ * are never in this list — they are goods that went out of the door and
+ * money that was taken.
+ */
+export function sentSalesToPrune(
+  transactions: QueuedTransaction[],
+  keep: number = MAX_KEPT_SENT_SALES
+): QueuedTransaction[] {
+  if (keep < 0) return [];
+
+  const sent = transactions
+    .filter((transaction) => transaction.status === "synced")
+    .sort((a, b) => (a.queuedAt ?? "").localeCompare(b.queuedAt ?? ""));
+
+  return sent.slice(0, Math.max(0, sent.length - keep));
+}
+
+/**
+ * Let go of the oldest sent sales once there are too many of them.
+ *
+ * Returns how many were let go, so the caller can say so.
+ */
+export async function pruneSentSales(
+  keep: number = MAX_KEPT_SENT_SALES
+): Promise<number> {
+  const surplus = sentSalesToPrune(await listTransactions(), keep);
+  for (const transaction of surplus) {
+    await removeTransaction(transaction.transactionId);
+  }
+  return surplus.length;
+}
+
 /** The complete local history, newest first. */
 export async function listLocalHistory(): Promise<QueuedTransaction[]> {
   return listTransactions();

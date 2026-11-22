@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
 
 /**
@@ -8,14 +8,14 @@ import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
  */
 export async function checkRole(ctx: QueryCtx | MutationCtx, userId: any, allowedRoles: string[]) {
     const user = await ctx.db.get(userId);
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     if ("roles" in user) {
         const roles = user.roles as string[];
         const hasRole = roles.some((role: string) => allowedRoles.includes(role));
-        if (!hasRole) throw new Error("Unauthorized: Insufficient permissions");
+        if (!hasRole) throw new ConvexError("Unauthorized: Insufficient permissions");
     } else {
-        throw new Error("Invalid user record: Missing roles");
+        throw new ConvexError("Invalid user record: Missing roles");
     }
 
     return user;

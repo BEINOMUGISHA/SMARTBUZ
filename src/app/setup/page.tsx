@@ -22,6 +22,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import { PlanPicker } from "@/components/subscription/plan-picker";
 import { Check, ChevronRight, Loader2, Store } from "lucide-react";
@@ -121,6 +129,7 @@ export default function SetupPage() {
     const [businessName, setBusinessName] = useState("");
     const [businessPhone, setBusinessPhone] = useState("");
     const [businessAddress, setBusinessAddress] = useState("");
+    const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
     const [openingFloat, setOpeningFloat] = useState("0");
     const [seedProducts, setSeedProducts] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -159,7 +168,7 @@ export default function SetupPage() {
                     businessId: existingProfile._id,
                     categoryId: category.id,
                     modules: category.modules,
-                    currency: existingProfile.currency || "UGX",
+                    currency: existingProfile.currency || currency,
                     timezone: existingProfile.timezone || "Africa/Kampala",
                     country: existingProfile.country || "Uganda",
                     businessAddress: businessAddress.trim() || undefined,
@@ -178,7 +187,7 @@ export default function SetupPage() {
                     businessName: businessName.trim() || category.name,
                     categoryId: category.id,
                     modules: category.modules,
-                    currency: "UGX",
+                    currency: currency,
                     country: "Uganda",
                     businessAddress: businessAddress.trim() || undefined,
                     businessPhone: businessPhone.trim() || undefined,
@@ -413,7 +422,7 @@ export default function SetupPage() {
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="float">Opening cash float (UGX)</Label>
+                                        <Label htmlFor="float">Opening cash float ({currency})</Label>
                                         <Input
                                             id="float"
                                             type="number"
@@ -422,6 +431,22 @@ export default function SetupPage() {
                                             onChange={(e) => setOpeningFloat(e.target.value)}
                                         />
                                     </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="bizCurrency">Currency</Label>
+                                    <Select value={currency} onValueChange={setCurrency}>
+                                        <SelectTrigger id="bizCurrency">
+                                            <SelectValue placeholder="Currency" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {SUPPORTED_CURRENCIES.map((code) => (
+                                                <SelectItem key={code} value={code}>{code}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-[10px] text-muted-foreground">
+                                        Every figure this business records and shows will be in this currency.
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="bizAddress">Business address</Label>

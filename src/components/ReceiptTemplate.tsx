@@ -1,5 +1,6 @@
 import React from "react";
 import { cn } from "@/lib/utils";
+import { businessCurrency } from "@/lib/currency";
 
 export interface ReceiptData {
     businessName?: string;
@@ -44,10 +45,18 @@ export interface ReceiptData {
     vatAmount?: number;
     /** Human label for the item being sold, e.g. "Medicine". */
     itemLabel?: string;
+    /**
+     * The currency the sale was made in.
+     *
+     * A receipt belongs to a sale, so it shows the currency of that sale
+     * rather than the currency the business happens to trade in today.
+     */
+    currency?: string;
 }
 
 export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
     const isSwap = data.transactionType === "Swap";
+    const currency = businessCurrency(data.currency);
     const returnedItemsList = data.returnedItems || [];
     const totalReturnedValue = returnedItemsList.reduce((sum, item) => {
         const q = item.quantity ?? item.qty ?? 0;
@@ -185,7 +194,7 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                         <div className="p-1 border-r border-black flex items-center justify-center">CODE</div>
                         <div className="p-1 border-r border-black flex items-center justify-center">PRODUCT NAME</div>
                         <div className="p-1 border-r border-black flex items-center justify-center">QTY</div>
-                        <div className="p-1 flex items-center justify-end pr-2">VALUE (UGX)</div>
+                        <div className="p-1 flex items-center justify-end pr-2">VALUE ({currency})</div>
                     </div>
                     {returnedItemsList.map((item, idx) => {
                         const qty = item.quantity ?? item.qty ?? 0;
@@ -299,11 +308,11 @@ export const ReceiptTemplate = ({ data }: { data: ReceiptData }) => {
                         {isSwap && totalReturnedValue > 0 && (
                             <div className="flex justify-end gap-6 text-[8.5px]">
                                 <span className="font-medium">Returned Value:</span>
-                                <span className="font-bold font-mono">UGX {totalReturnedValue.toLocaleString()}</span>
+                                <span className="font-bold font-mono">{currency} {totalReturnedValue.toLocaleString()}</span>
                             </div>
                         )}
                         <div className="flex justify-end gap-6 min-w-[180px]">
-                            <span className="font-bold uppercase">{isSwap ? "NET BALANCE (UGX):" : "GRAND TOTAL (UGX):"}</span>
+                            <span className="font-bold uppercase">{isSwap ? `NET BALANCE (${currency}):` : `GRAND TOTAL (${currency}):`}</span>
                             <span className="text-base font-black font-mono">{data.total.toLocaleString()}</span>
                         </div>
                         {data.initialDeposit !== undefined && data.initialDeposit > 0 && (

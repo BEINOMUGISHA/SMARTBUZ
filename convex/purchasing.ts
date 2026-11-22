@@ -338,14 +338,14 @@ export async function createPurchaseOrderHandler(
     const businessId = tenant.businessId;
 
     if (args.items.length === 0) {
-      throw new Error("A purchase order needs at least one line item");
+      throw new ConvexError("A purchase order needs at least one line item");
     }
     for (const item of args.items) {
       if (item.quantity <= 0) {
-        throw new Error("A purchase order line must ask for more than nothing.");
+        throw new ConvexError("A purchase order line must ask for more than nothing.");
       }
       if (item.unitCost < 0) {
-        throw new Error("A unit cost cannot be negative.");
+        throw new ConvexError("A unit cost cannot be negative.");
       }
     }
 
@@ -552,7 +552,7 @@ export const updatePurchaseOrder = mutation({
     const items = args.items;
     if (items) {
       if (items.length === 0) {
-        throw new Error("A purchase order needs at least one line item");
+        throw new ConvexError("A purchase order needs at least one line item");
       }
       const total = items.reduce((s, i) => s + i.quantity * i.unitCost, 0);
       await ctx.db.patch(order._id, {
@@ -634,7 +634,7 @@ export async function receiveGoodsHandler(
       throw new ConvexError("This purchase order has already been received.");
     }
     if (args.items.length === 0) {
-      throw new Error("A goods receipt needs at least one line item.");
+      throw new ConvexError("A goods receipt needs at least one line item.");
     }
 
     const branchId = args.branchId ?? order.branchId;
@@ -667,7 +667,7 @@ export async function receiveGoodsHandler(
 
     for (const item of args.items) {
       if (item.quantity <= 0) {
-        throw new Error("A received quantity must be greater than zero.");
+        throw new ConvexError("A received quantity must be greater than zero.");
       }
 
       // Find the order line: by index when given, otherwise by product.

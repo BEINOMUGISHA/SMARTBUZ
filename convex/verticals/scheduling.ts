@@ -80,7 +80,7 @@ export const createAppointment = mutation({
                 .collect();
             const overlapping = clash.filter((a) => a.startTime < (args.endTime ?? "23:59") && (args.endTime ?? "23:59") > a.startTime);
             if (overlapping.length > 0) {
-                throw new Error(`${args.staffName ?? "Staff"} already has an appointment at ${args.startTime} on ${args.date}.`);
+                throw new ConvexError(`${args.staffName ?? "Staff"} already has an appointment at ${args.startTime} on ${args.date}.`);
             }
         }
 
@@ -124,7 +124,7 @@ export const updateAppointmentStatus = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         const appt = await ctx.db.get(args.id);
-        if (!appt) throw new Error("Appointment not found");
+        if (!appt) throw new ConvexError("Appointment not found");
         if (appt.businessId !== businessId) {
             throw new ConvexError("Forbidden: that record belongs to another business.");
         }
@@ -236,11 +236,11 @@ export const openTableOrder = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         const outlet = await ctx.db.get(args.outletId);
-        if (!outlet) throw new Error("Table not found");
+        if (!outlet) throw new ConvexError("Table not found");
         if (outlet.businessId !== businessId) {
             throw new ConvexError("Forbidden: that record belongs to another business.");
         }
-        if (outlet.status === "occupied") throw new Error(`${outlet.name} already has an open order`);
+        if (outlet.status === "occupied") throw new ConvexError(`${outlet.name} already has an open order`);
 
         const id = await ctx.db.insert("tableOrders", {
             businessId,
@@ -277,11 +277,11 @@ export const addTableOrderItems = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         const order = await ctx.db.get(args.tableOrderId);
-        if (!order) throw new Error("Table order not found");
+        if (!order) throw new ConvexError("Table order not found");
         if (order.businessId !== businessId) {
             throw new ConvexError("Forbidden: that record belongs to another business.");
         }
-        if (order.status !== "open") throw new Error("This table order is already closed");
+        if (order.status !== "open") throw new ConvexError("This table order is already closed");
 
         const items = [...order.items, ...args.items];
         const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -300,7 +300,7 @@ export const closeTableOrder = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         const order = await ctx.db.get(args.tableOrderId);
-        if (!order) throw new Error("Table order not found");
+        if (!order) throw new ConvexError("Table order not found");
         if (order.businessId !== businessId) {
             throw new ConvexError("Forbidden: that record belongs to another business.");
         }

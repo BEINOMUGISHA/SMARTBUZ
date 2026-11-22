@@ -19,10 +19,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useCurrency } from "@/hooks/use-currency";
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export default function InventoryPage() {
+    const { currency } = useCurrency();
     const stats = useQuery(api.stocks.getInventoryStats, {});
     const lowStockAudit = useQuery(api.stocks.getLowStockAudit, { threshold: 15, lookbackDays: 7 });
     const activities = useQuery(api.activityLogs.list, { paginationOpts: { numItems: 8, cursor: null } });
@@ -60,8 +62,8 @@ export default function InventoryPage() {
                 <StatCard
                     title="Warehouse Valuation"
                     description="Total selling price of all inventory items"
-                    value={`UGX ${stats.totalSellValue.toLocaleString()}`}
-                    subValue={`Cost: UGX ${stats.totalCostValue.toLocaleString()}`}
+                    value={`${currency} ${stats.totalSellValue.toLocaleString()}`}
+                    subValue={`Cost: ${currency} ${stats.totalCostValue.toLocaleString()}`}
                     icon={DollarSign}
                     color="bg-blue-500"
                 />
@@ -69,7 +71,7 @@ export default function InventoryPage() {
                     title="Estimated Margin"
                     description="Profit percentage across entire inventory"
                     value={`${(((stats.totalSellValue - stats.totalCostValue) / (stats.totalSellValue || 1)) * 100).toFixed(1)}%`}
-                    subValue={`Profit: UGX ${(stats.totalSellValue - stats.totalCostValue).toLocaleString()}`}
+                    subValue={`Profit: ${currency} ${(stats.totalSellValue - stats.totalCostValue).toLocaleString()}`}
                     icon={TrendingUp}
                     color="bg-green-500"
                 />
@@ -378,7 +380,7 @@ export default function InventoryPage() {
                                             {item.recommendedOrder > 0 ? `${item.recommendedOrder} units` : "—"}
                                         </TableCell>
                                         <TableCell className="text-right font-mono text-xs">
-                                            UGX {item.valuation.toLocaleString()}
+                                            {currency} {item.valuation.toLocaleString()}
                                         </TableCell>
                                         <TableCell className="text-right pr-6">
                                             {item.qty === 0 ? (

@@ -27,8 +27,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PackagePlus } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function ProductionPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [createOpen, setCreateOpen] = useState(false);
 
@@ -163,7 +165,7 @@ export default function ProductionPage() {
                     { name: "expiryDate", label: "Expiry date", type: "date" },
                     {
                         name: "costPerUnit",
-                        label: "Cost per unit (UGX)",
+                        label: `Cost per unit (${currency})`,
                         type: "number",
                         min: 0,
                     },

@@ -3,6 +3,8 @@
  * Supports 80mm (48 columns) and 58mm (32 columns) standard receipt printers (Xprinter, Epson, Zjiang).
  */
 
+import { businessCurrency } from "@/lib/currency";
+
 export interface ThermalReceiptItem {
     name: string;
     /** Quantity of the line — accepted as `qty` or `quantity`. */
@@ -33,6 +35,12 @@ export interface ThermalReceiptData {
     initialDeposit?: number;
     balance?: number;
     promotions?: Array<{ promotionName: string; prize: string; count?: number }>;
+    /**
+     * The currency the sale was made in. The receipt prints it, because a
+     * receipt that says "UGX" on a business that trades in dollars is a
+     * receipt nobody can settle.
+     */
+    currency?: string;
 }
 
 // Common ESC/POS Command Byte Sequences
@@ -158,6 +166,7 @@ export class EscPosBuilder {
  */
 export function buildThermalReceipt(data: ThermalReceiptData, width: "80mm" | "58mm" = "80mm"): Uint8Array {
     const b = new EscPosBuilder(width);
+    const currency = businessCurrency(data.currency);
 
     // Header
     b.align("center")
@@ -192,7 +201,7 @@ export function buildThermalReceipt(data: ThermalReceiptData, width: "80mm" | "5
     b.divider("-");
 
     // Table Header
-    b.bold(true).row("ITEM (QTY)", "AMOUNT (UGX)").bold(false);
+    b.bold(true).row("ITEM (QTY)", `AMOUNT (${currency})`).bold(false);
     b.divider("-");
 
     // Items
@@ -206,7 +215,7 @@ export function buildThermalReceipt(data: ThermalReceiptData, width: "80mm" | "5
     // Financial Summary
     b.bold(true)
         .size(1, 2)
-        .row("TOTAL AMOUNT:", `UGX ${data.total.toLocaleString()}`)
+        .row("TOTAL AMOUNT:", `${currency} ${data.total.toLocaleString()}`)
         .size(1, 1)
         .bold(false);
 
@@ -222,10 +231,10 @@ export function buildThermalReceipt(data: ThermalReceiptData, width: "80mm" | "5
     if (data.isLoan) {
         b.bold(true);
         if (data.initialDeposit) {
-            b.row("INITIAL DEPOSIT:", `UGX ${data.initialDeposit.toLocaleString()}`);
+            b.row("INITIAL DEPOSIT:", `${currency} ${data.initialDeposit.toLocaleString()}`);
         }
         if (data.balance) {
-            b.row("OUTSTANDING BAL:", `UGX ${data.balance.toLocaleString()}`);
+            b.row("OUTSTANDING BAL:", `${currency} ${data.balance.toLocaleString()}`);
         }
         b.bold(false);
     }

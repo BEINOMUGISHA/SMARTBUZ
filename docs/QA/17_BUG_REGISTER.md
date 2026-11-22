@@ -64,12 +64,12 @@ These are the remaining entries. None of them is a P0.
 | BUG-051 | P1 | ~~There is still no backup or restore path for a business's data.~~ **Fixed 21 Nov 2026.** A business's data can be taken out as a JSON file and put back again — see "Backup and restore" below. |
 | BUG-057 | P2 | 227 KB of JavaScript is still downloaded before the operator has signed in. |
 | BUG-058 | P1 | Convex has no multi-document transactions, so a failure part-way through a write can still leave partial state. The compensation paths above are the mitigation, not the cure. |
-| BUG-064 | LOW | Legacy plaintext reset codes are still accepted. |
-| BUG-065 | LOW | Backend errors still leak internal source paths in some places. |
-| BUG-066 | LOW | The offline queue still has no upper bound. |
-| BUG-067 | LOW | The service worker cache is still invalidated by a hand-maintained constant. |
-| BUG-070 | LOW | An offline price difference is now written on the sale, but it is not yet shown on a report. |
-| BUG-072 | LOW | The currency is still hardcoded as "UGX" in some screens. |
+| BUG-064 | LOW | ~~Legacy plaintext reset codes are still accepted.~~ **Fixed 21 Nov 2026.** The plain codes are gone from the database — `migration.stripPlainResetCodes` took them out — and the field that held them has been removed from the schema. A code from the plain era is refused and the person who holds it asks for a new one. |
+| BUG-065 | LOW | ~~Backend errors still leak internal source paths in some places.~~ **Fixed 22 Nov 2026.** Every one of the 119 plain `Error` throws in the backend is now a `ConvexError`. Convex appends the handler's file and line to an uncaught plain `Error`, so the caller was told how the server is laid out; a `ConvexError` carries the message and its data and nothing else. What the caller sees is unchanged — what it no longer carries is the source path. |
+| BUG-066 | LOW | ~~The offline queue still has no upper bound.~~ **Fixed 21 Nov 2026.** The till keeps a bounded record of what it has done: the sent sales are let go oldest-first once there are more than two hundred, and the sales that are still waiting are never discarded. |
+| BUG-067 | LOW | ~~The service worker cache is still invalidated by a hand-maintained constant.~~ **Fixed 21 Nov 2026.** The cache is named after a hash of the service worker's own source, so it changes exactly when the worker changes and nobody has to remember to bump a number. |
+| BUG-070 | LOW | ~~An offline price difference is now written on the sale, but it is not yet shown on a report.~~ **Fixed 21 Nov 2026.** The sales report and the export now show the lines that were re-priced, with the price the customer was quoted and the price they were charged. |
+| BUG-072 | LOW | ~~The currency is still hardcoded as "UGX" in some screens.~~ **Fixed 22 Nov 2026.** The money is no longer written out as "UGX" on any screen, report, receipt or export. The currency comes from the business record through `useCurrency()`, and a business picks its currency when it is set up. A sale records the currency it was rung up in, so a receipt printed years later says what the money was then and not what the business trades in today. |
 | BUG-073 | LOW | `convex/whoami.ts` is a deliberate diagnostic used by `scripts/verify-identity.mjs`, and it returns no session claims. Kept, and the reasoning is in the file. |
 | BUG-075 | LOW | Accessibility is still handled inconsistently. |
 

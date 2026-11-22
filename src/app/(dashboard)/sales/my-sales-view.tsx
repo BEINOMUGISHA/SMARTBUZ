@@ -25,7 +25,6 @@ import {
     Pencil
 } from "lucide-react";
 import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
-import { getStatsForVariant } from "../reports/components/ReportSummary";
 import { startOfMonth, endOfMonth, endOfDay, format, startOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/date-range-picker";
@@ -50,8 +49,29 @@ import { Id } from "../../../../convex/_generated/dataModel";
 import { ReceiptModal } from "@/components/ReceiptModal";
 import { ReceiptData } from "@/components/ReceiptTemplate";
 import { EditSaleSheet } from "./edit-sale-sheet";
+import { useCurrency } from "@/hooks/use-currency";
+
+/**
+ * One line of a sale whose price had moved between the basket being filled
+ * and the sale being rung up. Mirrors `sales.priceChanges` in the schema.
+ */
+type PriceChangeLine = {
+    stockId: string;
+    name: string;
+    /** The price the till showed the customer. */
+    quotedPrice: number;
+    /** The price the catalogue held when the sale arrived. */
+    chargedPrice: number;
+    quantity: number;
+};
+
+/** The part of a sale row that the re-priced column needs. */
+type SaleRowWithPriceChanges = {
+    priceChanges?: PriceChangeLine[];
+};
 
 export function MySalesView() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [dateMode, setDateMode] = useState<"audit" | "range">("audit");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
@@ -242,6 +262,31 @@ export function MySalesView() {
             exportValue: (s: any) => s.items.map((i: any) => `${i.quantity}x ${i.name}`).join("\n")
         },
         {
+            // The lines whose price had moved between the basket being
+            // filled and the sale being rung up. The report says so, because
+            // a report that hid it would be a report that could not be
+            // reconciled against the till.
+            header: "Price Changed",
+            accessor: (s: SaleRowWithPriceChanges) => {
+                const changes = s.priceChanges ?? [];
+                if (changes.length === 0) {
+                    return <span className="text-muted-foreground text-xs">—</span>;
+                }
+                return (
+                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-[10px]">
+                        {changes.length} line{changes.length === 1 ? "" : "s"} re-priced
+                    </Badge>
+                );
+            },
+            exportValue: (s: SaleRowWithPriceChanges) => {
+                const changes = s.priceChanges ?? [];
+                if (changes.length === 0) return "";
+                return changes
+                    .map((c: PriceChangeLine) => `${c.quantity}x ${c.name}: ${c.quotedPrice} -> ${c.chargedPrice}`)
+                    .join("\n");
+            }
+        },
+        {
             header: "Total PV",
             accessor: (s: any) => s.items.reduce((sum: number, i: any) => sum + (i.pv * i.quantity), 0),
         },
@@ -250,7 +295,7 @@ export function MySalesView() {
             accessor: (s: any) => s.items.reduce((sum: number, i: any) => sum + (i.bv * i.quantity), 0),
         },
         {
-            header: "Total (UGX)",
+            header: `Total (${currency})`,
             accessor: (s: any) => s.total,
             exportValue: (s: any) => s.total.toLocaleString()
         },
@@ -413,9 +458,9 @@ export function MySalesView() {
                             size="sm"
                             onClick={async () => {
                                 const summaryStats = [
-                                    { title: "Total Volume", value: `UGX ${fmt(stats?.totalVolume || 0)}`, description: "Items moved" },
-                                    { title: "Today's Collection", value: `UGX ${fmt(stats?.totalCollected || 0)}`, description: "Cash received" },
-                                    { title: "Outstanding Credit", value: `UGX ${fmt(stats?.totalOutstanding || 0)}`, description: "Awaiting payment" }
+                                    { title: "Total Volume", value: `${currency} ${fmt(stats?.totalVolume || 0)}`, description: "Items moved" },
+                                    { title: "Today's Collection", value: `${currency} ${fmt(stats?.totalCollected || 0)}`, description: "Cash received" },
+                                    { title: "Outstanding Credit", value: `${currency} ${fmt(stats?.totalOutstanding || 0)}`, description: "Awaiting payment" }
                                 ];
 
                                 let logoBase64 = undefined;
@@ -455,7 +500,7 @@ export function MySalesView() {
                             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Sales Volume</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">UGX {fmt(stats?.totalVolume || 0)}</div>
+                            <div className="text-2xl font-bold">{currency} {fmt(stats?.totalVolume || 0)}</div>
                             <p className="text-[10px] text-muted-foreground mt-1">Total value of all items moved</p>
                         </CardContent>
                     </Card>
@@ -465,7 +510,7 @@ export function MySalesView() {
                             <CardTitle className="text-sm font-medium text-emerald-700 uppercase tracking-wider">Today's Collection</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-emerald-600">UGX {fmt(stats?.totalCollected || 0)}</div>
+                            <div className="text-2xl font-bold text-emerald-600">{currency} {fmt(stats?.totalCollected || 0)}</div>
                             <p className="text-[10px] text-emerald-600/70 mt-1">Actual cash & deposits received</p>
                         </CardContent>
                     </Card>
@@ -475,7 +520,7 @@ export function MySalesView() {
                             <CardTitle className="text-sm font-medium text-orange-700 uppercase tracking-wider">Outstanding Credit</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-orange-600">UGX {fmt(stats?.totalOutstanding || 0)}</div>
+                            <div className="text-2xl font-bold text-orange-600">{currency} {fmt(stats?.totalOutstanding || 0)}</div>
                             <p className="text-[10px] text-orange-600/70 mt-1">Remaining balance on credit</p>
                         </CardContent>
                     </Card>
@@ -491,7 +536,7 @@ export function MySalesView() {
                                     <TableHead>Client Type</TableHead>
                                     <TableHead className="w-[40%]">Items (Qty x Name [PV/BV])</TableHead>
                                     <TableHead className="text-right">Total PV/BV</TableHead>
-                                    <TableHead className="text-right">Total (UGX)</TableHead>
+                                    <TableHead className="text-right">Total ({currency})</TableHead>
                                     <TableHead className="w-[100px] text-center">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -564,6 +609,32 @@ export function MySalesView() {
                                                                 ))}
                                                             </div>
                                                         )}
+
+                                                        {/* ──────────────────────────────────────────
+                                                         * THE PRICE MOVED UNDER THE BASKET
+                                                         *
+                                                         * The price of these lines had changed between
+                                                         * the basket being filled and the sale being rung
+                                                         * up. The sale was made at the catalogue's price
+                                                         * and the difference is written down here, so
+                                                         * that it can be seen and explained rather than
+                                                         * discovered later.
+                                                         * ────────────────────────────────────────── */}
+                                                        {sale.priceChanges && sale.priceChanges.length > 0 && (
+                                                            <div className="mt-2 pt-2 border-t border-orange-200">
+                                                                <div className="text-[10px] font-bold text-orange-700 uppercase mb-1">
+                                                                    Re-priced while the sale was rung up:
+                                                                </div>
+                                                                {sale.priceChanges.map((change: PriceChangeLine, idx: number) => (
+                                                                    <div key={idx} className="text-[10px] text-orange-700 flex justify-between gap-2">
+                                                                        <span className="truncate">{change.quantity}x {change.name}</span>
+                                                                        <span className="whitespace-nowrap">
+                                                                            {change.quotedPrice} &rarr; {change.chargedPrice}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-right font-mono text-xs">
@@ -631,6 +702,9 @@ export function MySalesView() {
                                                                 totalBV: totalBV,
                                                                 initialDeposit: s.initialDeposit, // Pass recorded deposit
                                                                 balance: s.isLoan ? (s.total - (s.initialDeposit || 0)) : undefined, // Calculate remaining balance
+                                                                // The currency the sale was rung up in, so an old
+                                                                // receipt says what the money was then.
+                                                                currency: s.currency || currency,
                                                             };
 
                                                             // If manual name exists, override customer name if it was a walk-in
@@ -747,17 +821,17 @@ export function MySalesView() {
                 <div className="grid grid-cols-3 gap-4 mb-4 border-b border-gray-100 pb-4">
                     <div className="flex flex-col pl-4 border-l border-gray-100 first:pl-0 first:border-0">
                         <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">TOTAL VOLUME</p>
-                        <p className="text-xs font-black text-black">UGX {fmt(stats?.totalVolume || 0)}</p>
+                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalVolume || 0)}</p>
                         <p className="text-[7px] font-bold text-gray-400 italic font-mono">Value of all items moved</p>
                     </div>
                     <div className="flex flex-col pl-4 border-l border-gray-100">
                         <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">TODAY'S COLLECTION</p>
-                        <p className="text-xs font-black text-black">UGX {fmt(stats?.totalCollected || 0)}</p>
+                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalCollected || 0)}</p>
                         <p className="text-[7px] font-bold text-gray-400 italic font-mono">Actual cash received</p>
                     </div>
                     <div className="flex flex-col pl-4 border-l border-gray-100">
                         <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">OUTSTANDING CREDIT</p>
-                        <p className="text-xs font-black text-black">UGX {fmt(stats?.totalOutstanding || 0)}</p>
+                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalOutstanding || 0)}</p>
                         <p className="text-[7px] font-bold text-gray-400 italic font-mono">Remaining balance</p>
                     </div>
                 </div>

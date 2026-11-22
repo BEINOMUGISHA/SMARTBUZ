@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Truck, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const DELIVERY_STATUSES = [
     { value: "all", label: "All" },
@@ -44,6 +45,7 @@ const NEXT_STATUS: Record<string, string | null> = {
 };
 
 export default function DeliveriesPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [status, setStatus] = useState("all");
     const [createOpen, setCreateOpen] = useState(false);
@@ -170,7 +172,7 @@ export default function DeliveriesPage() {
                     { name: "customerName", label: "Customer name", required: true },
                     { name: "destination", label: "Destination", placeholder: "e.g. Masaka, Kampala Road" },
                     { name: "assignedToName", label: "Driver / dispatcher" },
-                    { name: "amount", label: "Amount (UGX)", type: "number", min: 0 },
+                    { name: "amount", label: `Amount (${currency})`, type: "number", min: 0 },
                     { name: "notes", label: "Notes", type: "textarea", full: true },
                 ]}
                 onSubmit={handleCreate}

@@ -28,8 +28,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { GraduationCap, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function ClassesPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [createOpen, setCreateOpen] = useState(false);
     const [classFilter, setClassFilter] = useState("");
@@ -215,7 +217,7 @@ export default function ClassesPage() {
                     { name: "className", label: "Class", required: true, placeholder: "e.g. Primary 4" },
                     { name: "studentName", label: "Student name", required: true },
                     { name: "term", label: "Term", placeholder: "e.g. Term 2, 2026" },
-                    { name: "amountDue", label: "Fees due (UGX)", type: "number", min: 0 },
+                    { name: "amountDue", label: `Fees due (${currency})`, type: "number", min: 0 },
                 ]}
                 onSubmit={handleCreate}
             />

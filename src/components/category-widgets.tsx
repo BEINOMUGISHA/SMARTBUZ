@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BusinessCategory } from "@/lib/business-categories";
+import { useCurrency } from "@/hooks/use-currency";
 
 function WidgetShell({
     title,
@@ -87,6 +88,7 @@ function StatTile({
 /* ─────────────────────── Expiry / batch widget ─────────────────────── */
 
 function ExpiryWidget() {
+    const { currency } = useCurrency();
     const summary = useQuery(api.verticals.batches.getExpirySummary, { withinDays: 30 });
 
     if (!summary) {
@@ -112,7 +114,7 @@ function ExpiryWidget() {
                 <StatTile label="Expiring" value={summary.expiring} tone="warn" />
                 <StatTile
                     label="Value at risk"
-                    value={`UGX ${summary.expiringValue.toLocaleString()}`}
+                    value={`${currency} ${summary.expiringValue.toLocaleString()}`}
                     tone="warn"
                 />
             </div>
@@ -184,6 +186,7 @@ function ScheduleWidget({ category }: { category: BusinessCategory }) {
 /* ─────────────────────── Members widget ─────────────────────── */
 
 function MembersWidget({ category }: { category: BusinessCategory }) {
+    const { currency } = useCurrency();
     const summary = useQuery(api.verticals.members.getMembersSummary, {});
     const isMoney = ["sacco", "realestate", "church", "ngo"].includes(category.id);
 
@@ -212,7 +215,7 @@ function MembersWidget({ category }: { category: BusinessCategory }) {
                     label={isMoney ? "Total Balance" : "Avg Balance"}
                     value={
                         isMoney
-                            ? `UGX ${summary.totalBalance.toLocaleString()}`
+                            ? `${currency} ${summary.totalBalance.toLocaleString()}`
                             : Math.round(summary.averageBalance).toLocaleString()
                     }
                     tone="good"
@@ -225,6 +228,7 @@ function MembersWidget({ category }: { category: BusinessCategory }) {
 /* ─────────────────────── Fuel widget ─────────────────────── */
 
 function FuelWidget() {
+    const { currency } = useCurrency();
     const summary = useQuery(api.verticals.operations.getFuelSummary, {});
 
     if (!summary) {
@@ -249,7 +253,7 @@ function FuelWidget() {
                 <StatTile label="Litres Sold" value={summary.totalLitres.toFixed(1)} />
                 <StatTile
                     label="Revenue"
-                    value={`UGX ${summary.totalRevenue.toLocaleString()}`}
+                    value={`${currency} ${summary.totalRevenue.toLocaleString()}`}
                     tone="good"
                 />
             </div>
@@ -262,7 +266,7 @@ function FuelWidget() {
                         >
                             <span className="font-semibold capitalize">{type}</span>
                             <span className="tabular-nums text-muted-foreground">
-                                {v.litres.toFixed(1)} L · UGX {v.revenue.toLocaleString()}
+                                {v.litres.toFixed(1)} L · {currency} {v.revenue.toLocaleString()}
                             </span>
                         </li>
                     ))}
@@ -329,6 +333,7 @@ function ServiceJobsWidget() {
 /* ─────────────────────── Stock value widget ─────────────────────── */
 
 function StockValueWidget({ category }: { category: BusinessCategory }) {
+    const { currency } = useCurrency();
     const stats = useQuery(api.stocks.getInventoryStats, {});
 
     if (!stats) {
@@ -355,7 +360,7 @@ function StockValueWidget({ category }: { category: BusinessCategory }) {
                 <StatTile label={`Total ${unit}s`} value={stats.totalItems} />
                 <StatTile
                     label="Stock Value"
-                    value={`UGX ${stats.totalSellValue.toLocaleString()}`}
+                    value={`${currency} ${stats.totalSellValue.toLocaleString()}`}
                     tone="good"
                 />
             </div>
@@ -372,6 +377,7 @@ function StockValueWidget({ category }: { category: BusinessCategory }) {
 /* ─────────────────────── Till widget ─────────────────────── */
 
 function TillWidget() {
+    const { currency } = useCurrency();
     const sessions = useQuery(api.verticals.operations.listTillSessions, {
         status: "open",
         limit: 20,
@@ -404,7 +410,7 @@ function TillWidget() {
                     value={
                         variances.length === 0
                             ? "—"
-                            : `UGX ${variances
+                            : `${currency} ${variances
                                   .reduce((s: number, v: any) => s + (v.variance ?? 0), 0)
                                   .toLocaleString()}`
                     }
@@ -420,7 +426,7 @@ function TillWidget() {
                         >
                             <span className="truncate font-semibold">{s.userName}</span>
                             <span className="ml-2 shrink-0 text-muted-foreground">
-                                Float UGX {s.openingFloat.toLocaleString()}
+                                Float {currency} {s.openingFloat.toLocaleString()}
                             </span>
                         </li>
                     ))}
@@ -433,6 +439,7 @@ function TillWidget() {
 /* ─────────────────────── Enrolment widget ─────────────────────── */
 
 function EnrolmentWidget() {
+    const { currency } = useCurrency();
     const enrolments = useQuery(api.verticals.operations.listEnrolments, {});
     const attendance = useQuery(api.verticals.operations.listAttendance, {});
 
@@ -460,7 +467,7 @@ function EnrolmentWidget() {
                 <StatTile label="Enrolled" value={enrolments.length} />
                 <StatTile
                     label="Fees Outstanding"
-                    value={`UGX ${Math.max(0, due).toLocaleString()}`}
+                    value={`${currency} ${Math.max(0, due).toLocaleString()}`}
                     tone={due > 0 ? "warn" : "good"}
                 />
             </div>
@@ -477,6 +484,7 @@ function EnrolmentWidget() {
 /* ─────────────────────── Top products widget ─────────────────────── */
 
 function TopProductsWidget({ category }: { category: BusinessCategory }) {
+    const { currency } = useCurrency();
     const report = useQuery(api.reports.getProductPerformanceReport, {
         startDate: new Date(new Date().setDate(new Date().getDate() - 30))
             .toISOString(),
@@ -508,7 +516,7 @@ function TopProductsWidget({ category }: { category: BusinessCategory }) {
                             </span>
                         </span>
                         <span className="ml-2 shrink-0 tabular-nums font-bold">
-                            UGX {(p.totalRevenue ?? p.revenue ?? 0).toLocaleString()}
+                            {currency} {(p.totalRevenue ?? p.revenue ?? 0).toLocaleString()}
                         </span>
                     </li>
                 ))}

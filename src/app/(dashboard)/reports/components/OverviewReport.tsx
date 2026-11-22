@@ -8,8 +8,10 @@ import { TrendingUp, Package, ShoppingCart, CreditCard } from "lucide-react";
 import { format, subMonths } from "date-fns";
 import { ReportFilters } from "./ReportFilters";
 import { ReportSummary } from "./ReportSummary";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function OverviewReport() {
+    const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -26,7 +28,7 @@ export function OverviewReport() {
         endDate: dateRange.to
     });
 
-    const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
+    const formatPrice = (p: number) => `${currency} ${p.toLocaleString()}`;
 
     return (
         <div className="space-y-6">

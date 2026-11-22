@@ -76,6 +76,7 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                     prize: p.prize,
                     count: p.redeemedQuantity,
                 })),
+                currency: data.currency,
             }, "80mm");
 
             await printDirectWebSerial(thermalBytes);

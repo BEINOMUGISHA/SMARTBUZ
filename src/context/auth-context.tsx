@@ -47,6 +47,7 @@ type BusinessSummary = {
     name: string;
     categoryId?: string;
     currency?: string;
+    currencySymbol?: string;
     timezone?: string;
     status?: string;
   };

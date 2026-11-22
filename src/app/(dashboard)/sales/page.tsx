@@ -53,6 +53,7 @@ import {
     readPriceChange,
     type PriceChangeNotice,
 } from "@/lib/price-change";
+import { useCurrency } from "@/hooks/use-currency";
 // Types
 type CartItem = {
     stockId: Id<"stocks">;
@@ -179,6 +180,7 @@ function SalesHeader() {
 }
 
 function SalesInterface({ isHp }: { isHp: boolean }) {
+    const { currency } = useCurrency();
     const { user, activeBusiness } = useAuth();
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -832,11 +834,12 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                 netAmount: vatFigures.net,
                 vatAmount: vatFigures.vat,
                 itemLabel: categoryTerminology.item,
+                currency,
             };
 
             setReceiptData(receipt);
             toast.success("Sale completed successfully", {
-                description: `${receipt.invoiceNumber} · UGX ${effectiveTotal.toLocaleString()}`,
+                description: `${receipt.invoiceNumber} · ${currency} ${effectiveTotal.toLocaleString()}`,
                 icon: <Check className="h-4 w-4" />,
             });
 
@@ -1222,7 +1225,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                             ) : (
                                                                 <div className="text-xs text-muted-foreground tabular-nums">
                                                                     {item.price.toLocaleString()}{" "}
-                                                                    <span className="text-[10px] uppercase tracking-wide">UGX</span>
+                                                                    <span className="text-[10px] uppercase tracking-wide">{currency}</span>
                                                                 </div>
                                                             )}
                                                         </TableCell>
@@ -1536,7 +1539,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     aria-live="polite"
                                     aria-atomic="true"
                                 >
-                                    UGX <AnimatedNumber value={cartTotal} />
+                                    {currency} <AnimatedNumber value={cartTotal} />
                                 </span>
                             </div>
                         </div>
@@ -1602,7 +1605,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             </div>
                         ))}
                         <p className="pt-1 text-xs text-muted-foreground">
-                            New total: UGX {pendingPriceChange?.notice.total.toLocaleString()}
+                            New total: {currency} {pendingPriceChange?.notice.total.toLocaleString()}
                         </p>
                     </div>
 
@@ -1633,6 +1636,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
 function RestockView() {
     const { user } = useAuth();
+    const { currency } = useCurrency();
     const [hpFilter, setHpFilter] = useState<"regular" | "hp">("regular");
     const [currentPage, setCurrentPage] = useState(1);
     const rowsPerPage = 10;
@@ -1684,7 +1688,8 @@ function RestockView() {
                                         name: `${user.first_name} ${user.last_name}`,
                                         email: user.email
                                     },
-                                    hpFilter === "hp"
+                                    hpFilter === "hp",
+                                    currency
                                 );
                                 toast.success("PDF generated successfully!");
                             }
@@ -1894,6 +1899,7 @@ function ProductListSkeleton() {
 }
 
 function SwapView() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const activeProfile = useQuery(api.businesses.getActive, {});
     const [search, setSearch] = useState("");
@@ -1975,6 +1981,7 @@ function SwapView() {
                 totalBV: totalBVVal,
                 customerPhone,
                 customerLocation,
+                currency,
             };
 
             setReceiptData(receipt);
@@ -2100,15 +2107,15 @@ function SwapView() {
                         <div className="w-full space-y-1">
                             <div className="flex justify-between text-xs font-bold text-red-600">
                                 <span>Total Return Value</span>
-                                <span>UGX {totalReturn.toLocaleString()}</span>
+                                <span>{currency} {totalReturn.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-xs font-bold text-green-600 border-b pb-1">
                                 <span>Total Taken Value</span>
-                                <span>UGX {totalTake.toLocaleString()}</span>
+                                <span>{currency} {totalTake.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-sm font-black pt-1">
                                 <span>Balance Difference</span>
-                                <span className={diff >= 0 ? "text-primary" : "text-destructive"}>UGX {diff.toLocaleString()}</span>
+                                <span className={diff >= 0 ? "text-primary" : "text-destructive"}>{currency} {diff.toLocaleString()}</span>
                             </div>
                         </div>
                         <Button className="w-full bg-blue-600 hover:bg-blue-700 font-bold" onClick={handleSwap} disabled={isLoading || (returnedItems.length === 0 && takenItems.length === 0)}>

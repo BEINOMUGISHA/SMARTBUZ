@@ -15,8 +15,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { ReportTable } from "./reports-table";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function StockEnteredReport({ search, searchType }: { search?: string; searchType?: string }) {
+    const { currency } = useCurrency();
     const [date, setDate] = useState<Date>(new Date());
 
     const formattedDate = format(date, "yyyy-MM-dd");
@@ -112,8 +114,8 @@ export function StockEnteredReport({ search, searchType }: { search?: string; se
                         header: "Financials",
                         accessor: (e: any) => (
                             <div className="flex flex-col text-[10px]">
-                                <span className="font-bold">Buy: UGX {e.purchasePrice.toLocaleString()}</span>
-                                <span className="text-muted-foreground">Sell: UGX {e.price.toLocaleString()}</span>
+                                <span className="font-bold">Buy: {currency} {e.purchasePrice.toLocaleString()}</span>
+                                <span className="text-muted-foreground">Sell: {currency} {e.price.toLocaleString()}</span>
                             </div>
                         )
                     },

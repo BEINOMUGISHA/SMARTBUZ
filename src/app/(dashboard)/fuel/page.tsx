@@ -30,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Fuel, Droplets, Plus, Gauge } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const FUEL_TYPES = [
     { value: "petrol", label: "Petrol" },
@@ -39,6 +40,7 @@ const FUEL_TYPES = [
 ];
 
 export default function FuelPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [tab, setTab] = useState("pumps");
     const [dispenseOpen, setDispenseOpen] = useState(false);
@@ -253,7 +255,7 @@ export default function FuelPage() {
                     },
                     { name: "fuelType", label: "Fuel type", type: "select", required: true, options: FUEL_TYPES },
                     { name: "litres", label: "Litres", type: "number", required: true, min: 0.01, step: 0.01 },
-                    { name: "pricePerLitre", label: "Price per litre (UGX)", type: "number", required: true, min: 0 },
+                    { name: "pricePerLitre", label: `Price per litre (${currency})`, type: "number", required: true, min: 0 },
                     {
                         name: "vehicleReg",
                         label: "Vehicle registration",

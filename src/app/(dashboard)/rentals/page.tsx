@@ -26,8 +26,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sparkles, Plus, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function RentalsPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [status, setStatus] = useState("all");
     const [createOpen, setCreateOpen] = useState(false);
@@ -171,8 +173,8 @@ export default function RentalsPage() {
                     { name: "customerName", label: "Customer name", required: true },
                     { name: "startDate", label: "Start date", type: "date", required: true },
                     { name: "endDate", label: "Expected return", type: "date" },
-                    { name: "rate", label: "Rate (UGX)", type: "number", required: true, min: 0 },
-                    { name: "deposit", label: "Deposit (UGX)", type: "number", min: 0 },
+                    { name: "rate", label: `Rate (${currency})`, type: "number", required: true, min: 0 },
+                    { name: "deposit", label: `Deposit (${currency})`, type: "number", min: 0 },
                     { name: "notes", label: "Notes", type: "textarea", full: true },
                 ]}
                 onSubmit={handleCreate}

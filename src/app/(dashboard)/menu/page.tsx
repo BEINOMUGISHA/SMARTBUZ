@@ -31,8 +31,10 @@ import { UtensilsCrossed, BookOpen, Pencil, ChefHat } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function MenuPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const { profile } = useActiveCategory();
     const [search, setSearch] = useState("");
@@ -280,7 +282,7 @@ export default function MenuPage() {
                     },
                     {
                         name: "price",
-                        label: "Price (UGX)",
+                        label: `Price (${currency})`,
                         type: "number",
                         required: true,
                         min: 0,

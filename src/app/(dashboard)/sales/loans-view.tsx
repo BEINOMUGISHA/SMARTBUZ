@@ -58,8 +58,10 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ReceiptModal } from "@/components/ReceiptModal";
 import { ReceiptData } from "@/components/ReceiptTemplate";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function LoansView() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [dateMode, setDateMode] = useState<"audit" | "range">("audit");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
@@ -191,7 +193,8 @@ export function LoansView() {
                     total: amount,
                     totalPV: 0,
                     totalBV: 0,
-                    balance: selectedLoan.balance - amount // New balance
+                    balance: selectedLoan.balance - amount, // New balance
+                    currency,
                 };
                 setPrintReceiptData(receipt);
                 setIsReceiptOpen(true);
@@ -370,9 +373,9 @@ export function LoansView() {
                             size="sm"
                             onClick={async () => {
                                 const summaryStats = [
-                                    { title: "Total Loans", value: `UGX ${fmt(stats?.totalLoan || 0)}`, description: "Issued credit" },
-                                    { title: "Total Paid", value: `UGX ${fmt(stats?.totalPaid || 0)}`, description: "Recovered amount" },
-                                    { title: "Outstanding", value: `UGX ${fmt(stats?.totalBalance || 0)}`, description: "Awaiting recovery" }
+                                    { title: "Total Loans", value: `${currency} ${fmt(stats?.totalLoan || 0)}`, description: "Issued credit" },
+                                    { title: "Total Paid", value: `${currency} ${fmt(stats?.totalPaid || 0)}`, description: "Recovered amount" },
+                                    { title: "Outstanding", value: `${currency} ${fmt(stats?.totalBalance || 0)}`, description: "Awaiting recovery" }
                                 ];
 
                                 let logoBase64 = undefined;
@@ -409,15 +412,15 @@ export function LoansView() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Card className="bg-orange-50 border-orange-200 shadow-sm">
                         <CardHeader className="pb-2"><CardTitle className="text-xs font-bold uppercase tracking-wider text-orange-600">Total Loans</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-black text-orange-700">UGX {fmt(stats?.totalLoan || 0)}</div></CardContent>
+                        <CardContent><div className="text-2xl font-black text-orange-700">{currency} {fmt(stats?.totalLoan || 0)}</div></CardContent>
                     </Card>
                     <Card className="bg-green-50 border-green-200">
                         <CardHeader className="pb-2"><CardTitle className="text-xs font-bold uppercase tracking-wider text-green-600">Total Paid</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-black text-green-700">UGX {fmt(stats?.totalPaid || 0)}</div></CardContent>
+                        <CardContent><div className="text-2xl font-black text-green-700">{currency} {fmt(stats?.totalPaid || 0)}</div></CardContent>
                     </Card>
                     <Card className="bg-destructive/5 border-destructive/20">
                         <CardHeader className="pb-2"><CardTitle className="text-xs font-bold uppercase tracking-wider text-destructive">Outstanding Balance</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-black text-destructive">UGX {fmt(stats?.totalBalance || 0)}</div></CardContent>
+                        <CardContent><div className="text-2xl font-black text-destructive">{currency} {fmt(stats?.totalBalance || 0)}</div></CardContent>
                     </Card>
                 </div>
 
@@ -581,17 +584,17 @@ export function LoansView() {
                 <div className="grid grid-cols-3 gap-4 mb-4 border-b border-gray-100 pb-4">
                     <div className="flex flex-col pl-4 border-l border-gray-100 first:pl-0 first:border-0">
                         <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">TOTAL LOANS</p>
-                        <p className="text-xs font-black text-black">UGX {fmt(stats?.totalLoan || 0)}</p>
+                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalLoan || 0)}</p>
                         <p className="text-[7px] font-bold text-gray-400 italic font-mono">Issued credit</p>
                     </div>
                     <div className="flex flex-col pl-4 border-l border-gray-100">
                         <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">TOTAL PAID</p>
-                        <p className="text-xs font-black text-black">UGX {fmt(stats?.totalPaid || 0)}</p>
+                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalPaid || 0)}</p>
                         <p className="text-[7px] font-bold text-gray-400 italic font-mono">Recovered amount</p>
                     </div>
                     <div className="flex flex-col pl-4 border-l border-gray-100">
                         <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">OUTSTANDING</p>
-                        <p className="text-xs font-black text-black">UGX {fmt(stats?.totalBalance || 0)}</p>
+                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalBalance || 0)}</p>
                         <p className="text-[7px] font-bold text-gray-400 italic font-mono">Awaiting recovery</p>
                     </div>
                 </div>
@@ -642,6 +645,7 @@ export function LoansView() {
 }
 
 function PaymentModal({ isOpen, onClose, loan, amount, setAmount, onConfirm, isLoading }: any) {
+    const { currency } = useCurrency();
     if (!loan) return null;
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -653,10 +657,10 @@ function PaymentModal({ isOpen, onClose, loan, amount, setAmount, onConfirm, isL
                 <div className="space-y-4 py-4">
                     <div className="flex justify-between items-center text-sm p-3 bg-muted rounded-lg border">
                         <span className="font-medium text-muted-foreground">Outstanding Balance:</span>
-                        <span className="font-bold text-destructive">UGX {loan.balance.toLocaleString()}</span>
+                        <span className="font-bold text-destructive">{currency} {loan.balance.toLocaleString()}</span>
                     </div>
                     <div className="space-y-2">
-                        <Label>Payment Amount (UGX)</Label>
+                        <Label>Payment Amount ({currency})</Label>
                         <Input
                             autoFocus
                             placeholder="Enter amount"
@@ -679,6 +683,7 @@ function PaymentModal({ isOpen, onClose, loan, amount, setAmount, onConfirm, isL
 }
 
 function HistoryModal({ isOpen, onClose, loan }: any) {
+    const { currency } = useCurrency();
     const history = useQuery(api.loans.getLoanPayments, loan ? { loanId: loan._id } : "skip" as any);
     if (!loan) return null;
 
@@ -717,7 +722,7 @@ function HistoryModal({ isOpen, onClose, loan }: any) {
                 </div>
                 <div className="flex justify-between items-center bg-destructive/5 p-3 rounded-lg border border-destructive/10">
                     <span className="text-sm font-semibold">Current Balance:</span>
-                    <span className="text-lg font-black text-destructive">UGX {loan.balance.toLocaleString()}</span>
+                    <span className="text-lg font-black text-destructive">{currency} {loan.balance.toLocaleString()}</span>
                 </div>
                 <DialogFooter>
                     <Button onClick={onClose}>Close</Button>

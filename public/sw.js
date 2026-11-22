@@ -17,8 +17,44 @@
  *     can outlive the session it belongs to.
  */
 
-const CACHE_VERSION = "v5";
-const CACHE_NAME = `smartbuz-${CACHE_VERSION}`;
+/**
+ * The cache this worker uses.
+ *
+ * It used to be `smartbuz-v5`, with the number typed in by hand and
+ * forgotten. That is a trap: change how the worker caches things, forget
+ * to bump the number, and the old cache is still there under the old name
+ * and the old behaviour is still in force.
+ *
+ * So the name is derived from the worker itself: the cache is named after
+ * a hash of this file. Change the worker and the name changes with it;
+ * leave it alone and the name does not. Nobody has to remember anything.
+ */
+let CACHE_NAME = "smartbuz-unversioned";
+
+/**
+ * The name of the cache, from a hash of this worker's own source.
+ *
+ * The worker fetches itself with the HTTP cache bypassed, so the hash is
+ * of the bytes that are actually running — not of a stale copy.
+ */
+async function computeCacheName() {
+    try {
+        const response = await fetch(self.location.href, { cache: "reload" });
+        const source = await response.text();
+        const digest = await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(source)
+        );
+        const hex = Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("");
+        return `smartbuz-${hex.slice(0, 16)}`;
+    } catch {
+        // A worker that cannot hash itself still gets a cache; it just
+        // cannot tell one version from another.
+        return "smartbuz-unversioned";
+    }
+}
 
 /** Only real, cacheable assets are precached. "/" is deliberately absent. */
 const PRECACHE_URLS = ["/manifest.json", "/logo.ico"];
@@ -37,6 +73,10 @@ function isCacheable(response) {
 self.addEventListener("install", (event) => {
     event.waitUntil(
         (async () => {
+            // The cache is named after this worker's own source, so it is
+            // never out of step with the worker that is using it.
+            CACHE_NAME = await computeCacheName();
+
             const cache = await caches.open(CACHE_NAME);
             await Promise.allSettled(
                 PRECACHE_URLS.map(async (url) => {

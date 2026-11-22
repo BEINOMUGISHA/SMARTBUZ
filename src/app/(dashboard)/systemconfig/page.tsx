@@ -29,6 +29,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { useCurrency } from "@/hooks/use-currency";
 import { Plus, Search, Edit, Trash2, MoreHorizontal, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Minus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -351,11 +353,9 @@ function BusinessProfileManager() {
                                         <SelectValue placeholder="Currency" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="UGX">UGX</SelectItem>
-                                        <SelectItem value="USD">USD</SelectItem>
-                                        <SelectItem value="KES">KES</SelectItem>
-                                        <SelectItem value="TZS">TZS</SelectItem>
-                                        <SelectItem value="RWF">RWF</SelectItem>
+                                        {SUPPORTED_CURRENCIES.map((code) => (
+                                            <SelectItem key={code} value={code}>{code}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -671,6 +671,7 @@ function UserManager() {
 // --- PROMOTION MANAGER ---
 function PromotionManager() {
     const { user } = useAuth();
+    const { currency } = useCurrency();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Doc<"promotions"> | null>(null);
@@ -825,7 +826,7 @@ function PromotionManager() {
                     <DialogHeader><DialogTitle>Add Promotion</DialogTitle></DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4">
                         <div className="space-y-2"><Label>Promotion Name</Label><Input name="name" required /></div>
-                        <div className="space-y-2"><Label>Prize (What you win)</Label><Input name="prize" required placeholder="e.g. Free T-Shirt, UGX 10,000" /></div>
+                        <div className="space-y-2"><Label>Prize (What you win)</Label><Input name="prize" required placeholder={`e.g. Free T-Shirt, ${currency} 10,000`} /></div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Trigger Type</Label>

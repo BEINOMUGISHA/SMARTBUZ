@@ -22,6 +22,23 @@
 export const DEFAULT_CURRENCY = "UGX";
 
 /**
+ * The currencies a business may choose.
+ *
+ * The same list everywhere a business picks its currency — at setup, in the
+ * business profile and in the system settings — so that the choices do not
+ * drift apart from one another.
+ */
+export const SUPPORTED_CURRENCIES = [
+    "UGX",
+    "USD",
+    "RWF",
+    "KES",
+    "TZS",
+    "EUR",
+    "GBP",
+] as const;
+
+/**
  * The currency a business trades in.
  *
  * It is read from the business record, which the backend owns. The default

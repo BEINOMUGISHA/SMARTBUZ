@@ -20,8 +20,10 @@ import {
     SheetTitle,
     SheetDescription,
 } from "@/components/ui/sheet";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ExpensesReport() {
+    const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -61,20 +63,20 @@ export function ExpensesReport() {
     const customStats = summary ? [
         {
             title: "Total Expenses",
-            value: `UGX ${summary.totalExpenses.toLocaleString()}`,
+            value: `${currency} ${summary.totalExpenses.toLocaleString()}`,
             description: `${summary.expenseCount} TRANSACTIONS`,
             color: "border-l-red-500",
         },
         {
             title: "Avg Expense",
-            value: `UGX ${Math.round(summary.avgExpense).toLocaleString()}`,
+            value: `${currency} ${Math.round(summary.avgExpense).toLocaleString()}`,
             description: "PER TRANSACTION",
             color: "border-l-blue-500",
         },
         {
             title: "Top Category",
             value: summary.categories[0]?.type || "N/A",
-            description: `UGX ${(summary.categories[0]?.total || 0).toLocaleString()}`,
+            description: `${currency} ${(summary.categories[0]?.total || 0).toLocaleString()}`,
             color: "border-l-amber-500",
         },
         {
@@ -193,7 +195,7 @@ export function ExpensesReport() {
                     {
                         header: "Amount",
                         accessor: (e: any) => (
-                            <span className="font-black text-red-600 text-sm">UGX {e.amount.toLocaleString()}</span>
+                            <span className="font-black text-red-600 text-sm">{currency} {e.amount.toLocaleString()}</span>
                         ),
                         exportValue: (e: any) => e.amount.toLocaleString(),
                         className: "text-right",
@@ -229,7 +231,7 @@ export function ExpensesReport() {
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Amount</span>
-                                    <span className="font-bold text-lg text-red-600">UGX {viewingExpense.amount.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-red-600">{currency} {viewingExpense.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Category</span>

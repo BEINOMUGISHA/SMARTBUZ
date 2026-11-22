@@ -257,7 +257,7 @@ export const getLoanPayments = query({
         await requirePermission(ctx, tenant.businessId, "loans.view");
 
         const loan = await ctx.db.get(args.loanId);
-        if (!loan) throw new Error("Loan not found");
+        if (!loan) throw new ConvexError("Loan not found");
         if (loan.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that loan belongs to another business.");
         }
@@ -418,16 +418,16 @@ export const makePayment = mutation({
         const { date, paymentDate } = resolvePaymentDates(args.date);
 
         const loan = await ctx.db.get(args.loanId);
-        if (!loan) throw new Error("Loan not found");
+        if (!loan) throw new ConvexError("Loan not found");
         if (loan.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that loan belongs to another business.");
         }
 
         const sale = await ctx.db.get(loan.salesId);
-        if (!sale) throw new Error("Sale associated with loan not found");
+        if (!sale) throw new ConvexError("Sale associated with loan not found");
 
         const newBalance = loan.balance - args.amount;
-        if (newBalance < 0) throw new Error("Payment exceeds balance");
+        if (newBalance < 0) throw new ConvexError("Payment exceeds balance");
 
         await ctx.db.patch(args.loanId, { balance: newBalance });
 

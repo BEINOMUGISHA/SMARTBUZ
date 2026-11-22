@@ -1037,7 +1037,7 @@ export const update = mutation({
 
         const { id, businessId: _ignored, ...rest } = args;
         const oldStock = await ctx.db.get(id);
-        if (!oldStock) throw new Error("Stock not found");
+        if (!oldStock) throw new ConvexError("Stock not found");
         if (oldStock.businessId !== businessId) {
             throw new ConvexError("Forbidden: that product belongs to another business.");
         }
@@ -1099,7 +1099,7 @@ export const remove = mutation({
         const businessId = tenant.businessId;
 
         const stock = await ctx.db.get(args.id);
-        if (!stock) throw new Error("Stock not found");
+        if (!stock) throw new ConvexError("Stock not found");
         if (stock.businessId !== businessId) {
             throw new ConvexError("Forbidden: that product belongs to another business.");
         }
@@ -1226,7 +1226,7 @@ export const restock = mutation({
         const { supplier, businessId: _ignored, ...restockArgs } = args;
 
         const stock = await ctx.db.get(args.id);
-        if (!stock) throw new Error("Stock not found");
+        if (!stock) throw new ConvexError("Stock not found");
         if (stock.businessId !== businessId) {
             throw new ConvexError("Forbidden: that product belongs to another business.");
         }

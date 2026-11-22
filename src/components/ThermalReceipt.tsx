@@ -2,6 +2,7 @@
 
 import React from "react";
 import { ReceiptData } from "./ReceiptTemplate";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface ReceiptLineItem {
     name?: string;
@@ -20,6 +21,7 @@ function getLineTotals(item: ReceiptLineItem) {
 }
 
 export function ThermalReceipt({ data }: { data: ReceiptData }) {
+    const { currency } = useCurrency();
     return (
         <div id="thermal-receipt" className="w-[80mm] max-w-[80mm] mx-auto p-4 bg-white text-black font-mono text-[11px] leading-tight">
             <style dangerouslySetInnerHTML={{
@@ -116,7 +118,7 @@ export function ThermalReceipt({ data }: { data: ReceiptData }) {
             <div className="py-2 border-b border-dashed border-black space-y-1 text-[11px]">
                 <div className="flex justify-between font-black text-sm pt-1">
                     <span>TOTAL:</span>
-                    <span>UGX {data.total.toLocaleString()}</span>
+                    <span>{currency} {data.total.toLocaleString()}</span>
                 </div>
 
                 {(data.totalPV > 0 || data.totalBV > 0) && (
@@ -134,14 +136,14 @@ export function ThermalReceipt({ data }: { data: ReceiptData }) {
                 {data.initialDeposit !== undefined && data.initialDeposit > 0 && (
                     <div className="flex justify-between text-[10px]">
                         <span>DEPOSIT:</span>
-                        <span className="font-bold">UGX {data.initialDeposit.toLocaleString()}</span>
+                        <span className="font-bold">{currency} {data.initialDeposit.toLocaleString()}</span>
                     </div>
                 )}
 
                 {data.balance !== undefined && data.balance > 0 && (
                     <div className="flex justify-between text-[10px] font-bold text-red-600">
                         <span>BALANCE DUE:</span>
-                        <span>UGX {data.balance.toLocaleString()}</span>
+                        <span>{currency} {data.balance.toLocaleString()}</span>
                     </div>
                 )}
             </div>

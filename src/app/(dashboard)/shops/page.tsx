@@ -24,6 +24,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { useCurrency } from "@/hooks/use-currency";
 
 // Types
 type TransferItem = {
@@ -67,6 +68,7 @@ export default function ShopsPage() {
 
 
 function ShopStockViewer() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const shops = useQuery(api.shops.listAll, {});
     const [selectedShopId, setSelectedShopId] = useState<Id<"shops"> | "">("");
@@ -234,7 +236,7 @@ function ShopStockViewer() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <Card className="p-4 shadow-sm border-none bg-blue-50/50">
                             <p className="text-xs text-muted-foreground uppercase font-bold">Total Value</p>
-                            <p className="text-xl font-black text-primary">UGX {stats.totalValue.toLocaleString()}</p>
+                            <p className="text-xl font-black text-primary">{currency} {stats.totalValue.toLocaleString()}</p>
                         </Card>
                         <Card className="p-4 shadow-sm border-none bg-green-50/50">
                             <p className="text-xs uppercase font-bold text-green-700">Total Items</p>

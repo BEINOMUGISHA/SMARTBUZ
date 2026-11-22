@@ -313,7 +313,7 @@ export const recordFuelDispense = mutation({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
-        if (args.litres <= 0) throw new Error("Litres must be greater than zero");
+        if (args.litres <= 0) throw new ConvexError("Litres must be greater than zero");
 
         const total = Math.round(args.litres * args.pricePerLitre);
         const id = await ctx.db.insert("fuelDispenses", {
@@ -484,7 +484,7 @@ export const openTillSession = mutation({
             .filter((q) => q.and(q.eq(q.field("userId"), args.userId), q.eq(q.field("status"), "open")))
             .collect();
         if (open.length > 0) {
-            throw new Error("You already have an open till session. Close it before opening another.");
+            throw new ConvexError("You already have an open till session. Close it before opening another.");
         }
 
         const count = (await ctx.db.query("tillSessions").collect()).length + 1;
@@ -515,11 +515,11 @@ export const closeTillSession = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         const session = await ctx.db.get(args.id);
-        if (!session) throw new Error("Till session not found");
+        if (!session) throw new ConvexError("Till session not found");
         if (session.businessId !== businessId) {
             throw new ConvexError("Forbidden: that record belongs to another business.");
         }
-        if (session.status === "closed") throw new Error("This till session is already closed");
+        if (session.status === "closed") throw new ConvexError("This till session is already closed");
 
         const variance = args.countedCash - args.expectedCash;
         await ctx.db.patch(args.id, {
@@ -687,7 +687,7 @@ export const returnRental = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         const rental = await ctx.db.get(args.id);
-        if (!rental) throw new Error("Rental not found");
+        if (!rental) throw new ConvexError("Rental not found");
         if (rental.businessId !== businessId) {
             throw new ConvexError("Forbidden: that record belongs to another business.");
         }

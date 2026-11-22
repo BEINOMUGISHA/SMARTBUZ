@@ -23,8 +23,10 @@ import {
     SheetTitle,
     SheetDescription,
 } from "@/components/ui/sheet";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function ShopsReport() {
+    const { currency } = useCurrency();
     const [activeNestedTab, setActiveNestedTab] = useState("overview");
 
     // --- OVERVIEW TAB STATE ---
@@ -125,7 +127,7 @@ export function ShopsReport() {
     const saleWithDetails = useQuery(api.sales.getSale, viewType === "sale" && viewingSaleId ? { id: viewingSaleId } : "skip");
     const loanWithDetails = useQuery(api.loans.getLoanWithDetails, viewType === "loan" && viewingLoanId ? { id: viewingLoanId } : "skip");
 
-    const formatPrice = (p: number) => `UGX ${p.toLocaleString()}`;
+    const formatPrice = (p: number) => `${currency} ${p.toLocaleString()}`;
 
     const handleViewSale = (sale: any) => {
         setViewingSaleId(sale._id);
@@ -691,7 +693,7 @@ export function ShopsReport() {
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
-                                    <span className="font-bold text-lg text-emerald-600">UGX {saleWithDetails.total.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-emerald-600">{currency} {saleWithDetails.total.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Branch</span>
@@ -731,11 +733,11 @@ export function ShopsReport() {
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
-                                    <span className="font-bold text-lg text-emerald-600">UGX {loanWithDetails.amount.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-emerald-600">{currency} {loanWithDetails.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Balance Due</span>
-                                    <span className="font-bold text-lg text-destructive">UGX {loanWithDetails.balance.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-destructive">{currency} {loanWithDetails.balance.toLocaleString()}</span>
                                 </div>
                             </div>
                             <div className="space-y-3">

@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { UsersRound, Plus, Wallet, History, X } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const TX_TYPES = [
     { value: "deposit", label: "Deposit / Savings" },
@@ -44,6 +45,7 @@ const TX_TYPES = [
 ];
 
 export default function MembersPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [createOpen, setCreateOpen] = useState(false);
@@ -304,8 +306,8 @@ export default function MembersPage() {
                             { value: "member", label: "Member" },
                         ],
                     },
-                    { name: "openingBalance", label: "Opening balance (UGX)", type: "number", min: 0 },
-                    { name: "shares", label: "Shares held (UGX)", type: "number", min: 0 },
+                    { name: "openingBalance", label: `Opening balance (${currency})`, type: "number", min: 0 },
+                    { name: "shares", label: `Shares held (${currency})`, type: "number", min: 0 },
                 ]}
                 onSubmit={handleCreate}
             />
@@ -318,7 +320,7 @@ export default function MembersPage() {
                 submitLabel="Record"
                 fields={[
                     { name: "type", label: "Type", type: "select", required: true, options: TX_TYPES, full: true },
-                    { name: "amount", label: "Amount (UGX)", type: "number", required: true, min: 1 },
+                    { name: "amount", label: `Amount (${currency})`, type: "number", required: true, min: 1 },
                     { name: "reference", label: "Reference" },
                     { name: "notes", label: "Notes", type: "textarea", full: true },
                 ]}

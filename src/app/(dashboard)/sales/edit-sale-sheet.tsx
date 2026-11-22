@@ -42,6 +42,7 @@ import { Loader2, Plus, Trash2, Check, ChevronsUpDown, Save, Pencil } from "luci
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { describeError } from "@/components/error-feedback";
+import { useCurrency } from "@/hooks/use-currency";
 
 interface EditItem {
     stockId: Id<"stocks">;
@@ -66,6 +67,7 @@ const PACKAGE_TYPES = ["Bronze", "Silver", "Gold"];
 const DELIVERY_STATUSES = ["Taken", "Pending"];
 
 export function EditSaleSheet({ sale, open, onOpenChange, onSaved }: EditSaleSheetProps) {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const editSaleMutation = useMutation(api.sales.editSale);
     const customers = useQuery(api.customers.listAll, {});
@@ -389,7 +391,7 @@ export function EditSaleSheet({ sale, open, onOpenChange, onSaved }: EditSaleShe
                                                         <div className="flex flex-col">
                                                             <span className="font-medium">{stock.name}</span>
                                                             <span className="text-[10px] text-muted-foreground">
-                                                                {stock.productCode} • UGX {stock.price?.toLocaleString()} • Qty: {stock.qty}
+                                                                {stock.productCode} • {currency} {stock.price?.toLocaleString()} • Qty: {stock.qty}
                                                             </span>
                                                         </div>
                                                     </CommandItem>
@@ -486,7 +488,7 @@ export function EditSaleSheet({ sale, open, onOpenChange, onSaved }: EditSaleShe
                     <div className="grid grid-cols-3 gap-2 p-3 rounded-md bg-muted/40 text-xs">
                         <div>
                             <div className="text-[10px] uppercase text-muted-foreground font-bold">Total</div>
-                            <div className="font-mono font-bold text-base">UGX {total.toLocaleString()}</div>
+                            <div className="font-mono font-bold text-base">{currency} {total.toLocaleString()}</div>
                         </div>
                         <div>
                             <div className="text-[10px] uppercase text-muted-foreground font-bold">PV</div>
@@ -548,7 +550,7 @@ export function EditSaleSheet({ sale, open, onOpenChange, onSaved }: EditSaleShe
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label className="text-xs">Initial Deposit (UGX)</Label>
+                                    <Label className="text-xs">Initial Deposit ({currency})</Label>
                                     <Input
                                         type="number"
                                         min={0}

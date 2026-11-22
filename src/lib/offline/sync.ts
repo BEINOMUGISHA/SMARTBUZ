@@ -35,6 +35,7 @@ import {
     markFailed,
     markSynced,
     markSyncing,
+    pruneSentSales,
     queueSummary,
 } from "./queue";
 import type { QueuedTransaction } from "./types";
@@ -488,6 +489,14 @@ export class SyncEngine {
                 lastError: undefined,
                 online: true,
             });
+
+            // The till keeps a record of what it has done, and the record is
+            // bounded: the sales that have been sent and are no longer
+            // waiting for anything are let go, oldest first, once there are
+            // too many of them. The sales that are still waiting are never
+            // discarded.
+            await pruneSentSales();
+
             await this.refreshCounts();
 
             return outcome;

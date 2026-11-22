@@ -76,7 +76,7 @@ export const createMember = mutation({
                 .query("members")
                 .withIndex("by_memberNumber", (q) => q.eq("memberNumber", memberNumber!))
                 .first();
-            if (dupe) throw new Error(`Member number ${memberNumber} is already in use`);
+            if (dupe) throw new ConvexError(`Member number ${memberNumber} is already in use`);
         }
 
         const id = await ctx.db.insert("members", {
@@ -136,19 +136,19 @@ export const recordMemberTransaction = mutation({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         const member = await ctx.db.get(args.memberId);
-        if (!member) throw new Error("Member not found");
+        if (!member) throw new ConvexError("Member not found");
         if (member.businessId !== businessId) {
             throw new ConvexError("Forbidden: that record belongs to another business.");
         }
 
-        if (args.amount <= 0) throw new Error("Amount must be greater than zero");
+        if (args.amount <= 0) throw new ConvexError("Amount must be greater than zero");
 
         const isCredit = ["deposit", "share_purchase", "loan", "repayment", "refund"].includes(args.type);
         const delta = isCredit ? args.amount : -args.amount;
         const newBalance = member.balance + delta;
 
         if (newBalance < 0) {
-            throw new Error(`Insufficient balance. Available: ${member.balance}`);
+            throw new ConvexError(`Insufficient balance. Available: ${member.balance}`);
         }
 
         await ctx.db.patch(args.memberId, {
@@ -249,7 +249,7 @@ export const walletTransaction = mutation({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
-        if (args.amount <= 0) throw new Error("Amount must be greater than zero");
+        if (args.amount <= 0) throw new ConvexError("Amount must be greater than zero");
 
         const wallet = await ctx.db
             .query("customerWallets")
@@ -261,7 +261,7 @@ export const walletTransaction = mutation({
         const newBalance = current + delta;
 
         if (newBalance < 0) {
-            throw new Error(`Insufficient wallet balance. Available: UGX ${current.toLocaleString()}`);
+            throw new ConvexError(`Insufficient wallet balance. Available: UGX ${current.toLocaleString()}`);
         }
 
         if (wallet) {
@@ -324,7 +324,7 @@ export const recordCommission = mutation({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
-        if (args.rate < 0 || args.rate > 100) throw new Error("Commission rate must be between 0 and 100");
+        if (args.rate < 0 || args.rate > 100) throw new ConvexError("Commission rate must be between 0 and 100");
 
         const commission = Math.round((args.grossAmount * args.rate) / 100);
         const id = await ctx.db.insert("staffCommissions", {
@@ -397,7 +397,7 @@ export const recordDonation = mutation({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
-        if (args.amount <= 0) throw new Error("Amount must be greater than zero");
+        if (args.amount <= 0) throw new ConvexError("Amount must be greater than zero");
 
         const id = await ctx.db.insert("donations", {
             businessId,

@@ -25,7 +25,8 @@ export const generateRestockPDF = (
     stocks: StockItem[],
     shopInfo: ShopInfo,
     userInfo: UserInfo,
-    isHp: boolean
+    isHp: boolean,
+    currency: string
 ) => {
     const doc = new jsPDF();
     const timestamp = format(new Date(), 'dd/MM/yyyy HH:mm:ss');
@@ -66,7 +67,7 @@ export const generateRestockPDF = (
     // Table
     autoTable(doc, {
         startY: 70,
-        head: [['Code', 'Product Name', 'Unit Price (UGX)', 'Current Qty']],
+        head: [['Code', 'Product Name', `Unit Price (${currency})`, 'Current Qty']],
         body: stocks.map(item => [
             item.productCode,
             item.name,

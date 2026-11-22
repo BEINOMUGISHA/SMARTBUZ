@@ -561,6 +561,68 @@ export const migrationStatus = query({
 });
 
 /**
+ * Remove the plain reset codes from the database.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * Why this exists
+ *
+ * Reset codes used to be stored in the row in the clear. They are stored
+ * hashed now, and a code from the plain era is refused — the person who
+ * holds it simply asks for a new one.
+ *
+ * But the plain codes are still *there*, sitting in the rows, readable by
+ * anybody with a read on the database. Refusing them at the door does not
+ * help if the key is still under the mat. So they are taken out.
+ *
+ * A row that has a plain code and no hash cannot be used for anything at
+ * all, so it is deleted rather than repaired. A row that has both keeps
+ * its hash and loses the plain copy.
+ *
+ * It is safe to run more than once.
+ * ────────────────────────────────────────────────────────────────────────
+ */
+export const stripPlainResetCodes = mutation({
+  args: {
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!serverSecretMatches(args.serverSecret)) {
+      throw new ConvexError(
+        "Forbidden: this can only be run by the SMARTBUZ server. " +
+          "Run scripts/strip-plain-reset-codes.mjs instead of calling this from a browser."
+      );
+    }
+
+    const rows = await ctx.db.query("passwordResets").collect();
+
+    let stripped = 0;
+    let deleted = 0;
+
+    for (const row of rows) {
+      // The field is no longer in the schema — it was removed once the rows
+      // that carried it were cleaned. It is read through a loose cast so
+      // that this repair still works on a row that predates the removal.
+      const legacy = row as unknown as Record<string, unknown>;
+      if (legacy.code === undefined) continue;
+
+      if (!row.codeHash) {
+        // Nothing can be done with this row: there is no hash to check a
+        // code against, so it is dead weight and a plain secret besides.
+        await ctx.db.delete(row._id);
+        deleted += 1;
+        continue;
+      }
+
+      await ctx.db.patch(row._id, { code: undefined } as never);
+      stripped += 1;
+    }
+
+    return { checked: rows.length, stripped, deleted };
+  },
+});
+
+/**
  * Remove the legacy copies of the products a counter holds.
  *
  * ────────────────────────────────────────────────────────────────────────

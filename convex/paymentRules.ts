@@ -1,3 +1,6 @@
+
+import { ConvexError } from "convex/values";
+
 /**
  * SMARTBUZ — the rules every repayment of customer credit follows.
  *
@@ -65,12 +68,12 @@ export function resolvePaymentDates(
 
     const claimed = Date.parse(claimedDate);
     if (!Number.isFinite(claimed)) {
-        throw new Error("The payment date could not be read.");
+        throw new ConvexError("The payment date could not be read.");
     }
 
     const driftHours = Math.abs(now - claimed) / (1000 * 60 * 60);
     if (driftHours > MAX_PAYMENT_DATE_DRIFT_HOURS) {
-        throw new Error(
+        throw new ConvexError(
             `A payment may not be dated more than ${MAX_PAYMENT_DATE_DRIFT_HOURS} hours away from today. ` +
                 `The date given (${claimedDate}) is ${Math.round(driftHours)} hours away. ` +
                 "Record it against today's date, or enter the days separately."
@@ -90,10 +93,10 @@ export function resolvePaymentDates(
 export function assertPaymentMethod(method: string | undefined): PaymentMethod {
     const normalised = (method ?? "").trim().toLowerCase();
     if (!normalised) {
-        throw new Error("Say how this payment was made — cash, mobile money, bank, card or cheque.");
+        throw new ConvexError("Say how this payment was made — cash, mobile money, bank, card or cheque.");
     }
     if (!(PAYMENT_METHODS as readonly string[]).includes(normalised)) {
-        throw new Error(
+        throw new ConvexError(
             `"${method}" is not a way of paying. Use one of: ${PAYMENT_METHODS.join(", ")}.`
         );
     }

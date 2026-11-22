@@ -622,6 +622,18 @@ export default defineSchema({
         userId: v.id("users"),
         total: v.number(),
         /**
+         * The currency the sale was rung up in.
+         *
+         * It is recorded on the sale, at the moment of the sale, so that a
+         * receipt printed later says what the money was then — not what the
+         * business happens to trade in today.
+         *
+         * A sale made before this was recorded has no currency on it. The
+         * default is used for it, which is the honest reading: nobody
+         * knows what the money was, so the standard is assumed.
+         */
+        currency: v.optional(v.string()),
+        /**
          * The VAT on this sale, and what is left of it once the VAT is
          * taken out.
          *
@@ -1801,12 +1813,14 @@ export default defineSchema({
     passwordResets: defineTable({
         email: v.string(),
         /**
-         * The plain 6-digit code. Kept for backwards compatibility with
-         * resets issued before hashing; new codes are stored in `codeHash`
-         * only.
+         * bcrypt hash of the code — the plain code is never stored.
+         *
+         * The plain 6-digit code used to sit in this row beside the hash,
+         * for the sake of resets issued before hashing was introduced. It
+         * was refused when it was used, but it was still *there*, readable
+         * by anybody with a read on the database. Those rows were cleaned
+         * up (`migration.stripPlainResetCodes`) and the field is gone.
          */
-        code: v.optional(v.string()),
-        /** bcrypt hash of the code — the plain code is never stored. */
         codeHash: v.optional(v.string()),
         expiresAt: v.number(),
         attempts: v.optional(v.number()), // Failed verification attempts (brute-force guard)

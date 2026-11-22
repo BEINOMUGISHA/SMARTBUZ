@@ -40,8 +40,10 @@ import {
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function TablesPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [tab, setTab] = useState("floor");
     const [tableOpen, setTableOpen] = useState(false);
@@ -375,7 +377,7 @@ export default function TablesPage() {
                 fields={[
                     { name: "name", label: "Table name / number", required: true, full: true },
                     { name: "capacity", label: "Seats", type: "number", min: 1 },
-                    { name: "rate", label: "Rate per session (UGX)", type: "number", min: 0 },
+                    { name: "rate", label: `Rate per session (${currency})`, type: "number", min: 0 },
                     { name: "notes", label: "Notes", type: "textarea", full: true },
                 ]}
                 onSubmit={handleCreateTable}
@@ -389,7 +391,7 @@ export default function TablesPage() {
                 fields={[
                     { name: "name", label: "Item name", required: true },
                     { name: "category", label: "Category", placeholder: "e.g. Main, Drinks" },
-                    { name: "price", label: "Price (UGX)", type: "number", required: true, min: 0 },
+                    { name: "price", label: `Price (${currency})`, type: "number", required: true, min: 0 },
                     { name: "prepMinutes", label: "Prep minutes", type: "number", min: 0 },
                     { name: "description", label: "Description", type: "textarea", full: true },
                 ]}

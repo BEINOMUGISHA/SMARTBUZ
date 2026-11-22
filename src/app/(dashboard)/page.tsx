@@ -279,6 +279,7 @@ export default function DashboardPage() {
  * cannot disagree.
  */
 function TodayPanel({ dashboard }: { dashboard: any }) {
+    const { currency } = useCurrency();
     const chart = dashboard.chartData ?? [];
 
     return (
@@ -286,44 +287,44 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
                     title="Today's sales"
-                    value={`UGX ${(dashboard.today?.revenue ?? 0).toLocaleString()}`}
+                    value={`${currency} ${(dashboard.today?.revenue ?? 0).toLocaleString()}`}
                     icon={TrendingUp}
                     iconClassName="text-emerald-600 dark:text-emerald-400"
                     description={`${dashboard.today?.transactions ?? 0} transaction(s)`}
                 />
                 <KpiCard
                     title="Gross profit"
-                    value={`UGX ${(dashboard.today?.grossProfit ?? 0).toLocaleString()}`}
+                    value={`${currency} ${(dashboard.today?.grossProfit ?? 0).toLocaleString()}`}
                     icon={ShoppingCart}
                     iconClassName="text-emerald-600 dark:text-emerald-400"
-                    description={`Cost of goods sold UGX ${Math.max(
+                    description={`Cost of goods sold ${currency} ${Math.max(
                         0,
                         (dashboard.today?.revenue ?? 0) - (dashboard.today?.grossProfit ?? 0)
                     ).toLocaleString()}`}
                 />
                 <KpiCard
                     title="Net profit"
-                    value={`UGX ${(dashboard.today?.netProfit ?? 0).toLocaleString()}`}
+                    value={`${currency} ${(dashboard.today?.netProfit ?? 0).toLocaleString()}`}
                     icon={TrendingUp}
                     iconClassName={
                         (dashboard.today?.netProfit ?? 0) >= 0
                             ? "text-emerald-600 dark:text-emerald-400"
                             : "text-destructive"
                     }
-                    description={`Running costs UGX ${(
+                    description={`Running costs ${currency} ${(
                         dashboard.today?.operatingExpenses ?? 0
                     ).toLocaleString()}`}
                 />
                 <KpiCard
                     title="Owed to you"
-                    value={`UGX ${(dashboard.balances?.receivables ?? 0).toLocaleString()}`}
+                    value={`${currency} ${(dashboard.balances?.receivables ?? 0).toLocaleString()}`}
                     icon={CreditCard}
                     iconClassName={
                         (dashboard.balances?.receivables ?? 0) > 0
                             ? "text-amber-600 dark:text-amber-400"
                             : "text-muted-foreground"
                     }
-                    description={`Suppliers are owed UGX ${(
+                    description={`Suppliers are owed ${currency} ${(
                         dashboard.balances?.payables ?? 0
                     ).toLocaleString()}`}
                 />
@@ -364,7 +365,7 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                                         <YAxis fontSize={10} />
                                         <RechartsTooltip
                                             formatter={(value: any) =>
-                                                `UGX ${Number(value).toLocaleString()}`
+                                                `${currency} ${Number(value).toLocaleString()}`
                                             }
                                             labelFormatter={(label: any) => String(label)}
                                         />
@@ -414,7 +415,7 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                                                 {product.quantity}
                                             </span>
                                             <span className="block text-[10px] text-muted-foreground">
-                                                UGX {product.revenue.toLocaleString()}
+                                                {currency} {product.revenue.toLocaleString()}
                                             </span>
                                         </span>
                                     </li>
@@ -490,7 +491,7 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                                             </span>
                                         </span>
                                         <span className="shrink-0 font-black tabular-nums">
-                                            UGX {sale.total.toLocaleString()}
+                                            {currency} {sale.total.toLocaleString()}
                                         </span>
                                     </li>
                                 ))}
@@ -504,6 +505,7 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
 }
 
 function AdminDashboard({ stats }: { stats: any }) {
+    const { currency } = useCurrency();
     const lowStock = useQuery(api.dashboard.getGlobalLowStock, {});
 
     return (
@@ -512,7 +514,7 @@ function AdminDashboard({ stats }: { stats: any }) {
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
                     title="Gross Revenue"
-                    value={`UGX ${stats.totalRevenue.toLocaleString()}`}
+                    value={`${currency} ${stats.totalRevenue.toLocaleString()}`}
                     icon={CreditCard}
                     description="Total sales in selected period"
                     className="bg-primary hover:scale-[1.02] transition-transform text-primary-foreground border-none"
@@ -586,7 +588,7 @@ function AdminDashboard({ stats }: { stats: any }) {
                                             axisLine={false}
                                             tickLine={false}
                                             tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                                            tickFormatter={(val) => `UGX ${(val / 1000)}k`}
+                                            tickFormatter={(val) => `${currency} ${(val / 1000)}k`}
                                         />
                                         <RechartsTooltip
                                             content={({ active, payload }) => {
@@ -594,7 +596,7 @@ function AdminDashboard({ stats }: { stats: any }) {
                                                     return (
                                                         <div className="bg-background border rounded-lg shadow-xl p-3 border-primary/20">
                                                             <p className="text-xs font-black text-muted-foreground uppercase">{format(new Date(payload[0].payload.date), "MMMM d, yyyy")}</p>
-                                                            <p className="text-lg font-black text-primary">UGX {Number(payload[0].value).toLocaleString()}</p>
+                                                            <p className="text-lg font-black text-primary">{currency} {Number(payload[0].value).toLocaleString()}</p>
                                                         </div>
                                                     );
                                                 }
@@ -693,13 +695,14 @@ function AdminDashboard({ stats }: { stats: any }) {
 }
 
 function SalesDashboard({ stats, myShop }: { stats: any, myShop: any }) {
+    const { currency } = useCurrency();
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* KPI Cards Grid */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
                     title="My Shop Revenue"
-                    value={`UGX ${stats.totalRevenue.toLocaleString()}`}
+                    value={`${currency} ${stats.totalRevenue.toLocaleString()}`}
                     icon={CreditCard}
                     description="Total sales from your assigned branch"
                     className="bg-orange-500 hover:scale-[1.02] transition-transform text-white border-none"
@@ -746,7 +749,7 @@ function SalesDashboard({ stats, myShop }: { stats: any, myShop: any }) {
                                 <TableRow>
                                     <TableHead className="font-bold">Customer</TableHead>
                                     <TableHead className="font-bold">Time</TableHead>
-                                    <TableHead className="text-right font-bold">Total (UGX)</TableHead>
+                                    <TableHead className="text-right font-bold">Total ({currency})</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -778,7 +781,8 @@ function SalesDashboard({ stats, myShop }: { stats: any, myShop: any }) {
     )
 }
 
-import { Store } from "lucide-react"; // Added missing import
+import { Store } from "lucide-react";
+import { useCurrency } from "@/hooks/use-currency"; // Added missing import
 
 function KpiCard({
     title,

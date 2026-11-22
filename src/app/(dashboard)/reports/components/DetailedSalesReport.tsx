@@ -21,8 +21,10 @@ import {
     SheetTitle,
     SheetDescription,
 } from "@/components/ui/sheet";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function DetailedSalesReport() {
+    const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -282,7 +284,7 @@ export function DetailedSalesReport() {
                         className: "text-center bg-blue-50/20"
                     },
                     {
-                        header: "Total (UGX)",
+                        header: `Total (${currency})`,
                         accessor: (s: any) => (
                             <span className="font-black text-gray-900">{s.total.toLocaleString()}</span>
                         ),
@@ -327,7 +329,7 @@ export function DetailedSalesReport() {
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
-                                    <span className="font-bold text-lg text-emerald-600">UGX {saleWithDetails.total.toLocaleString()}</span>
+                                    <span className="font-bold text-lg text-emerald-600">{currency} {saleWithDetails.total.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
                                     <span className="text-sm font-medium text-muted-foreground">Payment Mode</span>

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requirePermission, requireTenant } from "./tenancy";
 
@@ -35,7 +35,7 @@ export const add = mutation({
             .query("userTypes")
             .filter((q) => q.eq(q.field("type"), args.type))
             .unique();
-        if (existing) throw new Error("User type already exists");
+        if (existing) throw new ConvexError("User type already exists");
         const userTypeId = await ctx.db.insert("userTypes", { type: args.type });
 
         // Log activity
@@ -62,7 +62,7 @@ export const remove = mutation({
         await requirePermission(ctx, tenant.businessId, "members.manage");
 
         const userType = await ctx.db.get(args.id);
-        if (!userType) throw new Error("User type not found");
+        if (!userType) throw new ConvexError("User type not found");
 
         await ctx.db.delete(args.id);
 

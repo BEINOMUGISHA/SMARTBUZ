@@ -27,10 +27,12 @@ import { Badge } from "@/components/ui/badge";
 import { Building2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 const OUTLET_TYPE = "room";
 
 export default function RoomsPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [createOpen, setCreateOpen] = useState(false);
 
@@ -151,7 +153,7 @@ export default function RoomsPage() {
                 fields={[
                     { name: "name", label: "Room name / number", required: true, full: true },
                     { name: "capacity", label: "Sleeps", type: "number", min: 1 },
-                    { name: "rate", label: "Rate per night (UGX)", type: "number", min: 0 },
+                    { name: "rate", label: `Rate per night (${currency})`, type: "number", min: 0 },
                     { name: "notes", label: "Notes", type: "textarea", full: true },
                 ]}
                 onSubmit={handleCreate}

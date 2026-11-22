@@ -42,8 +42,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function BatchesPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [tab, setTab] = useState("batches");
     const [search, setSearch] = useState("");
@@ -300,7 +302,7 @@ export default function BatchesPage() {
                     { name: "batchNumber", label: "Batch number", required: true },
                     { name: "qtyReceived", label: "Quantity received", type: "number", required: true, min: 1 },
                     { name: "expiryDate", label: "Expiry date", type: "date" },
-                    { name: "costPrice", label: "Cost price (UGX)", type: "number", min: 0 },
+                    { name: "costPrice", label: `Cost price (${currency})`, type: "number", min: 0 },
                     { name: "supplier", label: "Supplier", placeholder: "e.g. Kampala Pharmaceuticals" },
                 ]}
                 onSubmit={handleAddBatch}

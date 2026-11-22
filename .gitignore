@@ -56,3 +56,8 @@ scripts/fixtures/*.zip
 # report and the second is overwritten on every run.
 .qa-audit/
 .test-out.txt
+
+# One-off codemods and scratch files kept while a fix was being made. They
+# are not part of the application and are not worth keeping once the work
+# they did is committed.
+.scratch/

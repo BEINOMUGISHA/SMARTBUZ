@@ -44,6 +44,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function StockPage() {
     const [activeTab, setActiveTab] = useState("regular");
@@ -77,6 +78,7 @@ export default function StockPage() {
 }
 
 function StockManager({ halfPrice }: { halfPrice: boolean }) {
+    const { currency } = useCurrency();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingStock, setEditingStock] = useState<Doc<"stocks"> | null>(null);
@@ -288,7 +290,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                     <TableHead>Code</TableHead>
                                     <TableHead>Product Name</TableHead>
                                     <TableHead>Category</TableHead>
-                                    <TableHead className="text-right">Price (UGX)</TableHead>
+                                    <TableHead className="text-right">Price ({currency})</TableHead>
                                     <TableHead className="text-center">Qty</TableHead>
                                     <TableHead className="text-center">PV</TableHead>
                                     <TableHead className="text-center">BV</TableHead>

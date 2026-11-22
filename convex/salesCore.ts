@@ -33,6 +33,7 @@ import { logActivity } from "./tenancy";
 import { outstandingBalance } from "./customers";
 import { salePaymentModeToMethod } from "./paymentRules";
 import { stripIssuedStockCopies } from "./counterStock";
+import { DEFAULT_CURRENCY } from "./defaults";
 
 /**
  * How far back a till may date an offline sale.
@@ -679,6 +680,25 @@ function round2(value: number): number {
 }
 
 /**
+ * The currency this sale was rung up in.
+ *
+ * It is read from the business at the moment of the sale and written onto
+ * the sale, so a receipt printed years later says what the money was in
+ * when it was taken — not what the business trades in today.
+ *
+ * A sale made before this was recorded has no currency on it. The default
+ * is used, which is the honest reading: nobody knows what the money was,
+ * so the standard is assumed.
+ */
+async function resolveSaleCurrency(
+    ctx: MutationCtx,
+    businessId: Id<"businesses">
+): Promise<string> {
+    const business = await ctx.db.get(businessId);
+    const code = (business?.currency ?? "").trim().toUpperCase();
+    return code || DEFAULT_CURRENCY;
+}
+/**
  * Is this sale one the customer is going to owe for?
  *
  * Two things mark it: the till saying it is a loan, and the till naming
@@ -822,7 +842,7 @@ export async function applySale(
     if (allowPriceOverrides) {
         for (const override of args.priceOverrides ?? []) {
             if (!Number.isFinite(override.price) || override.price < 0) {
-                throw new Error(`Invalid price override for ${override.stockId}`);
+                throw new ConvexError(`Invalid price override for ${override.stockId}`);
             }
             overrideMap.set(override.stockId, override.price);
         }
@@ -855,7 +875,7 @@ export async function applySale(
     const trustedItems = args.items.map((item) => {
         const stock = pricingMap.get(item.stockId);
         if (!stock) {
-            throw new Error(`Item ${item.name} not found`);
+            throw new ConvexError(`Item ${item.name} not found`);
         }
         if (stock.businessId !== businessId) {
             throw new ConvexError(
@@ -863,14 +883,14 @@ export async function applySale(
             );
         }
         if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
-            throw new Error(`Invalid quantity for ${item.name}`);
+            throw new ConvexError(`Invalid quantity for ${item.name}`);
         }
         // Trust the server-side price, not the client-supplied one.
         let unitPrice = stock.price;
         const override = overrideMap.get(item.stockId);
         if (override !== undefined) {
             if (override > stock.price) {
-                throw new Error(
+                throw new ConvexError(
                     `Price override for ${item.name} is above the list price (${stock.price}).`
                 );
             }
@@ -1000,7 +1020,7 @@ export async function applySale(
     // the difference is recorded so it can be explained.
     const totalDiffers = Math.abs(rawTotal - args.total) > 0.01;
     if (totalDiffers && !offline) {
-        throw new Error(
+        throw new ConvexError(
             priceChanges.length > 0
                 ? `Sale total mismatch: the client sent ${args.total} but the server computed ${rawTotal}. The prices changed, so the total has to be re-sent at the new prices.`
                 : `Sale total mismatch: client sent ${args.total} but the server computed ${rawTotal}.`
@@ -1066,7 +1086,7 @@ export async function applySale(
         for (const item of trustedItems) {
             const stockIndex = updatedStocks.findIndex(s => s.stockId === item.stockId);
             if (stockIndex === -1) {
-                throw new Error(`Item ${item.name} not found in shop stock`);
+                throw new ConvexError(`Item ${item.name} not found in shop stock`);
             }
 
             const currentQty = updatedStocks[stockIndex].qty;
@@ -1116,7 +1136,7 @@ export async function applySale(
         for (const item of trustedItems) {
             const stock = stockMap.get(item.stockId);
             if (!stock) {
-                throw new Error(`Item ${item.name} not found in warehouse`);
+                throw new ConvexError(`Item ${item.name} not found in warehouse`);
             }
 
             // The same rule as the counter above: a live sale may not sell
@@ -1151,6 +1171,7 @@ export async function applySale(
     // then reads what was actually charged, which is the only figure that
     // can be defended.
     const tax = await resolveSaleTax(ctx, businessId, computedTotal);
+    const currency = await resolveSaleCurrency(ctx, businessId);
 
     // Record the sale
     const saleId = await ctx.db.insert("sales", {
@@ -1160,6 +1181,7 @@ export async function applySale(
         shopId: shop ? shop._id : args.shopId, // Prioritize found shop, else fallback to arg
         userId,
         total: computedTotal,
+        currency,
         taxAmount: tax.amount,
         netAmount: tax.net,
         taxRate: tax.rate,

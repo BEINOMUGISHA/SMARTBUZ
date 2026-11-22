@@ -29,6 +29,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { useCurrency } from "@/hooks/use-currency";
 
 const ROLES = [
     { value: "admin", label: "Administrator" },
@@ -38,7 +40,7 @@ const ROLES = [
     { value: "viewer", label: "Viewer (read only)" },
 ];
 
-const CURRENCIES = ["UGX", "USD", "RWF", "KES", "TZS", "EUR", "GBP"];
+const CURRENCIES = SUPPORTED_CURRENCIES;
 
 const TIMEZONES = [
     "Africa/Kampala",
@@ -640,6 +642,7 @@ function EmployeesPanel() {
  * ──────────────────────────────────────────────────────────────────── */
 
 function ProfilePanel() {
+    const { currency } = useCurrency();
     const business = useQuery(api.businesses.getActive, {});
     const update = useMutation(api.businesses.updateSettings);
     const [saving, setSaving] = useState(false);
@@ -685,7 +688,7 @@ function ProfilePanel() {
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="currency">Currency</Label>
-                        <Select name="currency" defaultValue={business.currency ?? "UGX"}>
+                        <Select name="currency" defaultValue={business.currency ?? `${currency}`}>
                             <SelectTrigger id="currency">
                                 <SelectValue />
                             </SelectTrigger>

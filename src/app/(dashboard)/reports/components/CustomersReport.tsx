@@ -20,8 +20,10 @@ import {
     SheetTitle,
     SheetDescription,
 } from "@/components/ui/sheet";
+import { useCurrency } from "@/hooks/use-currency";
 
 export function CustomersReport() {
+    const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -68,19 +70,19 @@ export function CustomersReport() {
         },
         {
             title: "Total Revenue",
-            value: `UGX ${summary.totalRevenue.toLocaleString()}`,
+            value: `${currency} ${summary.totalRevenue.toLocaleString()}`,
             description: `${summary.totalSalesCount} TRANSACTIONS`,
             color: "border-l-emerald-500",
         },
         {
             title: "Avg per Customer",
-            value: `UGX ${Math.round(summary.avgSpentPerCustomer).toLocaleString()}`,
+            value: `${currency} ${Math.round(summary.avgSpentPerCustomer).toLocaleString()}`,
             description: "AVERAGE LIFETIME VALUE",
             color: "border-l-purple-500",
         },
         {
             title: "Top Customer",
-            value: `UGX ${summary.topCustomer?.spent.toLocaleString() || "0"}`,
+            value: `${currency} ${summary.topCustomer?.spent.toLocaleString() || "0"}`,
             description: `${summary.topCustomer?.purchases || 0} PURCHASES`,
             color: "border-l-amber-500",
         },
@@ -192,7 +194,7 @@ export function CustomersReport() {
                     {
                         header: "Total Spent",
                         accessor: (c: any) => (
-                            <span className="font-black text-emerald-700 text-sm">UGX {c.totalSpent.toLocaleString()}</span>
+                            <span className="font-black text-emerald-700 text-sm">{currency} {c.totalSpent.toLocaleString()}</span>
                         ),
                         exportValue: (c: any) => c.totalSpent.toLocaleString(),
                         className: "text-right",
@@ -210,7 +212,7 @@ export function CustomersReport() {
                     {
                         header: "Avg Purchase",
                         accessor: (c: any) => (
-                            <span className="font-bold text-muted-foreground text-sm">UGX {Math.round(c.totalSpent / c.purchaseCount).toLocaleString()}</span>
+                            <span className="font-bold text-muted-foreground text-sm">{currency} {Math.round(c.totalSpent / c.purchaseCount).toLocaleString()}</span>
                         ),
                         exportValue: (c: any) => Math.round(c.totalSpent / c.purchaseCount).toLocaleString(),
                         className: "text-right",
@@ -270,7 +272,7 @@ export function CustomersReport() {
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Total Spent</span>
-                                        <span className="font-bold text-lg text-emerald-600">UGX {viewingCustomer.totalSpent.toLocaleString()}</span>
+                                        <span className="font-bold text-lg text-emerald-600">{currency} {viewingCustomer.totalSpent.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Number of Purchases</span>
@@ -280,7 +282,7 @@ export function CustomersReport() {
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-muted-foreground">Avg per Purchase</span>
-                                        <span className="font-semibold">UGX {Math.round(viewingCustomer.totalSpent / viewingCustomer.purchaseCount).toLocaleString()}</span>
+                                        <span className="font-semibold">{currency} {Math.round(viewingCustomer.totalSpent / viewingCustomer.purchaseCount).toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>

@@ -29,8 +29,10 @@ import { Wallet, Plus, Lock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function TillPage() {
+    const { currency } = useCurrency();
     const { user } = useAuth();
     const [openOpen, setOpenOpen] = useState(false);
     const [closeFor, setCloseFor] = useState<any>(null);
@@ -207,7 +209,7 @@ export default function TillPage() {
                 fields={[
                     {
                         name: "openingFloat",
-                        label: "Opening cash float (UGX)",
+                        label: `Opening cash float (${currency})`,
                         type: "number",
                         required: true,
                         min: 0,
@@ -227,7 +229,7 @@ export default function TillPage() {
                 fields={[
                     {
                         name: "expectedCash",
-                        label: "Expected cash (UGX)",
+                        label: `Expected cash (${currency})`,
                         type: "number",
                         required: true,
                         min: 0,
@@ -235,7 +237,7 @@ export default function TillPage() {
                     },
                     {
                         name: "countedCash",
-                        label: "Counted cash (UGX)",
+                        label: `Counted cash (${currency})`,
                         type: "number",
                         required: true,
                         min: 0,
