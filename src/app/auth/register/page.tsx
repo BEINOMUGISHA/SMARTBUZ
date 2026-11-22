@@ -3,20 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { toast } from "sonner";
-import { formatError } from "@/lib/utils";
 import { Eye, EyeOff, ArrowLeft, MailCheck } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const registerMutation = useMutation(api.users.register);
-  const verifyEmailMutation = useMutation(api.users.verifyEmail);
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -79,22 +74,31 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      await registerMutation({
-        first_name: form.first_name,
-        last_name: form.last_name,
-        email: form.email,
-        password: form.password,
-        phone_number: form.phone_number || undefined,
+      // The server creates the account and emails the verification code.
+      // The code never comes back through the browser.
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: form.first_name,
+          last_name: form.last_name,
+          email: form.email,
+          password: form.password,
+          phone_number: form.phone_number || undefined,
+        }),
       });
 
-      // The account now exists. It cannot sign in until the address is
-      // verified, so send the code and show the verification step.
-      await sendVerificationCode(form.email.trim().toLowerCase());
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success) {
+        toast.error(data?.error ?? "Could not create the account.");
+        return;
+      }
 
       toast.success("Account created. Check your email for the verification code.");
       setAwaitingVerification(true);
-    } catch (error: any) {
-      toast.error(formatError(error));
+    } catch {
+      toast.error("Could not reach the server. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -110,14 +114,26 @@ export default function RegisterPage() {
 
     setVerifying(true);
     try {
-      await verifyEmailMutation({
-        email: form.email.trim().toLowerCase(),
-        code: code.trim(),
+      const response = await fetch("/api/auth/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.email.trim().toLowerCase(),
+          code: code.trim(),
+        }),
       });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success) {
+        toast.error(data?.error ?? "That code is not valid.");
+        return;
+      }
+
       toast.success("Email verified. You can sign in now.");
       router.push("/auth/login");
-    } catch (error: any) {
-      toast.error(formatError(error));
+    } catch {
+      toast.error("Could not reach the server. Please try again.");
     } finally {
       setVerifying(false);
     }

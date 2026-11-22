@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/context/auth-context";
+import { useSession } from "@/context/session-context";
 import { Eye, EyeOff, Package2 } from "lucide-react";
 
 import Link from "next/link";
@@ -24,7 +24,7 @@ export default function LoginPage() {
    */
   const [needsVerification, setNeedsVerification] = useState(false);
   const [resending, setResending] = useState(false);
-  const { login } = useAuth();
+  const { login } = useSession();
 
 
   // ... (other imports)

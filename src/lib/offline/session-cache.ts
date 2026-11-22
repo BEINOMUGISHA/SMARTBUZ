@@ -14,6 +14,10 @@
  * server. Every write still goes through the server's own checks when the
  * network comes back, so a stale cache grants nothing; it only decides what
  * the interface shows while the till is cut off.
+ *
+ * The cache is also an external store: React can subscribe to it, so a
+ * component that shows the cached session re-renders when the cache
+ * changes without anybody having to copy it into state by hand.
  */
 
 const SESSION_KEY = "smartbuz_offline_session";
@@ -29,22 +33,21 @@ export interface CachedSession {
     cachedAt: string;
 }
 
-/** Keep the last known session, so the till can come up without a network. */
-export function cacheSession(session: Omit<CachedSession, "cachedAt">): void {
-    if (typeof window === "undefined") return;
-    try {
-        window.localStorage.setItem(
-            SESSION_KEY,
-            JSON.stringify({ ...session, cachedAt: new Date().toISOString() })
-        );
-    } catch {
-        // A browser that will not let us store it (private mode, a full
-        // disk) simply has no offline session. Everything else still works.
-    }
-}
+/**
+ * The cached session, held in memory as well as on disk.
+ *
+ * Holding it in memory is what makes it an external store: `getSnapshot`
+ * has to answer with the *same* object every time, or React will re-render
+ * forever looking for a change that is not there.
+ */
+let snapshot: CachedSession | null = null;
+let snapshotLoaded = false;
 
-/** The last known session, or null when there is none. */
-export function readCachedSession(): CachedSession | null {
+/** The components that are watching the cache. */
+const listeners = new Set<() => void>();
+
+/** Read the cache from disk. */
+function readFromStorage(): CachedSession | null {
     if (typeof window === "undefined") return null;
     try {
         const raw = window.localStorage.getItem(SESSION_KEY);
@@ -57,6 +60,38 @@ export function readCachedSession(): CachedSession | null {
     }
 }
 
+/** Tell everything that is watching the cache that it has changed. */
+function publish(next: CachedSession | null) {
+    snapshot = next;
+    snapshotLoaded = true;
+    for (const listener of listeners) listener();
+}
+
+/** Keep the last known session, so the till can come up without a network. */
+export function cacheSession(session: Omit<CachedSession, "cachedAt">): void {
+    if (typeof window === "undefined") return;
+
+    const entry: CachedSession = { ...session, cachedAt: new Date().toISOString() };
+
+    try {
+        window.localStorage.setItem(SESSION_KEY, JSON.stringify(entry));
+    } catch {
+        // A browser that will not let us store it (private mode, a full
+        // disk) simply has no offline session. Everything else still works.
+    }
+
+    publish(entry);
+}
+
+/** The last known session, or null when there is none. */
+export function readCachedSession(): CachedSession | null {
+    if (!snapshotLoaded) {
+        snapshot = readFromStorage();
+        snapshotLoaded = true;
+    }
+    return snapshot;
+}
+
 /** Forget the session. Called when the user signs out. */
 export function clearCachedSession(): void {
     if (typeof window === "undefined") return;
@@ -65,4 +100,39 @@ export function clearCachedSession(): void {
     } catch {
         // Nothing to do.
     }
+    publish(null);
+}
+
+/**
+ * Watch the cache.
+ *
+ * Returns the function that stops watching. React calls this when the
+ * component that subscribed goes away.
+ */
+export function subscribeSessionCache(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => {
+        listeners.delete(listener);
+    };
+}
+
+/**
+ * The cached session, for `useSyncExternalStore`.
+ *
+ * The same object every time — that is the contract.
+ */
+export function getSessionCacheSnapshot(): CachedSession | null {
+    return readCachedSession();
+}
+
+/**
+ * The cached session as the server sees it.
+ *
+ * There is no cache on the server, and there is no local storage on the
+ * server either, so the answer is always "none". React uses this for the
+ * first render of a page and then swaps in the real value, which is what
+ * keeps the page from flashing between "signed in" and "signed out".
+ */
+export function getSessionCacheServerSnapshot(): CachedSession | null {
+    return null;
 }

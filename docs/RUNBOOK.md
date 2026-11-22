@@ -774,3 +774,53 @@ counter** — the goods the cashier can sell — and put in the basket.
 A barcode that belongs to no product on the counter is refused in words
 rather than matched loosely, because a near match is a wrong item handed
 to a customer.
+
+---
+
+## 12. What the operator downloads before signing in
+
+The sign-in screen is the first thing the product does for a stranger, and
+on a metered or congested connection it is the slowest and most
+failure-prone moment there is. So the size of that screen is a number
+worth keeping an eye on.
+
+### Measuring it
+
+```bash
+# Against the live deployment.
+node scripts/measure-bundle.mjs
+node scripts/measure-bundle.mjs https://smartbuz.vercel.app /auth/login
+
+# Against a local production build.
+npm run build && npx next start -p 3111
+node scripts/measure-bundle.mjs http://localhost:3111 /auth/login
+```
+
+The script lists the JavaScript chunks the server put in the page and adds
+up the bytes that came over the wire, compressed — which is the number the
+operator's connection pays for.
+
+To find out *what* is in a chunk, download the chunks and ask:
+
+```bash
+node scripts/explain-bundle.mjs <directory-of-chunks>
+```
+
+It names the libraries it can find in each one. A number becomes a thing
+that can be fixed.
+
+### Keeping it small
+
+The public routes must not be able to reach the Convex client. The client
+is needed to read business data behind an open session, and the sign-in
+screens read none, so the providers live on the authenticated routes only
+and the public routes reach the backend through this server instead.
+
+```bash
+node scripts/check-public-bundle.mjs
+```
+
+The script walks the import graph of the public routes and fails if the
+Convex client can be reached from any of them. It reads the source, so it
+runs in a second and needs no build. Run it before a release that touches
+anything a public route imports.

@@ -20,7 +20,8 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useAuth } from "@/context/auth-context";
+import { useAuth, AuthProvider } from "@/context/auth-context";
+import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { useActiveCategory, type ActiveCategory } from "@/hooks/use-active-category";
 import { groupNavigation, type NavItem } from "@/lib/category-nav";
 import { cn } from "@/lib/utils";
@@ -385,7 +386,33 @@ export function SidebarContent(props: SidebarContentProps) {
     );
 }
 
+/**
+ * The authenticated shell.
+ *
+ * The Convex client and the auth context are mounted here rather than in
+ * the root layout, because the root layout is also the parent of the
+ * sign-in route — and the sign-in route has no business data to read. A
+ * person who cannot sign in should download the sign-in screen, not the
+ * whole of the authenticated application.
+ *
+ * The session itself is still in the root layout, so it survives the
+ * journey from the sign-in screen into the shell.
+ */
 export default function DashboardLayout({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    return (
+        <ConvexClientProvider>
+            <AuthProvider>
+                <DashboardShell>{children}</DashboardShell>
+            </AuthProvider>
+        </ConvexClientProvider>
+    );
+}
+
+function DashboardShell({
     children,
 }: {
     children: React.ReactNode;

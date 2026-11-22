@@ -4,14 +4,11 @@ import { useState, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { formatError } from "@/lib/utils";
 
 // Form component is defined below ResetPasswordPage
 
@@ -86,11 +83,6 @@ function ResetPasswordForm() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
 
-    const resetPasswordMutation = useMutation(api.users.resetPassword);
-
-
-    // ...
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -101,11 +93,25 @@ function ResetPasswordForm() {
 
         setLoading(true);
         try {
-            await resetPasswordMutation({ email, code, newPassword });
+            // The server calls the backend, which checks the code against
+            // the hash it stored and counts the attempt.
+            const response = await fetch("/api/auth/reset-password", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, code, newPassword }),
+            });
+
+            const data = await response.json().catch(() => null);
+
+            if (!response.ok || !data?.success) {
+                toast.error(data?.error ?? "Could not reset the password.");
+                return;
+            }
+
             setSuccess(true);
             toast.success("Password reset successfully");
-        } catch (error: any) {
-            toast.error(formatError(error));
+        } catch {
+            toast.error("Could not reach the server. Please try again.");
         } finally {
             setLoading(false);
         }

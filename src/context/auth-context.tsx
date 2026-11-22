@@ -1,31 +1,30 @@
 /**
  * SMARTBUZ Auth Context
  *
- * The session itself lives in an HttpOnly signed cookie issued by the
- * Next.js server (POST /api/auth). This context rehydrates it on load and
- * exposes the signed-in user, the businesses they belong to, and the
- * business they are currently working in.
+ * The signed-in person, the businesses they belong to, the business they
+ * are currently working in, and the permissions they hold there.
  *
  * The user record is fetched from Convex with `users.me`, which derives the
  * caller from the verified access token — never from an email the browser
  * sends. (It used to be `users.getByEmail`, which meant the browser chose
  * whose record to read.)
+ *
+ * This context needs the Convex client, so it is mounted only on the
+ * authenticated routes. The session itself — the cookie, the address, the
+ * sign-in and sign-out actions — lives in `session-context.tsx`, which has
+ * no Convex in it and is mounted everywhere. The split exists so that the
+ * sign-in route does not have to download the Convex client in order to let
+ * somebody type a password.
  */
 
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import React, { createContext, useContext, useEffect, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { can, canAll, canAny, type Permission } from "@/lib/permissions";
-import {
-  cacheSession,
-  clearCachedSession,
-  readCachedSession,
-  type CachedSession,
-} from "@/lib/offline/session-cache";
+import { useSession } from "@/context/session-context";
 
 type User = {
   _id: Id<"users">;
@@ -84,41 +83,8 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [email, setEmail] = useState<string | null>(null);
-  const [isRestoring, setIsRestoring] = useState(true);
-  /**
-   * The last session the server confirmed, kept locally.
-   *
-   * A till with no network still has to come up so the cashier can sell.
-   * The cache is only a fallback: it never grants anything the server
-   * would not grant, it just lets the interface show the right screen
-   * while the server cannot be asked.
-   */
-  const [cachedSession, setCachedSession] = useState<CachedSession | null>(null);
-  const router = useRouter();
-
-  // Rehydrate session from the server-side cookie on mount, falling back
-  // to the locally cached session when the server cannot be reached.
-  useEffect(() => {
-    const cached = readCachedSession();
-    if (cached) {
-      setCachedSession(cached);
-      setEmail(cached.email);
-    }
-
-    fetch("/api/auth", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : { user: null }))
-      .then((data) => {
-        if (data?.user?.email) {
-          setEmail(data.user.email);
-        }
-      })
-      .catch(() => {
-        // No network. The cached session stands until the server can be
-        // reached again.
-      })
-      .finally(() => setIsRestoring(false));
-  }, []);
+  const { email, isRestoring, cachedSession, login, logout, rememberSession, clearSession } =
+    useSession();
 
   // The caller is derived from the signed access token, not from the email.
   const liveMe = useQuery(api.users.me, email ? {} : "skip");
@@ -127,16 +93,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // time the network goes the till still knows who is at it.
   useEffect(() => {
     if (!liveMe?.user || !email) return;
-    const snapshot = {
+    rememberSession({
       email,
       user: liveMe.user as unknown as Record<string, unknown>,
       businesses: liveMe.businesses ?? [],
       activeBusiness: liveMe.activeBusiness ?? null,
       permissions: (liveMe.permissions as string[]) ?? [],
-    };
-    setCachedSession({ ...snapshot, cachedAt: new Date().toISOString() });
-    cacheSession(snapshot);
-  }, [liveMe, email]);
+    });
+  }, [liveMe, email, rememberSession]);
 
   // The live session when there is one; the cached one when the server
   // cannot be reached.
@@ -155,44 +119,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // cashier out — that would lose their queue.
   useEffect(() => {
     if (!isLoading && email && liveMe === null) {
-      setEmail(null);
-      setCachedSession(null);
-      clearCachedSession();
+      clearSession();
     }
-  }, [liveMe, isLoading, email]);
-
-  const login = useCallback(async (newEmail: string, password: string) => {
-    try {
-      const res = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email: newEmail.trim().toLowerCase(), password }),
-      });
-
-      const data = await res.json();
-
-      if (data.success && data.user?.email) {
-        setEmail(data.user.email);
-        router.push("/");
-        return { success: true };
-      }
-      return { success: false, error: data.error || "Authentication failed" };
-    } catch {
-      return { success: false, error: "Network error. Please try again." };
-    }
-  }, [router]);
-
-  const logout = useCallback(async () => {
-    clearCachedSession();
-    setCachedSession(null);
-    await fetch("/api/auth?action=logout", {
-      method: "POST",
-      credentials: "include",
-    }).catch(() => {});
-    setEmail(null);
-    router.push("/auth/login");
-  }, [router]);
+  }, [liveMe, isLoading, email, clearSession]);
 
   /**
    * Does the user hold one of these roles in the active business?

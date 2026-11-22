@@ -21,11 +21,22 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-import { ConvexClientProvider } from "@/components/convex-client-provider";
-import { AuthProvider } from "@/context/auth-context";
+import { SessionProvider } from "@/context/session-context";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 
+/**
+ * The root layout carries the session and nothing else.
+ *
+ * The Convex client and the auth context used to live here, which meant the
+ * sign-in route downloaded 24 KB gzipped of Convex client in order to let a
+ * stranger type a password. Those two need the backend, and the sign-in
+ * screens do not read any business data, so they are mounted on the
+ * authenticated routes instead — see `src/app/(dashboard)/layout.tsx`.
+ *
+ * The session itself stays here: it is a cookie, it is needed by every
+ * route, and it costs nothing.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,13 +47,11 @@ export default function RootLayout({
       <body
         className="font-sans antialiased"
       >
-        <ConvexClientProvider>
-          <AuthProvider>
-            <ServiceWorkerRegistration />
-            {children}
-            <Toaster />
-          </AuthProvider>
-        </ConvexClientProvider>
+        <SessionProvider>
+          <ServiceWorkerRegistration />
+          {children}
+          <Toaster />
+        </SessionProvider>
       </body>
     </html>
   );
