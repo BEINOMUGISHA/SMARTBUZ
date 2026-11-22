@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id, Doc } from "../../../../convex/_generated/dataModel";
@@ -32,6 +32,7 @@ import { PromoCartBanner } from "@/components/promo-cart-banner";
 import { useSync } from "@/components/offline/sync-provider";
 import { queueSale } from "@/lib/offline/queue";
 import { getDeviceId } from "@/lib/offline/device";
+import { createBarcodeScanner } from "@/lib/hardware/barcode";
 import {
     readCatalog,
     rememberCatalogItems,
@@ -486,14 +487,14 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
     // Cart Actions
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
-    const flashRow = (stockId: string) => {
+    const flashRow = useCallback((stockId: string) => {
         setHighlightedId(stockId);
         window.setTimeout(() => {
             setHighlightedId((current) => (current === stockId ? null : current));
         }, 900);
-    };
+    }, []);
 
-    const addToCart = (stock: any) => {
+    const addToCart = useCallback((stock: any) => {
         const stockId = stock._id || stock.stockId;
 
         setCart(prev => {
@@ -526,7 +527,66 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             description: "Tap again to add one more",
             duration: 1400,
         });
-    };
+    }, [flashRow]);
+
+    // ────────────────────────────────────────────────────────────────────
+    // THE BARCODE SCANNER
+    //
+    // Most cheap scanners are keyboards: they type the barcode very fast
+    // and press Enter. The scanner library watches for that and hands the
+    // barcode over.
+    //
+    // The barcode is then looked up on *this* counter — the goods this
+    // cashier can sell — and the product that answers is put in the basket.
+    //
+    // A barcode that belongs to no product on this counter is refused in
+    // words, because a near match is a wrong item handed to a customer.
+    // ────────────────────────────────────────────────────────────────────
+    const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
+
+    // The scan is looked up on this counter. The query is skipped until a
+    // barcode is actually read, so a till nobody scans at costs nothing.
+    const scanned = useQuery(
+        api.stocks.getShopStock,
+        scannedBarcode
+            ? {
+                  barcode: scannedBarcode,
+                  halfPrice: isHp,
+                  availability: "all",
+                  email: user?.email || undefined,
+                  limit: 1,
+                  offset: 0,
+              }
+            : "skip"
+    );
+
+    // The scanner itself.
+    useEffect(() => {
+        const scanner = createBarcodeScanner({
+            onScan: (barcode) => setScannedBarcode(barcode),
+            onError: (message) => toast.error(message),
+        });
+        scanner.start();
+        return () => scanner.stop();
+    }, []);
+
+    // The scan has been answered. Put the product in the basket, or say
+    // plainly that the barcode belongs to nothing on this counter.
+    useEffect(() => {
+        if (!scannedBarcode || !scanned) return;
+
+        const rows = scanned.stocks ?? [];
+        if (rows.length === 0) {
+            toast.error("No product with that barcode", {
+                description: `${scannedBarcode} is not on this counter.`,
+            });
+            setScannedBarcode(null);
+            return;
+        }
+
+        addToCart(rows[0]);
+        setScannedBarcode(null);
+    }, [addToCart, scanned, scannedBarcode]);
 
     const updateQty = (stockId: Id<"stocks">, delta: number) => {
         setCart(prev => {

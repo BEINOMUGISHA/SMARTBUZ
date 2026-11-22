@@ -143,6 +143,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 halfPrice: halfPrice, // Use the prop to force correct type
                 description: formData.get("description") as string,
                 supplier: (formData.get("supplier") as string) || undefined,
+                barcode: (formData.get("barcode") as string) || undefined,
             });
             toast.success("Stock added successfully");
             setIsAddOpen(false);
@@ -170,6 +171,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 halfPrice: halfPrice, // Keep unchanged or allow edit? User implies strict tabs.
                 description: formData.get("description") as string,
                 supplier: (formData.get("supplier") as string) || undefined,
+                barcode: (formData.get("barcode") as string) || undefined,
             });
             toast.success("Stock updated successfully");
             setEditingStock(null);
@@ -442,6 +444,14 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                     <Input name="productCode" required />
                                 </div>
                                 <div className="space-y-2">
+                                    <Label>Barcode</Label>
+                                    <Input name="barcode" placeholder="Scanned or typed" />
+                                    <p className="text-[10px] text-muted-foreground">
+                                        Leave it empty if the product has none. A barcode belongs to
+                                        one product.
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
                                     <Label>Category</Label>
                                     <Select name="categoryId" required>
                                         <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
@@ -498,6 +508,14 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                     <div className="space-y-2">
                                         <Label>Product Code</Label>
                                         <Input name="productCode" defaultValue={editingStock.productCode} required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Barcode</Label>
+                                        <Input name="barcode" defaultValue={editingStock.barcode ?? ""} placeholder="Scanned or typed" />
+                                        <p className="text-[10px] text-muted-foreground">
+                                            Leave it empty to clear the barcode. A barcode belongs to
+                                            one product.
+                                        </p>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Category</Label>

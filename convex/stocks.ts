@@ -9,6 +9,7 @@ import { hasPermission, logActivity, requirePermission, requireTenant } from "./
 import type { Ctx } from "./tenancy";
 import { DEFAULT_REORDER_POINT } from "./defaults";
 import { hydrateCounterLines, stripIssuedStockCopies } from "./counterStock";
+import { assertBarcodeIsFree, isUsableBarcode, normaliseBarcode } from "./barcode";
 
 /**
  * SMART_BUZ — products (stock).
@@ -752,6 +753,7 @@ export const getLowStockAudit = query({
 export const getShopStock = query({
     args: {
         searchTerm: v.optional(v.string()),
+        barcode: v.optional(v.string()),
         halfPrice: v.optional(v.boolean()),
         availability: v.optional(v.union(v.literal("inStock"), v.literal("outOfStock"), v.literal("all"))),
         email: v.optional(v.string()), // @deprecated — the caller is derived from the session
@@ -797,6 +799,27 @@ export const getShopStock = query({
                 s.name.toLowerCase().includes(lowerSearch) ||
                 (s.productCode?.toLowerCase().includes(lowerSearch) ?? false)
             );
+        }
+
+        // -----------------------------------------------------------------
+        // THE SCANNED BARCODE
+        //
+        // A scan is looked up on *this* counter, not in the whole
+        // business: the goods on this counter are the goods this cashier
+        // can sell, and the quantity returned is the counter's own.
+        //
+        // The barcode is normalised first, because a scanner may report
+        // "abc-123" for a barcode stored as "ABC-123".
+        // -----------------------------------------------------------------
+        if (args.barcode) {
+            const wanted = normaliseBarcode(args.barcode);
+            stocks = wanted
+                ? stocks.filter(
+                      (s) =>
+                          s.barcode !== undefined &&
+                          normaliseBarcode(s.barcode) === wanted
+                  )
+                : [];
         }
 
         // Filter by halfPrice
@@ -908,6 +931,7 @@ export const add = mutation({
         categoryId: v.id("categories"),
         halfPrice: v.optional(v.boolean()),
         supplier: v.optional(v.string()),
+        barcode: v.optional(v.string()),
         warehouseId: v.optional(v.id("warehouses")),
         branchId: v.optional(v.id("branches")),
         businessId: v.optional(v.id("businesses")),
@@ -950,8 +974,26 @@ export const add = mutation({
         }
 
         const { supplier, businessId: _ignored, ...insertArgs } = args;
+
+        // The barcode is stored in the one form it is read back in, and it
+        // belongs to one product in this business and no other.
+        let barcode: string | undefined;
+        if (args.barcode !== undefined && args.barcode !== null) {
+            const normalised = normaliseBarcode(args.barcode);
+            if (normalised) {
+                if (!isUsableBarcode(normalised)) {
+                    throw new ConvexError(
+                        "A barcode has to be at least three characters. Check the one you typed."
+                    );
+                }
+                await assertBarcodeIsFree(ctx, businessId, normalised);
+                barcode = normalised;
+            }
+        }
+
         const stockId = await ctx.db.insert("stocks", {
             ...insertArgs,
+            ...(barcode ? { barcode } : {}),
             businessId,
             supplier,
         });
@@ -1025,6 +1067,7 @@ export const update = mutation({
         categoryId: v.optional(v.id("categories")),
         halfPrice: v.optional(v.boolean()),
         supplier: v.optional(v.string()),
+        barcode: v.optional(v.string()),
         warehouseId: v.optional(v.id("warehouses")),
         branchId: v.optional(v.id("branches")),
         reorderPoint: v.optional(v.number()),
@@ -1040,6 +1083,24 @@ export const update = mutation({
         if (!oldStock) throw new ConvexError("Stock not found");
         if (oldStock.businessId !== businessId) {
             throw new ConvexError("Forbidden: that product belongs to another business.");
+        }
+
+        // The barcode is stored in the one form it is read back in, and it
+        // belongs to one product in this business and no other.
+        if (rest.barcode !== undefined && rest.barcode !== null) {
+            const normalised = normaliseBarcode(rest.barcode);
+            if (normalised) {
+                if (!isUsableBarcode(normalised)) {
+                    throw new ConvexError(
+                        "A barcode has to be at least three characters. Check the one you typed."
+                    );
+                }
+                await assertBarcodeIsFree(ctx, businessId, normalised, id);
+                rest.barcode = normalised;
+            } else {
+                // An empty barcode clears the product's barcode.
+                rest.barcode = undefined;
+            }
         }
 
         if (rest.categoryId) {

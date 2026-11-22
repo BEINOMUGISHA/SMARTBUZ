@@ -688,6 +688,38 @@ export function makeStock(overrides: Partial<FakeRow> = {}): FakeRow {
   };
 }
 
+/**
+ * A `shops` row — the counter.
+ *
+ * The counter's row says how much of each product it holds; the product
+ * itself is read from the master catalogue.
+ */
+export function makeShop(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "shops_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    name: "Kampala Road counter",
+    serialNumber: "KP-01",
+    location: "Kampala Road",
+    contact: "",
+    userId: "users_1",
+    issuedStocks: [],
+    ...overrides,
+  };
+}
+
+/** A `categories` row — the catalogue's category. */
+export function makeCategory(overrides: Partial<FakeRow> = {}): FakeRow {
+  return {
+    _id: "categories_1",
+    _creationTime: 1,
+    businessId: "businesses_1",
+    type: "Grocery",
+    ...overrides,
+  };
+}
+
 /** A `purchaseOrders` row. */
 export function makePurchaseOrder(overrides: Partial<FakeRow> = {}): FakeRow {
   return {

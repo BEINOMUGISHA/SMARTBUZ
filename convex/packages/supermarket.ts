@@ -32,6 +32,7 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requirePermission, requireTenant } from "../tenancy";
+import { assertBarcodeIsFree, normaliseBarcode } from "../barcode";
 
 /* ────────────────────────────────────────────────────────────────────────
  * The weight maths
@@ -152,6 +153,9 @@ export const listBulkProducts = query({
  * `ABC-123` find the same product — scanners differ in the case they
  * report.
  *
+ * The lookup is an index read. It used to be a walk over every product in
+ * the business, which meant a scan got slower as the catalogue grew.
+ *
  * A barcode that belongs to no product returns `null`. It never returns
  * a near match, because a near match is a wrong item handed to a
  * customer.
@@ -169,16 +173,12 @@ export const searchByBarcode = query({
         const barcode = normaliseBarcode(args.barcode);
         if (!barcode) return null;
 
-        const rows = await ctx.db
+        const match = await ctx.db
             .query("stocks")
-            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
-            .collect();
-
-        const match = rows.find(
-            (stock) =>
-                stock.barcode !== undefined &&
-                normaliseBarcode(stock.barcode) === barcode
-        );
+            .withIndex("by_businessId_barcode", (q) =>
+                q.eq("businessId", businessId).eq("barcode", barcode)
+            )
+            .first();
 
         if (!match) return null;
 
@@ -199,12 +199,10 @@ export const searchByBarcode = query({
 /**
  * Put a barcode in the form it is stored in.
  *
- * Barcodes are case-insensitive in practice, so they are stored upper
- * case with the spaces taken out.
+ * Re-exported from `convex/barcode`, which is where the rule lives, so
+ * that every place a barcode is written stores it the same way.
  */
-export function normaliseBarcode(raw: string): string {
-    return raw.replace(/[^0-9A-Za-z-]/g, "").toUpperCase();
-}
+export { normaliseBarcode };
 
 /* ────────────────────────────────────────────────────────────────────────
  * Writing
@@ -261,24 +259,10 @@ export const setProductUnits = mutation({
             }
 
             // One barcode, one product. Two products with the same barcode
-            // would make the scanner a guessing game.
-            const others = await ctx.db
-                .query("stocks")
-                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
-                .collect();
-
-            const clash = others.find(
-                (other) =>
-                    other._id !== stock._id &&
-                    other.barcode !== undefined &&
-                    normaliseBarcode(other.barcode) === barcode
-            );
-
-            if (clash) {
-                throw new ConvexError(
-                    `That barcode is already used by "${clash.name}". Each barcode must belong to one product.`
-                );
-            }
+            // would make the scanner a guessing game. The check is made
+            // against the index, so it does not slow down as the catalogue
+            // grows.
+            await assertBarcodeIsFree(ctx, businessId, barcode, stock._id);
 
             patch.barcode = barcode;
         }

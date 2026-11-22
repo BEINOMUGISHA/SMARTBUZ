@@ -78,6 +78,8 @@ export type CounterLine = {
     pv: number;
     bv: number;
     halfPrice: boolean;
+    /** The barcode on the product, if it has one. */
+    barcode?: string;
     /** True when the product this row points at no longer exists. */
     missing: boolean;
 };
@@ -156,6 +158,7 @@ export async function hydrateCounterLines(
             pv: product.pv,
             bv: product.bv,
             halfPrice: product.halfPrice ?? false,
+            barcode: product.barcode,
             missing: false,
         };
     });

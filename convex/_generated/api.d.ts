@@ -16,6 +16,7 @@ import type * as authJwks from "../authJwks.js";
 import type * as backup from "../backup.js";
 import type * as backupTables from "../backupTables.js";
 import type * as banking from "../banking.js";
+import type * as barcode from "../barcode.js";
 import type * as billing from "../billing.js";
 import type * as branches from "../branches.js";
 import type * as businesses from "../businesses.js";
@@ -106,6 +107,7 @@ declare const fullApi: ApiFromModules<{
   backup: typeof backup;
   backupTables: typeof backupTables;
   banking: typeof banking;
+  barcode: typeof barcode;
   billing: typeof billing;
   branches: typeof branches;
   businesses: typeof businesses;

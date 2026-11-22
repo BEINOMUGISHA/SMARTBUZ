@@ -57,7 +57,7 @@ These are the remaining entries. None of them is a P0.
 
 | Entry | Priority | What is left |
 |---|---|---|
-| BUG-026 | P2 | Barcode scanning is not wired to the till. |
+| BUG-026 | P2 | ~~Barcode scanning is not wired to the till.~~ **Fixed 22 Nov 2026.** A product carries a barcode, the product form records it, and a scan at the till puts the product in the basket. The barcode is stored in one form — upper case, no spaces — so a scanner reporting `abc-123` finds `ABC-123`, and it belongs to one product in the business and no other. The scan is looked up on the counter the cashier runs, so the goods it can sell are the goods it finds. |
 | BUG-027 | P2 | The mobile app does not exist. The application is an installable PWA; the register's recommendation was to commit the Expo project or record the work as roadmap, and the latter has been done. |
 | BUG-029 | P2 | Some queries read a whole table with no bound. The synchronisation log is bounded; the rest are not. |
 | BUG-050 | P1 | ~~A payment that fails after the customer was charged is not repaired automatically.~~ **Fixed 21 Nov 2026.** A collection whose callback never arrived is now settled by the repair: it asks the provider what happened, and the provider's answer is what stands. The till asks for the repair every time it talks to the server, so the payment is settled by the next moment of contact. A provider that cannot be reached is counted, and after three attempts the payment is flagged for a person (`payments.listPaymentsNeedingReview`) rather than being forgotten. |

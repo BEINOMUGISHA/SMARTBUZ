@@ -41,6 +41,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { roleFromLegacyRoles } from "./tenancy";
 import { serverSecretMatches } from "./serverSecret";
+import { normaliseBarcode } from "./barcode";
 
 type Ctx = MutationCtx | QueryCtx;
 
@@ -619,6 +620,76 @@ export const stripPlainResetCodes = mutation({
     }
 
     return { checked: rows.length, stripped, deleted };
+  },
+});
+
+/**
+ * Put every barcode in the form it is read back in.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * Why this exists
+ *
+ * A barcode is stored upper case with the spaces and punctuation taken
+ * out, so that a scanner reporting "abc-123" finds a barcode stored as
+ * "ABC-123". The lookup relies on that: it reads the index, and the index
+ * only matches what is actually stored.
+ *
+ * A barcode written before that rule was in force is still stored in the
+ * form it was typed in, so the index cannot find it. This rewrites those
+ * rows in the stored form.
+ *
+ * It is safe to run more than once: a barcode that is already in the
+ * stored form is left alone.
+ * ────────────────────────────────────────────────────────────────────────
+ */
+export const normaliseBarcodes = mutation({
+  args: {
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!serverSecretMatches(args.serverSecret)) {
+      throw new ConvexError(
+        "Forbidden: this can only be run by the SMARTBUZ server."
+      );
+    }
+
+    const rows = await ctx.db.query("stocks").collect();
+
+    let normalised = 0;
+    let cleared = 0;
+
+    for (const row of rows) {
+      if (row.barcode === undefined) continue;
+
+      const wanted = normaliseBarcode(row.barcode);
+      if (!wanted) {
+        // A barcode that is nothing but punctuation carries no code.
+        await ctx.db.patch(row._id, { barcode: undefined });
+        cleared += 1;
+        continue;
+      }
+
+      if (wanted === row.barcode) continue;
+
+      // A barcode that another product in the same business already
+      // holds is left alone: the clash is a question for a person, and
+      // resolving it by guessing would give one product the other's
+      // barcode.
+      const clash = await ctx.db
+        .query("stocks")
+        .withIndex("by_businessId_barcode", (q) =>
+          q.eq("businessId", row.businessId).eq("barcode", wanted)
+        )
+        .first();
+
+      if (clash && clash._id !== row._id) continue;
+
+      await ctx.db.patch(row._id, { barcode: wanted });
+      normalised += 1;
+    }
+
+    return { checked: rows.length, normalised, cleared };
   },
 });
 

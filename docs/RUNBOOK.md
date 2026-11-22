@@ -701,3 +701,48 @@ and its customer all come back and point at each other.
 the counters. It was needed once, on 21 Nov 2026, and it is safe to run
 again — it reports what it found and does nothing when there is nothing
 to do.
+
+---
+
+## 11. Barcodes
+
+A barcode is stored in one form: upper case, with the spaces and the
+punctuation taken out and the dashes kept. So `abc-123`, `ABC 123` and
+`ABC-123` are the same barcode, and the scanner may report any of them.
+
+The lookup reads the `by_businessId_barcode` index, which only matches
+what is actually stored. A barcode written before the rule was in force is
+still stored in the form it was typed in, so the index cannot find it and
+the scan comes back empty.
+
+### The one-time repair
+
+`scripts/normalise-barcodes.mjs` rewrites those rows in the stored form.
+It was needed once, on 22 Nov 2026, and it is safe to run again — it
+reports what it found and does nothing when there is nothing to do.
+
+```bash
+node scripts/normalise-barcodes.mjs
+```
+
+It needs the server-to-backend secret and the new backend published. A
+barcode that another product in the same business already holds is left
+alone: that clash is a question for a person, not for a script.
+
+### Recording a barcode
+
+The product form takes a barcode. It is optional — a product without one
+is still sold, it is just found by name. A barcode belongs to one product
+in the business: if a second product takes one, the save is refused with
+a message naming the product that already holds it.
+
+### Scanning at the till
+
+The till listens for a barcode the whole time it is open. Most scanners
+are keyboards: they type the barcode very fast and press Enter, and the
+till reads that as a scan. The product is then looked up **on that
+counter** — the goods the cashier can sell — and put in the basket.
+
+A barcode that belongs to no product on the counter is refused in words
+rather than matched loosely, because a near match is a wrong item handed
+to a customer.

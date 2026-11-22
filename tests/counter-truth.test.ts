@@ -32,6 +32,7 @@ import {
     makeActiveSubscription,
     makeBusiness,
     makeMembership,
+    makeShop,
     makeStock,
     makeUser,
     signedInContext,
@@ -74,22 +75,6 @@ function ownerContext(extra: Record<string, FakeRow[]> = {}): FakeContext {
         categories: [{ _id: "categories_1", businessId: BUSINESS, type: "Grocery" }],
         ...extra,
     });
-}
-
-/** A counter holding some stock. */
-function makeShop(overrides: Record<string, unknown> = {}): FakeRow {
-    return {
-        _id: SHOP,
-        _creationTime: 1,
-        businessId: BUSINESS,
-        name: "Kampala Road counter",
-        serialNumber: "KP-01",
-        location: "Kampala Road",
-        contact: "",
-        userId: CALLER,
-        issuedStocks: [],
-        ...overrides,
-    };
 }
 
 /** A sale as a till sends it: two Blue Band at the price on the screen. */
