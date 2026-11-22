@@ -640,3 +640,64 @@ node scripts/validate-config.mjs --prod
 
 Read `docs/QA/16_BUILD_DEPLOYMENT_REPORT.md` for the audit these procedures
 come from, and `docs/QA/17_BUG_REGISTER.md` for the open defects.
+
+---
+
+## 10. Backing a business up, and putting it back
+
+There was no way to take a business's data out of SMARTBUZ, and no way to
+put it back. That made every other guarantee conditional: the ledger is
+truthful *as long as nobody loses the database*.
+
+### Taking one
+
+In the app: **Settings → Business → Backup & Restore → Download a backup**.
+The file is JSON and is downloaded to the browser's usual place.
+
+From the server:
+
+```bash
+# The same route the button uses. The session cookie is what proves who
+# you are, so this is not something a script can do on its own.
+curl -H "Cookie: sb_session=..." \
+  "http://localhost:3000/api/backup/export?businessId=<business id>"
+```
+
+The file contains the business's rows from every table listed in
+`convex/backupTables.ts`, plus the business's own settings in the header.
+It does **not** contain the accounts, the sessions or the licence: those
+belong to the platform, and a restored database that could grant itself a
+licence would be a hole rather than a backup.
+
+### Putting one back
+
+In the app: **Settings → Business → Backup & Restore → Restore from a
+file**.
+
+What a restore does, and what it does not:
+
+- It **adds** the rows in the file to the business you are restoring into.
+  It does not remove anything, and it does not overwrite a row that is
+  already there.
+- Every row gets a **new id** — Convex does not let a document keep an id
+  it was given elsewhere — and every reference between the rows is
+  rewritten to match, so a restored sale points at the restored customer
+  and the restored payment at the restored loan.
+- A row the current schema will not accept is **counted and skipped**,
+  not allowed to stop the restore. The report says how many.
+- The business in the file is **not** restored. The data goes into the
+  business you chose, and the business's own settings are in the header
+  for you to read.
+
+### Checking that a backup is worth having
+
+A backup nobody has restored is a belief, not a backup. Once in a while,
+restore one into a scratch business and check that the catalogue, a sale
+and its customer all come back and point at each other.
+
+### The one-time repair
+
+`scripts/strip-counter-copies.mjs` removes the legacy product copies from
+the counters. It was needed once, on 21 Nov 2026, and it is safe to run
+again — it reports what it found and does nothing when there is nothing
+to do.

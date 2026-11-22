@@ -15,16 +15,22 @@ import { Loader2, User, Lock, KeyRound, Eye, EyeOff, Store } from "lucide-react"
 import { Badge } from "@/components/ui/badge";
 import { BusinessVerticalSettings } from "@/components/business-vertical-settings";
 import { BusinessManagement } from "@/components/business-management";
+import { BackupCard } from "@/components/backup-card";
 import { ActiveSessions } from "./active-sessions";
 
 export default function SettingsPage() {
-    const { user, activeBusiness } = useAuth();
+    const { user, activeBusiness, permissions } = useAuth();
 
     // Business settings are the owner's and the administrator's. The
     // role comes from the caller's membership in the active business.
     const isBusinessAdmin =
         activeBusiness?.role === "business_owner" ||
         activeBusiness?.role === "business_admin";
+
+    // A backup is the whole business — the catalogue, the customers, the
+    // debts and the sales. It is offered to the people who may read the
+    // financial reports, and the backend checks the same thing again.
+    const canExport = permissions?.includes("finance.reports.export") ?? false;
 
     // Using a query to fetch ONLY the logged in user's fresh data would be ideal, 
     // but we can use the auth context user for now or fetch by email if needed for freshness.
@@ -280,6 +286,24 @@ export default function SettingsPage() {
 
                 <TabsContent value="business" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <BusinessManagement />
+
+                    {/* ──────────────────────────────────────────────────
+                     * BACKUP AND RESTORE
+                     *
+                     * A business that cannot take its own data with it is a
+                     * business that cannot leave. Only somebody who may
+                     * read the financial reports is offered it — and the
+                     * backend checks the same thing again, so hiding the
+                     * button is a courtesy, not the control.
+                     * ────────────────────────────────────────────────── */}
+                    {activeBusiness && canExport && (
+                        <div className="mt-6">
+                            <BackupCard
+                                businessId={activeBusiness._id}
+                                businessName={activeBusiness.name}
+                            />
+                        </div>
+                    )}
                 </TabsContent>
 
                 {isBusinessAdmin && (

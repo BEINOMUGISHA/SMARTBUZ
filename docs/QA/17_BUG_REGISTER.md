@@ -61,7 +61,7 @@ These are the remaining entries. None of them is a P0.
 | BUG-027 | P2 | The mobile app does not exist. The application is an installable PWA; the register's recommendation was to commit the Expo project or record the work as roadmap, and the latter has been done. |
 | BUG-029 | P2 | Some queries read a whole table with no bound. The synchronisation log is bounded; the rest are not. |
 | BUG-050 | P1 | A payment that fails after the customer was charged is not repaired automatically. |
-| BUG-051 | P1 | There is still no backup or restore path for a business's data. |
+| BUG-051 | P1 | ~~There is still no backup or restore path for a business's data.~~ **Fixed 21 Nov 2026.** A business's data can be taken out as a JSON file and put back again — see "Backup and restore" below. |
 | BUG-057 | P2 | 227 KB of JavaScript is still downloaded before the operator has signed in. |
 | BUG-058 | P1 | Convex has no multi-document transactions, so a failure part-way through a write can still leave partial state. The compensation paths above are the mitigation, not the cure. |
 | BUG-064 | LOW | Legacy plaintext reset codes are still accepted. |

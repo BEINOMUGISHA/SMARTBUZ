@@ -236,6 +236,11 @@ export class FakeContext {
     query: (table: TableName) => FakeQuery;
     insert: (table: TableName, doc: Record<string, unknown>) => Promise<string>;
     patch: (id: string, fields: Record<string, unknown>) => Promise<void>;
+    replace: (
+        tableOrId: string,
+        idOrDoc: string | Record<string, unknown>,
+        maybeDoc?: Record<string, unknown>
+    ) => Promise<void>;
     delete: (id: string) => Promise<void>;
   };
 
@@ -278,6 +283,43 @@ export class FakeContext {
           const row = tables[table].find((r) => r._id === id);
           if (row) {
             Object.assign(row, fields);
+            return;
+          }
+        }
+      },
+
+      /**
+       * Replace a document outright: every field but the system fields is
+       * replaced by what is given, and a field that is not given is gone.
+       *
+       * The real Convex `replace` does exactly this, and the difference
+       * matters when a row's *references* are being rewritten: a patch
+       * would leave a stale reference behind if the new document did not
+       * mention it.
+       *
+       * Both of Convex's shapes are accepted: `replace(table, id, doc)`
+       * and the older `replace(id, doc)`.
+       */
+      replace: async (
+        tableOrId: string,
+        idOrDoc: string | Record<string, unknown>,
+        maybeDoc?: Record<string, unknown>
+      ) => {
+        const id = typeof idOrDoc === "string" ? idOrDoc : tableOrId;
+        const doc = typeof idOrDoc === "string" ? maybeDoc : idOrDoc;
+        if (!doc) return;
+
+        for (const table of TABLES) {
+          const index = tables[table].findIndex((r) => r._id === id);
+          if (index >= 0) {
+            const { _id, _creationTime, ...rest } = doc;
+            void _id;
+            void _creationTime;
+            tables[table][index] = {
+              ...rest,
+              _id: id,
+              _creationTime: tables[table][index]._creationTime,
+            };
             return;
           }
         }
