@@ -863,6 +863,13 @@ The first prints a table-by-table list; the second prints the sites.
 - **A cursor is an offset.** The cursor is the position of the first row
   of the page. It used to be the page *number*, which the pagination hook
   does not send — so the second page asked for the first page again.
+- **The index that is about the thing asked for.** A product's cost history
+  is read through the product's own index, not through the business's whole
+  cost history with the product picked out afterwards. A business's rows are
+  read through the business's index, not by collecting the table and
+  filtering it in memory. A window that used to be applied after the read —
+  a look-back period, a reporting period — is asked of the index instead,
+  so the rows outside it are never fetched in the first place.
 
 ### The one-time repair
 

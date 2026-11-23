@@ -896,6 +896,9 @@ export default defineSchema({
         .index("by_businessId", ["businessId"])
         .index("by_loan", ["loanId"])
         .index("by_date", ["date"])
+        // The money received in a period — what the reports that break the
+        // repayments down by method read.
+        .index("by_businessId_date", ["businessId", "date"])
         .index("by_shop_date", ["shopId", "date"])
         .index("by_customer", ["customerId"])
         .index("by_customer_date", ["customerId", "date"]),

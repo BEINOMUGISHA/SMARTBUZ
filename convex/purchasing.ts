@@ -1431,10 +1431,31 @@ export const getCostHistory = query({
     await requirePermission(ctx, tenant.businessId, "purchasing.view");
     await requireEntitlement(ctx, tenant.businessId, "purchasing");
 
-    const rows = await ctx.db
-      .query("stockCostHistory")
-      .withIndex("by_businessId", (q: any) => q.eq("businessId", tenant.businessId))
-      .collect();
+    const limit = args.limit ?? 100;
+
+    // The history of one product or one supplier is read through the index
+    // that is about it, rather than by reading the business's whole cost
+    // history and picking the rows out afterwards.
+    let rows: Doc<"stockCostHistory">[];
+    if (args.stockId) {
+      rows = await ctx.db
+        .query("stockCostHistory")
+        .withIndex("by_stock_date", (q) => q.eq("stockId", args.stockId!))
+        .filter((q) => q.eq(q.field("businessId"), tenant.businessId))
+        .order("desc")
+        .collect();
+    } else if (args.supplierId) {
+      rows = await ctx.db
+        .query("stockCostHistory")
+        .withIndex("by_supplier", (q) => q.eq("supplierId", args.supplierId!))
+        .filter((q) => q.eq(q.field("businessId"), tenant.businessId))
+        .collect();
+    } else {
+      rows = await ctx.db
+        .query("stockCostHistory")
+        .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+        .collect();
+    }
 
     let filtered = rows;
     if (args.stockId) filtered = filtered.filter((r) => r.stockId === args.stockId);
@@ -1443,8 +1464,6 @@ export const getCostHistory = query({
     }
 
     filtered.sort((a, b) => b.date.localeCompare(a.date));
-
-    const limit = args.limit ?? 100;
 
     // The average cost paid for a product, and its movement over time.
     const byStock = new Map<string, number[]>();

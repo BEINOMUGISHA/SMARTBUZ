@@ -860,11 +860,15 @@ export const getLowStockAudit = query({
             .collect();
         const catMap = new Map(categories.map(c => [c._id, c.type]));
 
+        const startTime = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+        // The window is asked of the index rather than applied to every sale
+        // the business has ever made.
         const sales = await ctx.db
             .query("sales")
-            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", new Date(startTime).toISOString())
+            )
             .collect();
-        const startTime = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
         const soldByStock = new Map<Id<"stocks">, number>();
 
         for (const sale of sales) {

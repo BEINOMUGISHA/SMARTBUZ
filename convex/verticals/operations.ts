@@ -637,8 +637,10 @@ export const listRentals = query({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
-        let rows = await ctx.db.query("rentals").collect();
-        rows = rows.filter((r) => r.businessId === businessId);
+        let rows = await ctx.db
+            .query("rentals")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
         if (args.status) rows = rows.filter((r) => r.status === args.status);
         rows.sort((a, b) => b.startDate.localeCompare(a.startDate));
         return rows;

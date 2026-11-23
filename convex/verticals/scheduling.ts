@@ -30,8 +30,10 @@ export const listAppointments = query({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
-        let rows = await ctx.db.query("appointments").collect();
-        rows = rows.filter((r) => r.businessId === businessId);
+        let rows = await ctx.db
+            .query("appointments")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
 
         if (args.date) {
             rows = rows.filter((r) => r.date === args.date);
@@ -402,8 +404,10 @@ export const getScheduleSummary = query({
         const businessId = tenant.businessId;
         const date = args.date ?? new Date().toISOString().slice(0, 10);
 
-        let appts = await ctx.db.query("appointments").collect();
-        appts = appts.filter((r) => r.businessId === businessId);
+        const appts = await ctx.db
+            .query("appointments")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
         const today = appts.filter((a) => a.date === date);
 
         let outlets = await ctx.db.query("serviceOutlets").collect();

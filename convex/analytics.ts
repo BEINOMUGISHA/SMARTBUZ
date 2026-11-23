@@ -808,9 +808,14 @@ export const getPaymentMethodAnalysis = query({
     }
 
     // Repayments of credit taken, by the method they were paid in.
+    //
+    // The period is asked of the index rather than applied to every payment
+    // the business has ever received.
     const payments = await ctx.db
       .query("payments")
-      .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+      .withIndex("by_businessId_date", (q: any) =>
+        q.eq("businessId", businessId).gte("date", args.from).lte("date", `${args.to.slice(0, 10)}T23:59:59.999Z`)
+      )
       .collect();
     const repayments = new Map<string, number>();
     for (const payment of payments) {
