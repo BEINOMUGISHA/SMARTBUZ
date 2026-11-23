@@ -11,29 +11,64 @@ frontend, the POS and the finance audits); the canonical entry lists every sourc
 
 ---
 
-## 0. Status — 21 November 2026
+## 0. Status — 23 November 2026
 
 This register is the work order. The entries below record where each
 canonical entry stands after the remediation work.
 
+**Read this section first.** The tables in §2–§6 are the audit's findings as
+they were written on 20 November 2026 — they describe the defect, not its
+present state, and their status lines are as of that date. This section is
+the present state. Where the two disagree, this section is right.
+
+| | Entries |
+|---|---|
+| Fixed and deployed | 71 |
+| Partly fixed — what is left is written down below | 5 |
+| Closed by a decision, or verified as correct | 5 |
+| **Total canonical entries** | **81** (BUG-000 … BUG-080) |
+
 ### Fixed and deployed
 
 The following were fixed in the remediation waves, and the backend was
-published to the deployment the application uses (`affable-panda-681`) on
-21 November 2026:
+published to the deployment the application uses (`affable-panda-681`):
 
 | Entry | What changed |
 |---|---|
+| BUG-000 | The profit-and-loss reports are scoped to the caller's business. They read sales by date with no business filter at all, and returned every tenant's revenue and profit. |
+| BUG-001 | `convex/migration.ts` was callable by any business owner with an arbitrary `businessId`, and wrote memberships, ownership and tenant rows across the whole deployment. It now requires the server-to-backend secret in addition to the operator role, and it asks which business to migrate rather than guessing. `scripts/migrate-to-multitenancy.mjs` and `scripts/verify-migration.mjs` send the secret. |
+| BUG-002 | `convex/seed.ts` is gated on the server secret, so the seeded demo identities cannot be created or re-created by a tenant. |
+| BUG-003 | Sign-in is throttled against the server, per address and per IP, and the throttle takes the same time whether the address is known or not. |
+| BUG-004 | Choosing a paid plan records the *intention*; the plan becomes real only when a payment for it is verified. Moving to a free plan still takes effect at once. |
+| BUG-005 | A business with no subscription row was given every entitlement and could write for ever. Registration starts a real, tracked free trial, the entitlement gate fails closed, and the tenants that already existed were backfilled. |
 | BUG-006 | A price that moved between the basket being filled and the sale being rung up is detected. The live sale is held until the seller has put the new price to the customer; the difference is written on the sale. An offline sale is recorded at the catalogue's price, with the difference recorded. |
+| BUG-007 | VAT is computed server-side and stored on the sale as net, tax and rate; the reports read the stored values. |
+| BUG-008 | A price override is clamped to a floor, and going above it needs a dedicated permission. |
+| BUG-009 | The online path sends `clientOfflineId` too, and the sale is deduplicated on it exactly as the offline path does. |
 | BUG-010 | Every movement of goods now writes a ledger row — the opening balance, a restock, an issue to a counter, a transfer, an adjustment and a refund. The ledger is read for the first time: `stocks.getReconciliation` compares the balances against the history, and `stocks.recordOpeningBalances` gives the products that predate the ledger the opening balance they need to be reconciled. |
 | BUG-011 | The reports summary and the P&L now come from the same `financeCore` helpers, so refunds net off and cost is the price the goods were bought at. |
 | BUG-012 | A conflict resolved as "rejected" now reverses the sale — the goods go back, the money comes off, the ledger is written — through the same compensation path a refund uses. |
+| BUG-013 | `recordProviderError` and `recordMessage` are internal mutations, and `reportHardware` resolves the tenant from the session rather than from the browser. |
+| BUG-015 | The password-reset and verification email endpoints are throttled by a server-backed limiter with a per-address cooldown and a per-IP cap. |
 | BUG-016 | A live sale may not sell stock that is not there. An offline sale still may, and the shortfall is recorded as a conflict. |
 | BUG-017 | A refund credits the counter the goods were sold from, not the master warehouse. |
 | BUG-018 | Correcting a credit sale keeps the money the customer has paid. The loan is corrected, not destroyed. |
 | BUG-019 | A repayment must be positive, must be within the balance, is dated by the server, and must say how it was paid. |
 | BUG-020 | A customer's credit limit is enforced at the point of sale. |
 | BUG-021 | A product with history is archived rather than destroyed. |
+| BUG-022 | The `/setup` wizard no longer crashes: the `planKey` declaration comes before the `chosenPlan` derivation that read it, and because the read hid inside a callback neither TypeScript nor ESLint had seen it. |
+| BUG-023 | The application has a root error boundary, a route boundary, a dashboard boundary, a not-found page and loading states for the main segments. |
+| BUG-024 | The stock report stops on the server's `isDone` instead of re-fetching the page it already has, and the cursor is an offset. |
+| BUG-025 | A callback for an adapter with no webhook secret is refused, and the signature is checked against the secret that is on file. |
+| BUG-026 | A product carries a barcode, the product form records it, and a scan at the till puts the product in the basket. The barcode is stored in one form — upper case, no spaces — so a scanner reporting `abc-123` finds `ABC-123`, and it belongs to one product in the business and no other. The scan is looked up on the counter the cashier runs, so the goods it can sell are the goods it finds. |
+| BUG-030 | A plan change moves the price, the billing cycle and the period together. A business that moved to a cheaper plan used to keep the expensive one until the old period ran out. |
+| BUG-031 | The `core.*` entitlements were published on the pricing page and never checked. They are enforced at the permission gate, on writes. |
+| BUG-032 | The device limit is checked beyond registration, and a business moved to a smaller plan loses the devices beyond its allowance. |
+| BUG-033 | The sidebar is hoisted out of the layout component, so it is no longer a new component type on every render and it keeps its state. |
+| BUG-034 | The payment-method effect reads the current value rather than a stale one. |
+| BUG-035 | A backend refusal reaches the operator as a refusal on the screen; the main mutation screens say what was wrong. |
+| BUG-036 | `migrationStatus` returns deployment-wide figures only to the server that holds the secret. |
+| BUG-037 | An expense must be a positive amount. A negative one *adds* to profit, turning an expense into a gain. |
 | BUG-038 | A report's period is the local day in the business's own time zone, not the UTC day. |
 | BUG-039 | A date range includes its first day and its last. |
 | BUG-040 | A refunded credit sale no longer keeps its full balance in the debt book. |
@@ -45,35 +80,51 @@ published to the deployment the application uses (`affable-panda-681`) on
 | BUG-046 | Issuing stock to a counter takes it out of the warehouse and writes both halves of the movement to the ledger. |
 | BUG-047 | The goods are valued on one basis. The counter no longer keeps a copy of the product, so the stock report and the inventory summary value the same goods at the catalogue's price, and the cost is reported beside the value rather than confused with it. |
 | BUG-048 | `getSyncStatus` reads the fifty newest synchronisation rows rather than every row the till has ever written. |
-| BUG-061 | The promotion engine evaluates the server's own cost figures, not the browser's. |
+| BUG-049 | Every adapter starts in the sandbox, and one that is switched on and still in the sandbox carries a visible warning that it will not move real money. Every payment in the history says whether it was a sandbox one. |
+| BUG-050 | A collection whose callback never arrived is now settled by the repair: it asks the provider what happened, and the provider's answer is what stands. The till asks for the repair every time it talks to the server, so the payment is settled by the next moment of contact. A provider that cannot be reached is counted, and after three attempts the payment is flagged for a person (`payments.listPaymentsNeedingReview`) rather than being forgotten. |
+| BUG-051 | A business's data can be taken out as a JSON file and put back again — see "Backup and restore" below. The accounts, the sessions and the licence are deliberately not in it: a restored database that could grant itself a licence would be a hole rather than a backup. |
+| BUG-052 | The configuration is validated before a release by `scripts/validate-config.mjs`, which prints variable *names* and never a value, and which runs in CI against the production shape of the configuration. |
+| BUG-053 | The lint gate exists: the 1,468 findings are recorded as a baseline and the gate fails on *new* problems only. The backlog stays visible and the codebase cannot get worse while it is worked off. |
+| BUG-054 | The dependency tree is audited in CI and the job fails on a real high or critical advisory — and does not fail when the advisory service cannot be reached, because a registry outage must not be mistaken for a vulnerable build, or for a clean one. |
+| BUG-055 | `docs/RUNBOOK.md` says how to release the web app and the backend, which goes first and why, how to roll either back, how to rotate each key, and what to check when the app returns 503. |
+| BUG-057 | The sign-in route no longer downloads the Convex client. The providers lived in the root layout, so every public route carried the client — 24 KB gzipped of it — to let a stranger type a password; they now live on the authenticated routes only, and the public routes reach the backend through the server instead. Registering, proving an address and resetting a password are server routes now, which also means the verification code never travels through the browser at all. The sign-in screen went from 239.7 KB gzipped in 17 chunks to 212.5 KB in 16, measured on the live deployment the same way both times, and the Convex client is no longer among them. `scripts/check-public-bundle.mjs` is the gate that keeps it that way. |
+| BUG-059 | CI typechecks the Convex functions against the schema and verifies that the checked-in generated code is complete and derived from the current schema, not a frozen snapshot of an older one. |
 | BUG-060 | The counter's row is a quantity and nothing else. The name, the price and the cost are read from the catalogue, so a price change reaches every counter at once and nothing can be valued on a stale copy. |
+| BUG-061 | The promotion engine evaluates the server's own cost figures, not the browser's. |
+| BUG-062 | Sales-history search filters before the page is cut, so a search cannot miss matches on later pages. |
+| BUG-063 | The password hash cost factor is 12. |
+| BUG-064 | The plain codes are gone from the database — `migration.stripPlainResetCodes` took them out — and the field that held them has been removed from the schema. A code from the plain era is refused and the person who holds it asks for a new one. |
+| BUG-065 | Every one of the 119 plain `Error` throws in the backend is now a `ConvexError`. Convex appends the handler's file and line to an uncaught plain `Error`, so the caller was told how the server is laid out; a `ConvexError` carries the message and its data and nothing else. What the caller sees is unchanged — what it no longer carries is the source path. |
+| BUG-066 | The till keeps a bounded record of what it has done: the sent sales are let go oldest-first once there are more than two hundred, and the sales that are still waiting are never discarded. |
+| BUG-067 | The cache is named after a hash of the service worker's own source, so it changes exactly when the worker changes and nobody has to remember to bump a number. |
 | BUG-068 | `mySales` shows the business's sales to someone who may read the financial reports, and a caller's own sales to everyone else, instead of silently showing nothing. |
-| BUG-069 | The product's name and code on a receipt come from the server's catalogue. |
+| BUG-069 | The product's name and code on a receipt come from the server's catalogue, not from the browser. |
+| BUG-070 | The sales report and the export now show the lines that were re-priced, with the price the customer was quoted and the price they were charged. |
 | BUG-071 | A sale's total is a figure in the currency, and the lines add up to it. |
+| BUG-072 | The money is no longer written out as "UGX" on any screen, report, receipt or export. The currency comes from the business record through `useCurrency()`, and a business picks its currency when it is set up. A sale records the currency it was rung up in, so a receipt printed years later says what the money was then and not what the business trades in today. |
+| BUG-074 | The `userTypes` table has an index. |
+| BUG-075 | The screen says where you are, and the focus goes with it. A new `RouteAnnouncer` names the page that has just arrived and moves the focus to its heading, so a person who cannot see the screen is told about the new page rather than left on the old one. The dashboard has a skip link, because the navigation is long and a person who cannot see it has no other way past it; the navigation is a labelled landmark and the page body is a main landmark. The four public sign-in screens are main landmarks with real headings. The loading skeletons already carried `aria-busy` and the error boundary already carried `role="alert"`, and both were left alone. |
 | BUG-079 | A report given one end of a period now reads that period. A report asked for "everything since 1 March" was answering with everything: the date was read, and then no date filter was applied to the rows that came back. The reports ask the index for the period instead, so a period with one end is a period like any other — and the rows outside it are never fetched. The debt book's reports are bounded the same way, and the ageing report reads only the payments taken since the oldest loan still owing, which is all it needs to find the last payment on each one. |
+| BUG-080 | The CI workflow was rejected by GitHub on every push since the day it was written: the Build step had a name and an environment and no `run:`. A workflow GitHub cannot parse is refused *before any job starts*, so the run was marked failed with zero jobs and no reason — and every gate in that file had never once been executed. The step runs the build now, and `scripts/check-workflows.mjs` checks the workflow files so the next invalid workflow is a failed job rather than a silent one. |
 
 ### Still open
 
-These are the remaining entries. None of them is a P0.
+These are the entries that are not closed. The ones fixed since the audit
+are in the table above; the ones closed by a decision, or verified as correct
+without needing a change, are at the foot of this table.
 
 | Entry | Priority | What is left |
 |---|---|---|
-| BUG-026 | P2 | ~~Barcode scanning is not wired to the till.~~ **Fixed 22 Nov 2026.** A product carries a barcode, the product form records it, and a scan at the till puts the product in the basket. The barcode is stored in one form — upper case, no spaces — so a scanner reporting `abc-123` finds `ABC-123`, and it belongs to one product in the business and no other. The scan is looked up on the counter the cashier runs, so the goods it can sell are the goods it finds. |
-| BUG-027 | P2 | The mobile app does not exist. The application is an installable PWA; the register's recommendation was to commit the Expo project or record the work as roadmap, and the latter has been done. |
+| BUG-014 | P0 | Five security headers are committed and deployed: `X-DNS-Prefetch-Control`, `Strict-Transport-Security`, `X-Frame-Options`, `X-Content-Type-Options` and `Referrer-Policy`. **The Content-Security-Policy is not among them.** It cannot be a static header either — it has to be built with a nonce in `next.config.ts` and the middleware, because a static CSP and `unsafe-inline` are the two things that make a CSP theatre rather than a defence. |
+| BUG-027 | P2 | The mobile app does not exist. `apps/mobile/` holds nothing but installed dependencies — no source, no `package.json`, nothing tracked by git. The recommendation was to commit the Expo project or record the work as roadmap, and it was recorded as roadmap. It is a decision nobody has taken: build it, or delete the directory. |
+| BUG-028 | P0 | `GET /api/health` exists and is correct — 200 when every required dependency answers and every required variable is set, 503 otherwise, naming missing *variables* and never their values. **Nothing polls it**: there is no uptime monitor. There is no error-reporting service in the dependency tree. Nobody is told when sign-in starts failing repeatedly — the throttle counts the failures and says nothing — and nobody is told when a platform action happens. This is the same class of failure as 19 November 2026, when the application returned 503 for a day and the first sign of trouble was a customer report. |
 | BUG-029 | P2 | ~~Some queries read a whole table with no bound.~~ **Partly fixed 22 Nov 2026.** The reads that grow without end are bounded where they can be, and the instruments that measure the rest are in place. The platform audit trail no longer reads every audit row in the deployment to find the few that are platform events — each row now says which trail it belongs to, and the trail is read a page at a time from a narrowed index. A business's own trail is read the same way: the action, the actor and the date are index ranges, not filters applied to everything that has ever happened. The debt book is read for the period it is asked for, and the cost of goods is read as at the end of the report's period rather than as the whole purchase history — a purchase made after the period cannot have costed anything in it. The debt book's cursor was the page *number* while the server returned the offset, so the second page of the list asked for the first page again; that is fixed and tested. The appointments and the rentals were read by collecting their whole tables and picking out this business's rows afterwards; they are now read through the business's own index. The low-stock audit asked for every sale the business has ever made and then discarded the ones outside its look-back window; the window is now asked of the sales index. The repayment analysis now asks the payments index for the period it reports on, and the cost history of a product or a supplier is read through the index that is about that product or that supplier rather than through the business's whole cost history. The reports themselves were the largest remaining reader: a report was given a period and read the whole ledger anyway, then applied the period to what came back — and a report given only one end of the period applied no date at all, so it answered with everything (that is BUG-079). The reports now ask the index for the period, through one shared helper, and the debt book's reports are bounded the same way. `scripts/check-ledger-reads.mjs` and `scripts/check-bounded-reads.mjs` list what is still unbounded, so the count can only go down: the unbounded ledger reads are down from 72 to 48, and the five reads that are whole on purpose — a report that was asked for no period at all is owed every row — are marked as such in the source and counted separately. **Still open:** the customer and supplier books are read whole — they are catalogues, bounded by the size of the business rather than by history, and the search that narrows them matches several fields at once, which cannot be pushed into an index without changing what it matches. The debt book still has to be read whole to find the loans that are still owing, because a loan's balance is on the loan and there is no index on it; that is the current state of the business, not a history. A report asked for "all time" still reads all time, because that is what was asked for. |
-| BUG-050 | P1 | ~~A payment that fails after the customer was charged is not repaired automatically.~~ **Fixed 21 Nov 2026.** A collection whose callback never arrived is now settled by the repair: it asks the provider what happened, and the provider's answer is what stands. The till asks for the repair every time it talks to the server, so the payment is settled by the next moment of contact. A provider that cannot be reached is counted, and after three attempts the payment is flagged for a person (`payments.listPaymentsNeedingReview`) rather than being forgotten. |
-| BUG-051 | P1 | ~~There is still no backup or restore path for a business's data.~~ **Fixed 21 Nov 2026.** A business's data can be taken out as a JSON file and put back again — see "Backup and restore" below. |
-| BUG-057 | P2 | ~~227 KB of JavaScript is still downloaded before the operator has signed in.~~ **Fixed 22 Nov 2026.** The sign-in route no longer downloads the Convex client. The providers lived in the root layout, so every public route carried the client — 24 KB gzipped of it — to let a stranger type a password; they now live on the authenticated routes only, and the public routes reach the backend through the server instead. Registering, proving an address and resetting a password are server routes now, which also means the verification code never travels through the browser at all. The sign-in screen went from 239.7 KB gzipped in 17 chunks to 212.5 KB in 16, measured on the live deployment the same way both times, and the Convex client is no longer among them. `scripts/check-public-bundle.mjs` is the gate that keeps it that way: it walks the import graph of the public routes and fails if the Convex client can be reached from any of them. |
+| BUG-056 | P2 | The pipeline exists and does the right thing: it publishes to the deployment named by `CONVEX_DEPLOYMENT` or derived from `CONVEX_URL`, tries both the `dev:` and `prod:` forms, and then proves that every function in the commit is on the deployment the app points at. **It has never run, because none of the three settings exists** — `CONVEX_DEPLOY_KEY` and `CONVEX_URL` are not set as repository secrets and `CONVEX_DEPLOYMENT` is not set as a repository variable. The job reports that it did nothing, and the backend is published by hand. The web app deploys itself on every push; the backend does not. |
 | BUG-058 | P1 | ~~Convex has no multi-document transactions, so a failure part-way through a write can still leave partial state.~~ **Mitigated 22 Nov 2026.** Convex has no transaction across documents, and no cure is coming, so the cure is to make every step keyed and to have something that notices when one was missed. The stock movement of a sale is now keyed by the sale and the product it concerns: `stocks.repairSaleMovement` writes the movement a sale never had, and running it again writes nothing more, so a repair that can be repeated cannot double the books. `stocks.reconcileSales` compares the sales of a period with the movements behind them and names the sale whose movement is missing — the older reconciliation compared a balance with the history and could say that something was wrong but not what. A sale that never had its movement written is now findable and repairable. **Still open:** Convex still offers no transaction, so a write that is split across several mutations can still leave partial state; the sale itself is written in one mutation and is idempotent, but the paths around it are not all so. |
-
-| BUG-064 | LOW | ~~Legacy plaintext reset codes are still accepted.~~ **Fixed 21 Nov 2026.** The plain codes are gone from the database — `migration.stripPlainResetCodes` took them out — and the field that held them has been removed from the schema. A code from the plain era is refused and the person who holds it asks for a new one. |
-| BUG-065 | LOW | ~~Backend errors still leak internal source paths in some places.~~ **Fixed 22 Nov 2026.** Every one of the 119 plain `Error` throws in the backend is now a `ConvexError`. Convex appends the handler's file and line to an uncaught plain `Error`, so the caller was told how the server is laid out; a `ConvexError` carries the message and its data and nothing else. What the caller sees is unchanged — what it no longer carries is the source path. |
-| BUG-066 | LOW | ~~The offline queue still has no upper bound.~~ **Fixed 21 Nov 2026.** The till keeps a bounded record of what it has done: the sent sales are let go oldest-first once there are more than two hundred, and the sales that are still waiting are never discarded. |
-| BUG-067 | LOW | ~~The service worker cache is still invalidated by a hand-maintained constant.~~ **Fixed 21 Nov 2026.** The cache is named after a hash of the service worker's own source, so it changes exactly when the worker changes and nobody has to remember to bump a number. |
-| BUG-070 | LOW | ~~An offline price difference is now written on the sale, but it is not yet shown on a report.~~ **Fixed 21 Nov 2026.** The sales report and the export now show the lines that were re-priced, with the price the customer was quoted and the price they were charged. |
-| BUG-072 | LOW | ~~The currency is still hardcoded as "UGX" in some screens.~~ **Fixed 22 Nov 2026.** The money is no longer written out as "UGX" on any screen, report, receipt or export. The currency comes from the business record through `useCurrency()`, and a business picks its currency when it is set up. A sale records the currency it was rung up in, so a receipt printed years later says what the money was then and not what the business trades in today. |
 | BUG-073 | LOW | `convex/whoami.ts` is a deliberate diagnostic used by `scripts/verify-identity.mjs`, and it returns no session claims. Kept, and the reasoning is in the file. |
-| BUG-075 | LOW | ~~Accessibility is still handled inconsistently.~~ **Fixed 22 Nov 2026.** The screen says where you are, and the focus goes with it. A new `RouteAnnouncer` names the page that has just arrived and moves the focus to its heading, so a person who cannot see the screen is told about the new page rather than left on the old one. The dashboard has a skip link, because the navigation is long and a person who cannot see it has no other way past it; the navigation is a labelled landmark and the page body is a main landmark. The four public sign-in screens are main landmarks with real headings. The loading skeletons already carried `aria-busy` and the error boundary already carried `role="alert"`, and both were left alone. |
+| BUG-076 | INFO | `convex/debug.ts` `inspectUser` was verified as correctly tenant-scoped. No change needed. |
+| BUG-077 | INFO | The four financial recomputation worked examples confirm the arithmetic. No change needed. |
+| BUG-078 | INFO | No mock, placeholder or hardcoded financial figure was found in the report stack. No change needed. |
 
 ---
 
@@ -81,10 +132,10 @@ These are the remaining entries. None of them is a P0.
 |---|---|---|
 | CRITICAL | 12 | **6** |
 | HIGH | 39 | **23** |
-| MEDIUM | 58 | **28** |
-| LOW | 21 | **16** |
+| MEDIUM | 58 | **36** |
+| LOW | 21 | **13** |
 | INFORMATIONAL | 6 | **3** |
-| **Total** | **136** | **76** |
+| **Total** | **136** | **81** (BUG-000 … BUG-080) |
 
 Raw findings by report: `04` 11 · `05` 8 · `03` 10 · `08` 17 · `09` 17 · `10` 20 · `11` 6 · `12` 6 ·
 `13` 5 · `14` 9 · `15` 8 · `06` 11 · `07` 8 · `16` 10.
@@ -173,7 +224,7 @@ P2: schedule · P3: backlog.
 
 ---
 
-## 4. MEDIUM — twenty-nine canonical entries
+## 4. MEDIUM — thirty-six canonical entries
 
 | ID | Title | Source findings | Priority | Effort |
 |---|---|---|---|---|
@@ -212,10 +263,11 @@ P2: schedule · P3: backlog.
 | BUG-061 | Promotion evaluation shown to the customer uses client-supplied PV/BV | POS-006 (`08`) | P1 | M |
 | BUG-062 | Sales-history search filters after pagination | POS-015 (`08`) | P2 | S |
 | BUG-079 | A report given one end of a period ignores it and answers with everything | found while bounding the reports (see BUG-029) | P1 | S |
+| BUG-080 | The CI workflow is invalid, so no gate has ever run | found while making CI run (see BUG-053, BUG-054) | P0 | S |
 
 ---
 
-## 5. LOW — sixteen canonical entries
+## 5. LOW — thirteen canonical entries
 
 BUG-063 bcrypt cost factor is the minimum (BE-11, SEC-11) · BUG-064 legacy plaintext reset codes are still accepted
 (SEC-10) · BUG-065 backend errors leak internal source paths (SEC-09) · BUG-066 the offline queue has no upper bound

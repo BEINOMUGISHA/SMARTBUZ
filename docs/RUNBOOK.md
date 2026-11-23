@@ -844,6 +844,9 @@ node scripts/check-ledger-reads.mjs
 
 # Every read that is loaded whole in order to serve one page.
 node scripts/check-bounded-reads.mjs
+
+# The CI files can actually be run.
+node scripts/check-workflows.mjs
 ```
 
 Both scripts read the source, so they run in a second and need no build.
@@ -855,6 +858,13 @@ every row, and reading them all is the answer rather than an accident. The
 script counts those separately, so the number it prints is the number of
 reads that forgot their period. Keep the marker honest: it is the only
 thing standing between the two.
+
+**A workflow GitHub cannot parse is refused before any job starts.** The run
+is marked failed, with no jobs and no reason — which is how this
+repository's CI managed to look like it was enforcing something for weeks
+while enforcing nothing at all. `scripts/check-workflows.mjs` checks the
+workflow files and runs in the configuration pre-flight, so the next invalid
+workflow is a failed job with a name on it rather than a silent one.
 
 ### The rules that were applied
 

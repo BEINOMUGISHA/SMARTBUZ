@@ -35,6 +35,13 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install dependencies
+        # The workflow check below reads the workflow files with a YAML
+        # parser, so the dependencies have to be here. A step that cannot
+        # find what it needs fails the job for the wrong reason, and the
+        # reason is the thing worth reading.
+        run: npm ci
+
       - name: Validate the production configuration
         env:
           # Placeholder values on purpose. This step checks the SHAPE of the
