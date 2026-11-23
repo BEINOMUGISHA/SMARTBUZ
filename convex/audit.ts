@@ -107,6 +107,11 @@ export async function writeAudit(
   try {
     await ctx.db.insert("auditLogs", {
       businessId: entry.businessId,
+      // Which trail this entry belongs to. It is written on every row so
+      // that the platform trail can be read from an index — Convex leaves a
+      // document out of an index when the indexed field is missing, and a
+      // platform row has no business.
+      scope: entry.businessId ? "tenant" : "platform",
       actorUserId: entry.actorUserId,
       actorRole: entry.actorRole,
       action: entry.action,
@@ -165,6 +170,12 @@ async function requireAuditAccess(
 
 /**
  * The audit trail of the caller's business, newest first.
+ *
+ * The trail is read a page at a time, and the page is narrowed *before* it
+ * is read: the action, the actor and the date are all index ranges, not
+ * filters applied to everything that has ever happened. Reading the whole
+ * trail and throwing away all but one page meant that the cost of a page
+ * of twenty rows grew with the tenant's entire history.
  */
 export const list = query({
   args: {
@@ -177,32 +188,43 @@ export const list = query({
   handler: async (ctx, args) => {
     const { businessId } = await requireAuditAccess(ctx, args.businessId);
 
-    let rows = await ctx.db
-      .query("auditLogs")
-      .withIndex("by_businessId_timestamp", (q) =>
-        q.eq("businessId", businessId)
-      )
-      .collect();
+    // The narrowest index that carries every filter that was given wins.
+    // The others are applied as filters, which the server applies before
+    // it takes the page.
+    let query;
+    if (args.action) {
+      query = ctx.db
+        .query("auditLogs")
+        .withIndex("by_businessId_action_timestamp", (q) =>
+          q.eq("businessId", businessId).eq("action", args.action!)
+        );
+    } else if (args.actorUserId) {
+      query = ctx.db
+        .query("auditLogs")
+        .withIndex("by_businessId_actorUserId_timestamp", (q) =>
+          q.eq("businessId", businessId).eq("actorUserId", args.actorUserId!)
+        );
+    } else {
+      query = ctx.db
+        .query("auditLogs")
+        .withIndex("by_businessId_timestamp", (q) =>
+          q.eq("businessId", businessId)
+        );
+    }
 
-    if (args.action) rows = rows.filter((r) => r.action === args.action);
-    if (args.actorUserId) {
-      rows = rows.filter((r) => r.actorUserId === args.actorUserId);
+    if (args.action && args.actorUserId) {
+      query = query.filter((q) => q.eq(q.field("actorUserId"), args.actorUserId!));
     }
     if (args.since) {
-      rows = rows.filter((r) => r.timestamp >= args.since!);
+      query = query.filter((q) => q.gte(q.field("timestamp"), args.since!));
     }
 
-    rows.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
-
-    const cursor = Number(args.paginationOpts.cursor) || 0;
-    const start = cursor * args.paginationOpts.numItems;
-    const page = rows.slice(start, start + args.paginationOpts.numItems);
+    const result = await query.order("desc").paginate(args.paginationOpts);
 
     return {
-      page,
-      isDone: start + args.paginationOpts.numItems >= rows.length,
-      continueCursor: String(cursor + 1),
-      totalCount: rows.length,
+      page: result.page,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
     };
   },
 });
@@ -231,26 +253,42 @@ export const listPlatform = query({
       );
     }
 
-    let rows = await ctx.db.query("auditLogs").collect();
-    rows = rows.filter((r) => r.businessId === undefined);
-
-    if (args.action) rows = rows.filter((r) => r.action === args.action);
-    if (args.actorUserId) {
-      rows = rows.filter((r) => r.actorUserId === args.actorUserId);
+    // The platform trail is read from the scope index, so a page of it
+    // costs a page — not the whole table. It used to read every audit row
+    // in the deployment and then throw away every row that belonged to a
+    // business.
+    let query;
+    if (args.action) {
+      query = ctx.db
+        .query("auditLogs")
+        .withIndex("by_scope_action_timestamp", (q) =>
+          q.eq("scope", "platform").eq("action", args.action!)
+        );
+    } else if (args.actorUserId) {
+      query = ctx.db
+        .query("auditLogs")
+        .withIndex("by_scope_actorUserId_timestamp", (q) =>
+          q.eq("scope", "platform").eq("actorUserId", args.actorUserId!)
+        );
+    } else {
+      query = ctx.db
+        .query("auditLogs")
+        .withIndex("by_scope_timestamp", (q) => q.eq("scope", "platform"));
     }
-    if (args.since) rows = rows.filter((r) => r.timestamp >= args.since!);
 
-    rows.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+    if (args.action && args.actorUserId) {
+      query = query.filter((q) => q.eq(q.field("actorUserId"), args.actorUserId!));
+    }
+    if (args.since) {
+      query = query.filter((q) => q.gte(q.field("timestamp"), args.since!));
+    }
 
-    const cursor = Number(args.paginationOpts.cursor) || 0;
-    const start = cursor * args.paginationOpts.numItems;
-    const page = rows.slice(start, start + args.paginationOpts.numItems);
+    const result = await query.order("desc").paginate(args.paginationOpts);
 
     return {
-      page,
-      isDone: start + args.paginationOpts.numItems >= rows.length,
-      continueCursor: String(cursor + 1),
-      totalCount: rows.length,
+      page: result.page,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
     };
   },
 });

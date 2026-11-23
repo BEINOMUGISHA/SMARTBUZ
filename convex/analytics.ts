@@ -5,6 +5,7 @@ import { allowedBranchIds, requirePermission, requireTenant } from "./tenancy";
 import { requireEntitlement } from "./entitlements";
 import {
   buildCostIndex,
+  buildCostIndexForPeriod,
   dayKey,
   displayName,
   loadExpenses,
@@ -111,7 +112,12 @@ export const getSalesByPeriod = query({
       args.to,
       args.branchId
     );
-    const costs = await buildCostIndex(ctx, tenant.businessId);
+    const costs = await buildCostIndexForPeriod(
+      ctx,
+      tenant.businessId,
+      args.from,
+      args.to
+    );
 
     const buckets = new Map<
       string,
@@ -221,7 +227,7 @@ export const getProfitAndLoss = query({
     const businessId = tenant.businessId;
 
     const sales = await loadSales(ctx, businessId, args.from, args.to, args.branchId);
-    const costs = await buildCostIndex(ctx, businessId);
+    const costs = await buildCostIndexForPeriod(ctx, businessId, args.from, args.to);
     const saleTotals = summariseSales(sales, costs);
 
     const expenses = await loadExpenses(
@@ -357,7 +363,12 @@ export const getBestSellingProducts = query({
       args.to,
       args.branchId
     );
-    const costs = await buildCostIndex(ctx, tenant.businessId);
+    const costs = await buildCostIndexForPeriod(
+      ctx,
+      tenant.businessId,
+      args.from,
+      args.to
+    );
 
     const products = new Map<
       string,
@@ -603,7 +614,12 @@ export const getSalesByCashier = query({
       args.to,
       args.branchId
     );
-    const costs = await buildCostIndex(ctx, tenant.businessId);
+    const costs = await buildCostIndexForPeriod(
+      ctx,
+      tenant.businessId,
+      args.from,
+      args.to
+    );
 
     const byUser = new Map<
       string,
@@ -683,7 +699,7 @@ export const getSalesByBranch = query({
 
     const businessId = tenant.businessId;
     const sales = await loadSales(ctx, businessId, args.from, args.to);
-    const costs = await buildCostIndex(ctx, businessId);
+    const costs = await buildCostIndexForPeriod(ctx, businessId, args.from, args.to);
 
     const byBranch = new Map<
       string,

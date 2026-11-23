@@ -824,3 +824,54 @@ The script walks the import graph of the public routes and fails if the
 Convex client can be reached from any of them. It reads the source, so it
 runs in a second and needs no build. Run it before a release that touches
 anything a public route imports.
+
+---
+
+## 13. Reads that grow without end
+
+A business's catalogue — its products, its customers, its branches — is
+bounded by the size of the business. A ledger is not: every sale, every
+payment, every shift and every audit row is one more row, forever.
+
+So the reads worth watching are the ones that take a whole ledger when
+they only need part of it.
+
+### Measuring it
+
+```bash
+# Every ledger read that is not narrowed by a date, an id or a filter.
+node scripts/check-ledger-reads.mjs
+
+# Every read that is loaded whole in order to serve one page.
+node scripts/check-bounded-reads.mjs
+```
+
+Both scripts read the source, so they run in a second and need no build.
+The first prints a table-by-table list; the second prints the sites.
+
+### The rules that were applied
+
+- **A page is a page.** A query whose only job is to serve one page reads
+  one page, from the narrowest index that carries the filters, and lets
+  the server filter before it pages. Reading the tenant's whole history
+  and throwing all but one page away meant the cost of a page of twenty
+  rows grew with the tenant's entire history.
+- **A period is a range.** A report for a period reads the period, from
+  the date index. A purchase made after the period cannot have costed
+  anything in it, so the cost history is read as far as the end of the
+  period and no further.
+- **A cursor is an offset.** The cursor is the position of the first row
+  of the page. It used to be the page *number*, which the pagination hook
+  does not send — so the second page asked for the first page again.
+
+### The one-time repair
+
+The audit trail rows written before the trail became a field of its own
+carry no scope, and an index that keys on the scope will not find them.
+
+```bash
+node scripts/backfill-audit-scope.mjs
+```
+
+It is safe to run more than once. It needs the server-to-backend secret,
+and it only runs after the new backend is published.

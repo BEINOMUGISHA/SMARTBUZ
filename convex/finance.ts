@@ -13,7 +13,7 @@ import {
 import { writeAudit } from "./audit";
 import { requireEntitlement } from "./entitlements";
 import {
-  buildCostIndex,
+  buildCostIndexForPeriod,
   businessDayBounds,
   displayName,
   loadExpenses,
@@ -1150,7 +1150,7 @@ export const getFinancialSummary = query({
       args.to,
       args.branchId
     );
-    const costs = await buildCostIndex(ctx, businessId);
+    const costs = await buildCostIndexForPeriod(ctx, businessId, args.from, args.to);
     const saleTotals = summariseSales(sales, costs);
 
     const expenses = await loadExpenses(

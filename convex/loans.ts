@@ -2,7 +2,8 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { logActivity, requirePermission, requireTenant } from "./tenancy";
 import { assertPaymentMethod, resolvePaymentDates } from "./paymentRules";
 
@@ -54,6 +55,77 @@ async function loadCreditSales(
     );
 
     return await salesQuery.filter((q: any) => q.eq(q.field("isLoan"), true)).collect();
+}
+
+/**
+ * A bound moved by whole days.
+ *
+ * A loan is written just after the sale it belongs to, so the two can fall
+ * either side of midnight. The extra day keeps every loan that could
+ * belong to a sale in the period — the ones that do not belong are thrown
+ * away by the sales check.
+ */
+function widenBound(bound: string | undefined, days: number): string | undefined {
+    if (!bound) return undefined;
+    const parsed = Date.parse(bound);
+    if (Number.isNaN(parsed)) return bound;
+    return new Date(parsed + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * The loans of a business for a period.
+ *
+ * The debt book is the longest-lived record in the product: every credit
+ * sale adds a row to it, and it is never shortened. Reading all of it to
+ * show one period cost the business's whole history on every request.
+ *
+ * It is now read for the period it is asked for — the same period the
+ * sales it came from are read for.
+ */
+async function loadBusinessLoans(
+    ctx: QueryCtx,
+    businessId: Id<"businesses">,
+    from: string | undefined,
+    to: string | undefined
+): Promise<Doc<"loans">[]> {
+    const lower = widenBound(from, -1);
+    const upper = widenBound(to, 1);
+
+    if (lower && upper) {
+        return await ctx.db
+            .query("loans")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", lower).lte("date", upper)
+            )
+            .order("desc")
+            .collect();
+    }
+
+    if (lower) {
+        return await ctx.db
+            .query("loans")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", lower)
+            )
+            .order("desc")
+            .collect();
+    }
+
+    if (upper) {
+        return await ctx.db
+            .query("loans")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).lte("date", upper)
+            )
+            .order("desc")
+            .collect();
+    }
+
+    return await ctx.db
+        .query("loans")
+        .withIndex("by_businessId_date", (q) => q.eq("businessId", businessId))
+        .order("desc")
+        .collect();
 }
 
 /** Apply the customer / search / client-type filters to a set of loans. */
@@ -139,17 +211,24 @@ export const getLoans = query({
         );
         const saleIds = new Set(sales.map((s: any) => s._id));
 
-        const allLoans = await ctx.db
-            .query("loans")
-            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
-            .order("desc")
-            .collect();
+        const allLoans = await loadBusinessLoans(
+            ctx,
+            tenant.businessId,
+            args.from,
+            args.to
+        );
         const scopedLoans = allLoans.filter((l) => saleIds.has(l.salesId));
 
         const filteredLoans = await filterLoans(ctx, scopedLoans, sales, args);
 
-        // Manual Pagination as we filtered in memory
-        const start = parseInt(args.paginationOpts.cursor || "0");
+        // The cursor is the offset of the first row of this page, so the
+        // next page starts where this one ended.
+        //
+        // It used to be the *page number*, which the pagination hook does
+        // not send: the hook passes back whatever the server returned as
+        // the cursor, so "page 2" asked for rows 1 to 20 again and the
+        // list repeated itself instead of moving on.
+        const start = Number(args.paginationOpts.cursor || 0) || 0;
         const end = start + args.paginationOpts.numItems;
         const page = filteredLoans.slice(start, end);
 
@@ -234,12 +313,13 @@ export const getLoanStats = query({
         );
         const saleIds = new Set(sales.map((s: any) => s._id));
 
-        const allLoans = await ctx.db
-            .query("loans")
-            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
-            .collect();
+        const allLoans = await loadBusinessLoans(
+            ctx,
+            tenant.businessId,
+            args.from,
+            args.to
+        );
         const scopedLoans = allLoans.filter((l) => saleIds.has(l.salesId));
-
         const filteredLoans = await filterLoans(ctx, scopedLoans, sales, args);
 
         const totalLoan = filteredLoans.reduce((sum: number, l: any) => sum + l.amount, 0);
@@ -328,10 +408,12 @@ export const getLoansCount = query({
         );
         const saleIds = new Set(sales.map((s: any) => s._id));
 
-        const allLoans = await ctx.db
-            .query("loans")
-            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
-            .collect();
+        const allLoans = await loadBusinessLoans(
+            ctx,
+            tenant.businessId,
+            args.from,
+            args.to
+        );
         const scopedLoans = allLoans.filter((l) => saleIds.has(l.salesId));
 
         const filteredLoans = await filterLoans(ctx, scopedLoans, sales, args);

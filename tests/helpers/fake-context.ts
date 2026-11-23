@@ -218,6 +218,27 @@ class ConditionBuilder {
 
 function conditionHolds(row: FakeRow, condition: Condition): boolean {
   const actual = row[condition.field];
+
+  // A date is stored as an ISO string, and two ISO strings are compared as
+  // strings — which is what the server does, and what makes a date range
+  // work.
+  if (typeof actual === "string" && typeof condition.value === "string") {
+    switch (condition.op) {
+      case "eq":
+        return actual === condition.value;
+      case "neq":
+        return actual !== condition.value;
+      case "gt":
+        return actual > condition.value;
+      case "gte":
+        return actual >= condition.value;
+      case "lt":
+        return actual < condition.value;
+      case "lte":
+        return actual <= condition.value;
+    }
+  }
+
   switch (condition.op) {
     case "eq":
       return actual === condition.value;
@@ -1028,4 +1049,23 @@ export function signedInContext(
   }
 
   return new FakeContext({ ...tables, identity });
+}
+
+/**
+ * Invoke a Convex query's or mutation's handler directly.
+ *
+ * The `query()` and `mutation()` wrappers store the handler as `_handler`.
+ * Calling it with our fake context runs the real code — the same code the
+ * server runs — so a test that checks what a query returns checks the
+ * thing itself and not a re-implementation of it.
+ */
+export async function callHandler<T>(
+  registered: unknown,
+  ctx: unknown,
+  args: Record<string, unknown> = {}
+): Promise<T> {
+  const handler = (
+    registered as { _handler: (ctx: unknown, args: unknown) => unknown }
+  )._handler;
+  return (await handler(ctx, args)) as T;
 }

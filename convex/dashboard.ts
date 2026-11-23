@@ -4,7 +4,7 @@ import { query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { requirePermission, requireTenant } from "./tenancy";
 import {
-    buildCostIndex,
+    buildCostIndexForPeriod,
     dayBounds,
     isCreditSale,
     loadExpenses,
@@ -198,7 +198,7 @@ export const getBusinessDashboard = query({
 
         // ── Today ────────────────────────────────────────────────────────
         const todaySales = await loadSales(ctx, businessId, today, today, args.branchId);
-        const costs = await buildCostIndex(ctx, businessId);
+        const costs = await buildCostIndexForPeriod(ctx, businessId, today, today);
         const todayTotals = summariseSales(todaySales, costs);
 
         const todayExpenses = await loadExpenses(

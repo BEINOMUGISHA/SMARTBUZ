@@ -416,6 +416,17 @@ export default defineSchema({
     auditLogs: defineTable({
         /** Absent for platform-scope events. */
         businessId: v.optional(v.id("businesses")),
+        /**
+         * Which trail this entry belongs to: "tenant" for a business's own
+         * trail, "platform" for a platform-scope event.
+         *
+         * The scope is written on every row so that the platform trail can
+         * be read from an index. Convex leaves a document out of an index
+         * when the indexed field is missing, and a platform row has no
+         * business — so without this, the platform trail could only be
+         * found by reading the whole table.
+         */
+        scope: v.optional(v.string()),
         actorUserId: v.optional(v.id("users")),
         /** The role the actor held when the action happened. */
         actorRole: v.optional(v.string()),
@@ -434,7 +445,16 @@ export default defineSchema({
         .index("by_businessId_timestamp", ["businessId", "timestamp"])
         .index("by_timestamp", ["timestamp"])
         .index("by_actorUserId", ["actorUserId"])
-        .index("by_action", ["action"]),
+        .index("by_action", ["action"])
+        // The trail is read a page at a time, and the page is narrowed
+        // before it is read — by the action, by the actor, or by the date.
+        // Each of those is an index range rather than a filter over
+        // everything that has ever happened.
+        .index("by_businessId_action_timestamp", ["businessId", "action", "timestamp"])
+        .index("by_businessId_actorUserId_timestamp", ["businessId", "actorUserId", "timestamp"])
+        .index("by_scope_timestamp", ["scope", "timestamp"])
+        .index("by_scope_action_timestamp", ["scope", "action", "timestamp"])
+        .index("by_scope_actorUserId_timestamp", ["scope", "actorUserId", "timestamp"]),
 
     userTypes: defineTable({
         type: v.string(),
@@ -833,7 +853,11 @@ export default defineSchema({
     })
         .index("by_businessId", ["businessId"])
         .index("by_customer", ["customerId"])
-        .index("by_salesId", ["salesId"]),
+        .index("by_salesId", ["salesId"])
+        // The debt book is read for a period, and the period is what the
+        // index is asked for — the same period the sales it came from are
+        // read for.
+        .index("by_businessId_date", ["businessId", "date"]),
 
     payments: defineTable({
         businessId: v.optional(v.id("businesses")),
@@ -1405,7 +1429,10 @@ export default defineSchema({
         .index("by_stock", ["stockId"])
         .index("by_stock_date", ["stockId", "date"])
         .index("by_supplier", ["supplierId"])
-        .index("by_date", ["date"]),
+        .index("by_date", ["date"])
+        // The cost of a sale is looked up as at a date, so the cost history
+        // is read as far as that date and no further.
+        .index("by_businessId_date", ["businessId", "date"]),
 
     /** Purchase orders to suppliers. */
     purchaseOrders: defineTable({

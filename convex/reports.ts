@@ -5,7 +5,7 @@ import { query } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { Id } from "./_generated/dataModel";
 import {
-    buildCostIndex,
+    buildCostIndexForPeriod,
     businessDayBounds,
     loadSales,
     money,
@@ -41,7 +41,7 @@ export const getDailyProfitLoss = query({
         const targetDate = args.date.split("T")[0];
 
         const daySales = await loadSales(ctx, businessId, targetDate, targetDate);
-        const costs = await buildCostIndex(ctx, businessId);
+        const costs = await buildCostIndexForPeriod(ctx, businessId, targetDate, targetDate);
         const totals = summariseSales(daySales, costs);
 
         return {
@@ -86,7 +86,12 @@ export const getMonthlyProfitLoss = query({
             `${args.year}-${month}-01`,
             lastDay
         );
-        const costs = await buildCostIndex(ctx, businessId);
+        const costs = await buildCostIndexForPeriod(
+            ctx,
+            businessId,
+            `${args.year}-${month}-01`,
+            lastDay
+        );
         const totals = summariseSales(monthSales, costs);
 
         return {
@@ -733,7 +738,12 @@ export const getReportsSummary = query({
         // Now both come from `financeCore` — the same helpers the analytics
         // and finance modules use — so there is one answer.
         // -----------------------------------------------------------------
-        const costIndex = await buildCostIndex(ctx, businessId);
+        const costIndex = await buildCostIndexForPeriod(
+            ctx,
+            businessId,
+            args.startDate,
+            args.endDate
+        );
         const totals = summariseSales(sales, costIndex);
 
         const totalRevenue = money(totals.revenue);

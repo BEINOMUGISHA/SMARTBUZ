@@ -694,6 +694,59 @@ export const normaliseBarcodes = mutation({
 });
 
 /**
+ * Say which trail each audit entry belongs to.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * Why this exists
+ *
+ * The audit trail is read a page at a time. The platform trail used to be
+ * found by reading every audit row in the deployment and throwing away the
+ * ones that belonged to a business — a page of platform events cost the
+ * whole table.
+ *
+ * The fix is a `scope` field on every row, so the platform trail can be
+ * read from an index. Convex leaves a document out of an index when the
+ * indexed field is missing, and a platform row has no business, so the
+ * scope has to be written on the row rather than inferred from it.
+ *
+ * Rows written before the field existed carry no scope, and an index that
+ * keys on the scope will not find them. This fills them in.
+ *
+ * It is safe to run more than once — a row that already has a scope is
+ * left exactly as it is.
+ * ────────────────────────────────────────────────────────────────────────
+ */
+export const backfillAuditScope = mutation({
+  args: {
+    /** The server-to-backend secret. Only the SMARTBUZ server has it. */
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!serverSecretMatches(args.serverSecret)) {
+      throw new ConvexError(
+        "Forbidden: this can only be run by the SMARTBUZ server. " +
+          "Run scripts/backfill-audit-scope.mjs instead of calling this from a browser."
+      );
+    }
+
+    const rows = await ctx.db.query("auditLogs").collect();
+
+    let scoped = 0;
+
+    for (const row of rows) {
+      if (row.scope !== undefined) continue;
+
+      // A row with a business is that business's trail; a row without one
+      // is a platform event.
+      await ctx.db.patch(row._id, { scope: row.businessId ? "tenant" : "platform" });
+      scoped += 1;
+    }
+
+    return { checked: rows.length, scoped };
+  },
+});
+
+/**
  * Remove the legacy copies of the products a counter holds.
  *
  * ────────────────────────────────────────────────────────────────────────

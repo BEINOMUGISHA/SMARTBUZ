@@ -1,4 +1,5 @@
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { DEFAULT_TIMEZONE } from "./defaults";
 
 /**
@@ -324,26 +325,61 @@ export interface CostIndex {
 }
 
 /**
+ * The purchase history of a business, up to a date.
+ *
+ * A purchase made after the date cannot have costed anything before it, so
+ * the history is read as far as the date and no further.
+ */
+async function loadCostHistoryUpTo(
+  ctx: AnyCtx,
+  businessId: DocId,
+  until: string
+): Promise<Doc<"stockCostHistory">[]> {
+  const typed = ctx as QueryCtx;
+  return await typed.db
+    .query("stockCostHistory")
+    .withIndex("by_businessId_date", (q) =>
+      q.eq("businessId", businessId as Id<"businesses">).lte("date", until)
+    )
+    .collect();
+}
+
+/**
  * Build the cost index for a business.
  *
  * The purchase history is loaded once and sorted per product, so resolving
  * the cost of a thousand sale lines is a map lookup rather than a thousand
  * queries.
+ *
+ * `until` bounds the history that is read: only the purchases made on or
+ * before that date are loaded. A report about a period needs the cost as
+ * it stood at the end of that period and nothing later — a purchase made
+ * after the period cannot have costed anything in it. Without the bound,
+ * every report read the whole purchase history of the business, which grows
+ * with every purchase made since the day the business opened.
+ *
+ * Leave `until` out when the caller wants the *current* cost — the most
+ * recent purchase of each product — rather than the cost at a point in
+ * time.
  */
 export async function buildCostIndex(
   ctx: AnyCtx,
-  businessId: DocId
+  businessId: DocId,
+  until?: string
 ): Promise<CostIndex> {
-  const [stocks, history] = await Promise.all([
-    ctx.db
-      .query("stocks")
-      .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
-      .collect(),
-    ctx.db
-      .query("stockCostHistory")
-      .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
-      .collect(),
-  ]);
+  const stocksPromise = ctx.db
+    .query("stocks")
+    .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+    .collect();
+
+  const historyPromise: Doc<"stockCostHistory">[] = until
+    ? await loadCostHistoryUpTo(ctx, businessId, until)
+    : await ctx.db
+        .query("stockCostHistory")
+        .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+        .collect();
+
+  const [stocks, history] = await Promise.all([stocksPromise, historyPromise]);
 
   const purchasePrice = new Map<string, number>(
     stocks.map((s: any) => [s._id as string, s.purchasePrice ?? 0])
@@ -385,6 +421,24 @@ export async function buildCostIndex(
       return purchasePrice.get(stockId) ?? 0;
     },
   };
+}
+
+/**
+ * The cost index for a period.
+ *
+ * The period's end bounds the purchase history that is read: a purchase
+ * made after the period cannot have costed anything in it. The bounds are
+ * the business's own local day, so a report for "today" in Kampala ends
+ * where today ends in Kampala.
+ */
+export async function buildCostIndexForPeriod(
+  ctx: AnyCtx,
+  businessId: DocId,
+  from?: string,
+  to?: string
+): Promise<CostIndex> {
+  const { end } = await businessDayBounds(ctx, businessId, from, to);
+  return buildCostIndex(ctx, businessId, end);
 }
 
 /* ────────────────────────────────────────────────────────────────────────
