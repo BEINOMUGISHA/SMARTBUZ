@@ -1879,7 +1879,16 @@ export default defineSchema({
         .index("by_stockId", ["stockId"])
         .index("by_shop_stock", ["shopId", "stockId"])
         .index("by_timestamp", ["timestamp"])
-        .index("by_eventType", ["eventType"]),
+        .index("by_eventType", ["eventType"])
+        // What a movement was for, and which product it concerned. A sale
+        // writes one movement per line, so this is what says whether a
+        // sale's movement was written at all — and it is what makes
+        // writing it again a no-op rather than a second movement.
+        .index("by_reference_stock", ["referenceId", "stockId"])
+        // The movements of one kind, for one business, in a period — what
+        // the reconciliation reads to find a sale whose movement is
+        // missing.
+        .index("by_businessId_eventType_timestamp", ["businessId", "eventType", "timestamp"]),
 
     /**
      * A cashier shift — one till session.

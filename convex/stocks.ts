@@ -537,6 +537,157 @@ export const getReconciliation = query({
 });
 
 /**
+ * The sales of a period whose stock movement never reached the ledger.
+ *
+ * The reconciliation above compares a *balance* with the movements behind
+ * it. That says that something is wrong; it does not say what. This says
+ * which sale: it compares each sale with the movement that should have
+ * been written for it.
+ *
+ * A sale is only wrong here when a movement is missing for one of its
+ * lines. Every other kind of difference — a restock that was not written
+ * down, a count that was never taken — is still the business's business,
+ * and this does not try to guess at it.
+ */
+export const reconcileSales = query({
+    args: {
+        from: v.string(),
+        to: v.string(),
+        businessId: v.optional(v.id("businesses")),
+    },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.adjust");
+        const businessId = tenant.businessId;
+
+        const sales = await ctx.db
+            .query("sales")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", args.from).lte("date", args.to)
+            )
+            .collect();
+
+        const movements = await ctx.db
+            .query("stockLedger")
+            .withIndex("by_businessId_eventType_timestamp", (q) =>
+                q
+                    .eq("businessId", businessId)
+                    .eq("eventType", "SALE")
+                    .gte("timestamp", args.from)
+                    .lte("timestamp", args.to)
+            )
+            .collect();
+
+        // What has been written down, keyed by what it was for.
+        const written = new Set<string>();
+        for (const row of movements) {
+            written.add(`${row.referenceId ?? ""}:${row.stockId as string}`);
+        }
+
+        const missing = [];
+        for (const sale of sales) {
+            // The movement is written against the sale's invoice number,
+            // falling back to the sale's own id — the same two keys the
+            // sale itself uses.
+            const references = [sale.invoiceNumber, sale._id].filter(
+                (reference): reference is string => typeof reference === "string" && reference.length > 0
+            );
+
+            for (const item of sale.items ?? []) {
+                const stockId = item.stockId as string;
+                const isWritten = references.some((reference) =>
+                    written.has(`${reference}:${stockId}`)
+                );
+                if (isWritten) continue;
+
+                missing.push({
+                    saleId: sale._id,
+                    invoiceNumber: sale.invoiceNumber ?? null,
+                    date: sale.date,
+                    stockId,
+                    name: item.name ?? null,
+                    quantity: item.quantity ?? 0,
+                });
+            }
+        }
+
+        return {
+            salesChecked: sales.length,
+            movementsChecked: movements.length,
+            missing,
+        };
+    },
+});
+
+/**
+ * Write the stock movement of a sale that never had one.
+ *
+ * The movement is keyed by the sale and the product it concerns, so
+ * running this twice writes one movement, not two — a repair that could
+ * be repeated without checking is a repair that doubles the books.
+ *
+ * It restores the *record*. If the goods also failed to leave the shelf,
+ * the balance still disagrees with the ledger, and the ordinary
+ * reconciliation says so; a person with the right to adjust the stock
+ * decides what actually happened.
+ */
+export const repairSaleMovement = mutation({
+    args: {
+        saleId: v.id("sales"),
+        businessId: v.optional(v.id("businesses")),
+    },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "inventory.adjust");
+
+        const sale = await ctx.db.get(args.saleId);
+        if (!sale || sale.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that sale belongs to another business.");
+        }
+
+        const references = [sale.invoiceNumber, sale._id].filter(
+            (reference): reference is string => typeof reference === "string" && reference.length > 0
+        );
+
+        let written = 0;
+        let alreadyThere = 0;
+
+        for (const item of sale.items ?? []) {
+            const stockId = item.stockId as Id<"stocks">;
+
+            const existing = await ctx.db
+                .query("stockLedger")
+                .withIndex("by_reference_stock", (q) =>
+                    q.eq("referenceId", references[0]).eq("stockId", stockId)
+                )
+                .filter((q) => q.eq(q.field("eventType"), "SALE"))
+                .first();
+
+            if (existing) {
+                alreadyThere += 1;
+                continue;
+            }
+
+            await ctx.db.insert("stockLedger", {
+                businessId: tenant.businessId,
+                stockId,
+                shopId: sale.shopId,
+                deltaQty: -(item.quantity ?? 0),
+                eventType: "SALE",
+                referenceId: references[0],
+                userId: sale.userId,
+                timestamp: sale.date,
+                notes: `Sale ${sale.invoiceNumber ?? ""} — the movement was restored by the reconciliation.`,
+            });
+
+            written += 1;
+        }
+
+        return { saleId: sale._id, written, alreadyThere };
+    },
+});
+
+/**
  * Give the products an opening balance to reconcile against.
  *
  * The ledger can only be reconciled against a balance if it starts

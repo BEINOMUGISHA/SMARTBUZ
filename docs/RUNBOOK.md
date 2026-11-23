@@ -875,3 +875,34 @@ node scripts/backfill-audit-scope.mjs
 
 It is safe to run more than once. It needs the server-to-backend secret,
 and it only runs after the new backend is published.
+
+---
+
+## 14. A sale whose stock movement never reached the ledger
+
+Convex has no transaction across documents, so a write that is split across
+several mutations can leave partial state. The cure is not coming; the
+cure is to notice when a step was missed and to be able to put it right.
+
+### Finding one
+
+```bash
+# From the operator's side: the stock reconciliation.
+```
+
+`stocks.reconcileSales` compares the sales of a period with the movements
+behind them and names the sale whose movement is missing. The older
+`stocks.getReconciliation` compares a *balance* with the history: it says
+that something is wrong, not what.
+
+### Putting it right
+
+`stocks.repairSaleMovement` writes the movement the sale never had. It is
+keyed by the sale and the product it concerns, so running it twice writes
+one movement and not two — a repair that could be repeated without
+checking would be a repair that doubles the books.
+
+It restores the *record*. If the goods also failed to leave the shelf,
+the balance still disagrees with the ledger, the ordinary reconciliation
+says so, and a person with the right to adjust the stock decides what
+actually happened. The repair does not guess.
