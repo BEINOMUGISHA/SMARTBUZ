@@ -849,6 +849,13 @@ node scripts/check-bounded-reads.mjs
 Both scripts read the source, so they run in a second and need no build.
 The first prints a table-by-table list; the second prints the sites.
 
+A read that is whole **on purpose** says so on the lines above it, with the
+words `all-time:`. A report that was asked for no period at all is owed
+every row, and reading them all is the answer rather than an accident. The
+script counts those separately, so the number it prints is the number of
+reads that forgot their period. Keep the marker honest: it is the only
+thing standing between the two.
+
 ### The rules that were applied
 
 - **A page is a page.** A query whose only job is to serve one page reads
@@ -870,6 +877,18 @@ The first prints a table-by-table list; the second prints the sites.
   filtering it in memory. A window that used to be applied after the read —
   a look-back period, a reporting period — is asked of the index instead,
   so the rows outside it are never fetched in the first place.
+- **A period with one end is a period.** A report given only the start of a
+  range, or only the end, reads that range. It used to fall into the
+  branch that applied no date filter at all, so "everything since 1 March"
+  answered with everything. The reports go through one shared helper
+  (`salesForPeriod`, `expensesForPeriod`, `paymentsForPeriod`,
+  `loansForPeriod` in `convex/reports.ts`) so that a period is read the
+  same way everywhere.
+- **The debt book is read for the period it is asked for, and the ageing
+  reads only what it needs.** A loan is opened before any money is paid
+  against it, so only the payments taken since the oldest loan still owing
+  can be the last payment on one of them. The ageing report reads those
+  and no more.
 
 ### The one-time repair
 

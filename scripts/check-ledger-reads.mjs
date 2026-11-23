@@ -107,15 +107,35 @@ function collectSites(source) {
       index: index?.[1] ?? (search?.[1] ?? null),
       narrowed: range,
       at: match.index,
+      allTime: isDeliberatelyAllTime(source, match.index),
     });
   }
 
   return sites;
 }
 
+/**
+ * Is this read the deliberate "everything" branch of a report?
+ *
+ * A report asked for no period at all is owed every row, and reading them
+ * all is the answer rather than an accident. Such a branch says so, on the
+ * lines above the read, with the words `all-time:`.
+ *
+ * The marker is written down rather than guessed at, because the difference
+ * between "the caller asked for everything" and "the read forgot the
+ * period" is the difference between a slow report and a wrong one.
+ */
+function isDeliberatelyAllTime(source, at) {
+  const lineStart = source.lastIndexOf("\n", at - 1) + 1;
+  const lineEnd = source.indexOf("\n", at);
+  const around = source.slice(Math.max(0, lineStart - 400), lineEnd === -1 ? source.length : lineEnd);
+  return /all-time:/.test(around);
+}
+
 async function main() {
   const files = await convexFiles(CONVEX_DIR);
   const findings = [];
+  const allTime = [];
 
   for (const file of files) {
     const source = await readFile(file, "utf8");
@@ -126,7 +146,10 @@ async function main() {
       if (site.narrowed) continue;
 
       const line = source.slice(0, site.at).split("\n").length;
-      findings.push({ file: relative, line, table: site.table, index: site.index });
+      const finding = { file: relative, line, table: site.table, index: site.index };
+
+      if (site.allTime) allTime.push(finding);
+      else findings.push(finding);
     }
   }
 
@@ -138,6 +161,11 @@ async function main() {
   }
 
   console.log(`ledger tables read whole: ${findings.length}`);
+  console.log("");
+  console.log(
+    `and ${allTime.length} more are read whole on purpose — a report that was ` +
+      `asked for no period at all is owed every row (marked "all-time:")`
+  );
   console.log("");
 
   for (const [table, count] of [...byTable.entries()].sort((a, b) => b[1] - a[1])) {

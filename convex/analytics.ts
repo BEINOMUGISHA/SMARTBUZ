@@ -906,19 +906,37 @@ export const getCustomerDebtReport = query({
     //
     // The payments are read once for the whole business and grouped by the
     // loan they belong to, rather than queried per loan.
+    //
+    // Only the payments taken since the oldest open loan can be the last
+    // payment on one of them — a loan is opened before any money is paid
+    // against it — so the read is bounded by that date rather than by
+    // every payment the business has ever received.
     // -----------------------------------------------------------------
-    const payments = await ctx.db
-      .query("payments")
-      .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
-      .collect();
-
     const lastPaymentByLoan = new Map<string, string>();
-    for (const payment of payments) {
-      const loanId = payment.loanId as string;
-      const current = lastPaymentByLoan.get(loanId);
-      const paymentDate = String(payment.date ?? "");
-      if (!current || paymentDate > current) {
-        lastPaymentByLoan.set(loanId, paymentDate);
+    const oldestOpenLoan = loans.reduce<number | null>((oldest, loan) => {
+      // Only a loan that is still owed is aged below.
+      if ((loan.balance ?? 0) <= 0) return oldest;
+      const at = new Date(loan.date).getTime();
+      if (!Number.isFinite(at)) return oldest;
+      return oldest === null || at < oldest ? at : oldest;
+    }, null);
+
+    if (oldestOpenLoan !== null) {
+      const from = new Date(oldestOpenLoan).toISOString();
+      const payments = await ctx.db
+        .query("payments")
+        .withIndex("by_businessId_date", (q) =>
+          q.eq("businessId", businessId).gte("date", from)
+        )
+        .collect();
+
+      for (const payment of payments) {
+        const loanId = payment.loanId as string;
+        const current = lastPaymentByLoan.get(loanId);
+        const paymentDate = String(payment.date ?? "");
+        if (!current || paymentDate > current) {
+          lastPaymentByLoan.set(loanId, paymentDate);
+        }
       }
     }
 

@@ -1,9 +1,9 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { requirePermission, requireTenant } from "./tenancy";
-import { query } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import {
     buildCostIndexForPeriod,
     businessDayBounds,
@@ -11,6 +11,201 @@ import {
     money,
     summariseSales,
 } from "./financeCore";
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Reading a report's period
+ *
+ * A report is asked for a period, or it is not. Either way the period is
+ * asked of the index, so the rows outside it are never fetched.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The last moment of a day, as an ISO string.
+ *
+ * A period includes the day it ends on, so the upper bound of a range is
+ * the end of its last day rather than the start of it.
+ */
+function endOfDay(day: string): string {
+    return `${day}T23:59:59.999Z`;
+}
+
+/**
+ * The sales of a business inside the period a report asks for.
+ *
+ * A report that gives one end of the range is still a bounded read. It
+ * used to be read whole — every sale the business ever made — and then no
+ * date filter was applied to what came back, so "everything from March
+ * onwards" came back as "everything". Only a report that asks for no
+ * period at all reads everything, which is what it asked for.
+ */
+async function salesForPeriod(
+    ctx: QueryCtx,
+    businessId: Id<"businesses">,
+    startDate?: string,
+    endDate?: string
+): Promise<Doc<"sales">[]> {
+    if (startDate && endDate) {
+        return ctx.db
+            .query("sales")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", startDate).lte("date", endOfDay(endDate))
+            )
+            .collect();
+    }
+    if (startDate) {
+        return ctx.db
+            .query("sales")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", startDate)
+            )
+            .collect();
+    }
+    if (endDate) {
+        return ctx.db
+            .query("sales")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).lte("date", endOfDay(endDate))
+            )
+            .collect();
+    }
+    // all-time: the caller asked for no period at all, so it is owed every
+    // row the business has.
+    return ctx.db
+        .query("sales")
+        .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+        .collect();
+}
+
+/** The expenses of a business inside the period a report asks for. */
+async function expensesForPeriod(
+    ctx: QueryCtx,
+    businessId: Id<"businesses">,
+    startDate?: string,
+    endDate?: string
+): Promise<Doc<"expenses">[]> {
+    if (startDate && endDate) {
+        return ctx.db
+            .query("expenses")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", startDate).lte("date", endOfDay(endDate))
+            )
+            .collect();
+    }
+    if (startDate) {
+        return ctx.db
+            .query("expenses")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", startDate)
+            )
+            .collect();
+    }
+    if (endDate) {
+        return ctx.db
+            .query("expenses")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).lte("date", endOfDay(endDate))
+            )
+            .collect();
+    }
+    // all-time: the caller asked for no period at all, so it is owed every
+    // row the business has.
+    return ctx.db
+        .query("expenses")
+        .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+        .collect();
+}
+
+/**
+ * The loans of a business inside the period a report asks for.
+ *
+ * These were read through the business's index and filtered on the date
+ * afterwards. The filter ran on the server, so the rows were fetched and
+ * then thrown away; the debt book's own date index asks for the period
+ * instead.
+ */
+async function loansForPeriod(
+    ctx: QueryCtx,
+    businessId: Id<"businesses">,
+    startDate?: string,
+    endDate?: string
+): Promise<Doc<"loans">[]> {
+    if (startDate && endDate) {
+        return ctx.db
+            .query("loans")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", startDate).lte("date", endOfDay(endDate))
+            )
+            .collect();
+    }
+    if (startDate) {
+        return ctx.db
+            .query("loans")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", startDate)
+            )
+            .collect();
+    }
+    if (endDate) {
+        return ctx.db
+            .query("loans")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).lte("date", endOfDay(endDate))
+            )
+            .collect();
+    }
+    // all-time: the caller asked for no period at all, so it is owed every
+    // row the business has.
+    return ctx.db
+        .query("loans")
+        .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+        .collect();
+}
+
+/**
+ * The payments of a business inside the period a report asks for.
+ *
+ * These were read through the business's index and filtered on the date
+ * afterwards. The filter ran on the server, so the rows were fetched and
+ * then thrown away, and a report that gave only one end of the range had
+ * no filter at all — "everything since March" came back as "everything".
+ */
+async function paymentsForPeriod(
+    ctx: QueryCtx,
+    businessId: Id<"businesses">,
+    startDate?: string,
+    endDate?: string
+): Promise<Doc<"payments">[]> {
+    if (startDate && endDate) {
+        return ctx.db
+            .query("payments")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", startDate).lte("date", endOfDay(endDate))
+            )
+            .collect();
+    }
+    if (startDate) {
+        return ctx.db
+            .query("payments")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).gte("date", startDate)
+            )
+            .collect();
+    }
+    if (endDate) {
+        return ctx.db
+            .query("payments")
+            .withIndex("by_businessId_date", (q) =>
+                q.eq("businessId", businessId).lte("date", endOfDay(endDate))
+            )
+            .collect();
+    }
+    // all-time: the caller asked for no period at all, so it is owed every
+    // row the business has.
+    return ctx.db
+        .query("payments")
+        .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+        .collect();
+}
 
 /**
  * The profit and loss of a day.
@@ -151,19 +346,28 @@ export const getDetailedSalesReport = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        // [OPTIMIZED with Index Search]
+        // The period is asked of the index, so the rows outside it are never
+        // fetched — and a report that gives one end of the range is still a
+        // bounded read.
         let salesQuery;
+        const endStr = args.endDate ? endOfDay(args.endDate) : undefined;
 
         if (args.shopId) {
-            if (args.startDate && args.endDate) {
-                const endStr = args.endDate + "T23:59:59.999";
-                salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q => q.eq("businessId", businessId).eq("shopId", args.shopId!).gte("date", args.startDate!).lte("date", endStr))
+            if (args.startDate && endStr) {
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q => q.eq("businessId", businessId).eq("shopId", args.shopId!).gte("date", args.startDate!).lte("date", endStr));
+            } else if (args.startDate) {
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q => q.eq("businessId", businessId).eq("shopId", args.shopId!).gte("date", args.startDate!));
+            } else if (endStr) {
+                salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q => q.eq("businessId", businessId).eq("shopId", args.shopId!).lte("date", endStr));
             } else {
                 salesQuery = ctx.db.query("sales").withIndex("by_businessId_shop_date", q => q.eq("businessId", businessId).eq("shopId", args.shopId!));
             }
-        } else if (args.startDate && args.endDate) {
-            const endStr = args.endDate + "T23:59:59.999";
-            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", endStr))
+        } else if (args.startDate && endStr) {
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", endStr));
+        } else if (args.startDate) {
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!));
+        } else if (endStr) {
+            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).lte("date", endStr));
         } else {
             salesQuery = ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId));
         }
@@ -223,18 +427,32 @@ export const getDetailedSalesReportCount = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let salesQuery = ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId));
-        if (args.shopId) salesQuery = salesQuery.filter(q => q.eq(q.field("shopId"), args.shopId!));
-        if (args.clientType && args.clientType !== "All") salesQuery = salesQuery.filter(q => q.eq(q.field("clientType"), args.clientType!));
-        if (args.customerId) salesQuery = salesQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
-        if (args.startDate && args.endDate) {
-            const endStr = args.endDate + "T23:59:59.999";
-            salesQuery = salesQuery.filter(q => q.and(q.gte(q.field("date"), args.startDate!), q.lte(q.field("date"), endStr)));
+        // The period is asked of the index, so the rows outside it are never
+        // fetched. A report that gives one end of the range is still a
+        // bounded read; only a report that asks for no period at all reads
+        // everything.
+        let sales;
+        const endStr = args.endDate ? endOfDay(args.endDate) : undefined;
+
+        if (args.startDate && endStr) {
+            sales = await ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", endStr)).collect();
+        } else if (args.startDate) {
+            sales = await ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!)).collect();
+        } else if (endStr) {
+            sales = await ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).lte("date", endStr)).collect();
+        } else {
+            // all-time: the caller asked for no period at all, so it is owed
+            // every row the business has.
+            sales = await ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
         }
-        if (args.transactionType && args.transactionType !== "All") {
-            salesQuery = salesQuery.filter(q => q.eq(q.field("transactionType"), args.transactionType!));
-        }
-        const sales = await salesQuery.collect();
+
+        // The remaining filters are on the sale itself, so they are applied
+        // to what the index returned.
+        if (args.shopId) sales = sales.filter(s => s.shopId === args.shopId);
+        if (args.clientType && args.clientType !== "All") sales = sales.filter(s => s.clientType === args.clientType);
+        if (args.customerId) sales = sales.filter(s => s.customerId === args.customerId);
+        if (args.transactionType && args.transactionType !== "All") sales = sales.filter(s => s.transactionType === args.transactionType);
+
         return sales.length;
     }
 });
@@ -253,18 +471,12 @@ export const getLoanReportSummary = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let loanQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
+        // The period is asked of the debt book's own date index, and the
+        // customer is picked out of what that returns.
+        let loans = await loansForPeriod(ctx, businessId, args.startDate, args.endDate);
         if (args.customerId) {
-            loanQuery = loanQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
+            loans = loans.filter(l => l.customerId === args.customerId);
         }
-        if (args.startDate && args.endDate) {
-            const endStr = args.endDate + "T23:59:59.999";
-            loanQuery = loanQuery.filter(q => q.and(
-                q.gte(q.field("date"), args.startDate!),
-                q.lte(q.field("date"), endStr)
-            ));
-        }
-        const loans = await loanQuery.collect();
 
         // Join with sales for shop/clientType filtering and PV/BV calc
         const salesIds = [...new Set(loans.map(l => l.salesId))];
@@ -325,23 +537,18 @@ export const getLoanSummary = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let loanQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
+        // The period is asked of the debt book's own date index, and the
+        // customer is picked out of what that returns.
+        let loans = await loansForPeriod(ctx, businessId, args.startDate, args.endDate);
         if (args.customerId) {
-            loanQuery = loanQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
+            loans = loans.filter(l => l.customerId === args.customerId);
         }
 
-        if (args.startDate && args.endDate) {
-            const startStr = args.startDate;
-            const endStr = args.endDate + "T23:59:59.999";
-            loanQuery = loanQuery.filter(q =>
-                q.and(
-                    q.gte(q.field("date"), startStr),
-                    q.lte(q.field("date"), endStr)
-                )
-            );
-        }
-
-        const results = await loanQuery.order("desc").collect();
+        // The list was ordered by the newest first, which is the order the
+        // rows were created in.
+        const results = await loans
+            .slice()
+            .sort((a, b) => (b._creationTime ?? 0) - (a._creationTime ?? 0));
 
         // Join with sales to check shopId
         const salesIdsForJoin = [...new Set(results.map(l => l.salesId))];
@@ -407,13 +614,12 @@ export const getLoanSummaryCount = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let loanQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
-        if (args.customerId) loanQuery = loanQuery.filter(q => q.eq(q.field("customerId"), args.customerId!));
-        if (args.startDate && args.endDate) {
-            const endStr = args.endDate + "T23:59:59.999";
-            loanQuery = loanQuery.filter(q => q.and(q.gte(q.field("date"), args.startDate!), q.lte(q.field("date"), endStr)));
+        // The period is asked of the debt book's own date index, and the
+        // customer is picked out of what that returns.
+        let loans = await loansForPeriod(ctx, businessId, args.startDate, args.endDate);
+        if (args.customerId) {
+            loans = loans.filter(l => l.customerId === args.customerId);
         }
-        const loans = await loanQuery.collect();
 
         if (args.shopId || args.clientType) {
             const salesIds = [...new Set(loans.map(l => l.salesId))];
@@ -441,18 +647,7 @@ export const summaryStats = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        // [OPTIMIZED with Index Search]
-        let salesQuery;
-        if (args.startDate && args.endDate) {
-            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999"))
-        } else if (args.startDate) {
-            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!));
-        } else if (args.endDate) {
-            salesQuery = ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).lte("date", args.endDate! + "T23:59:59.999"));
-        } else {
-            salesQuery = ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId));
-        }
-        const sales = await salesQuery.collect();
+        const sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
         const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
         const totalPV = sales.reduce((sum, s) => {
             return sum + s.items.reduce((itemSum, item) => itemSum + (item.pv || 0) * item.quantity, 0);
@@ -461,23 +656,10 @@ export const summaryStats = query({
             return sum + s.items.reduce((itemSum, item) => itemSum + (item.bv || 0) * item.quantity, 0);
         }, 0);
 
-        let expensesQuery;
-        if (args.startDate && args.endDate) {
-            expensesQuery = ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999"))
-        } else if (args.startDate) {
-            expensesQuery = ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!));
-        } else if (args.endDate) {
-            expensesQuery = ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).lte("date", args.endDate! + "T23:59:59.999"));
-        } else {
-            expensesQuery = ctx.db.query("expenses").withIndex("by_businessId", q => q.eq("businessId", businessId));
-        }
-        const expenses = await expensesQuery.collect();
+        const expenses = await expensesForPeriod(ctx, businessId, args.startDate, args.endDate);
         const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
 
-        let loansQuery = ctx.db.query("loans").withIndex("by_businessId", q => q.eq("businessId", businessId));
-        if (args.startDate) loansQuery = loansQuery.filter(q => q.gte(q.field("date"), args.startDate!));
-        if (args.endDate) loansQuery = loansQuery.filter(q => q.lte(q.field("date"), args.endDate! + "T23:59:59.999"));
-        const loans = await loansQuery.collect();
+        const loans = await loansForPeriod(ctx, businessId, args.startDate, args.endDate);
         const totalLoansBalance = loans.reduce((sum, l) => sum + l.balance, 0);
 
         return {
@@ -680,10 +862,7 @@ export const getReportsSummary = query({
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
         // [SALES DATA]
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // [APPLY ADDITIONAL FILTERS IN MEMORY for flexibility]
         if (args.shopId || args.clientType || args.search || args.customerId) {
@@ -702,10 +881,7 @@ export const getReportsSummary = query({
         }
 
         // [EXPENSES DATA] - Expenses usually only filter by date
-        const expenses = await (args.startDate && args.endDate
-            ? ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("expenses").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        const expenses = await expensesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // [STOCK DATA] All current stock
         let stocks = await ctx.db.query("stocks").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect();
@@ -884,10 +1060,7 @@ export const getExpensesReport = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let expenses = await (args.startDate && args.endDate
-            ? ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("expenses").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let expenses = await expensesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Sort by date desc
         expenses.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -943,10 +1116,7 @@ export const getExpensesReportSummary = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let expenses = await (args.startDate && args.endDate
-            ? ctx.db.query("expenses").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("expenses").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let expenses = await expensesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         if (args.type) {
             expenses = expenses.filter(e => e.type === args.type);
@@ -994,10 +1164,7 @@ export const getProductPerformanceReport = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Filter by shop
         if (args.shopId) {
@@ -1060,10 +1227,7 @@ export const getProductPerformanceSummary = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Filter by shop
         if (args.shopId) {
@@ -1139,10 +1303,7 @@ export const getCustomerAnalyticsReport = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Filter by shop
         if (args.shopId) {
@@ -1237,10 +1398,7 @@ export const getCustomerAnalyticsSummary = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Filter by shop
         if (args.shopId) {
@@ -1315,10 +1473,7 @@ export const getUserPerformanceReport = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Filter by shop
         if (args.shopId) {
@@ -1396,10 +1551,7 @@ export const getUserPerformanceSummary = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Filter by shop
         if (args.shopId) {
@@ -1465,10 +1617,7 @@ export const getProfitMarginReport = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Filter by shop
         if (args.shopId) {
@@ -1545,10 +1694,7 @@ export const getProfitMarginSummary = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let sales = await (args.startDate && args.endDate
-            ? ctx.db.query("sales").withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", args.startDate!).lte("date", args.endDate! + "T23:59:59.999")).collect()
-            : ctx.db.query("sales").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let sales = await salesForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // Filter by shop
         if (args.shopId) {
@@ -1633,10 +1779,7 @@ export const getPaymentsReport = query({
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
         // 1. Filter payments by date
-        let payments = await (args.startDate && args.endDate
-            ? ctx.db.query("payments").withIndex("by_businessId", q => q.eq("businessId", businessId)).filter(q => q.and(q.gte(q.field("date"), args.startDate!), q.lte(q.field("date"), args.endDate! + "T23:59:59.999"))).collect()
-            : ctx.db.query("payments").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let payments = await paymentsForPeriod(ctx, businessId, args.startDate, args.endDate);
 
         // 2. Filter by shop/customer
         if (args.shopId) payments = payments.filter(p => p.shopId === args.shopId);
@@ -1729,10 +1872,7 @@ export const getPaymentsReportSummary = query({
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
         await requirePermission(ctx, businessId, "reports.view");
-        let payments = await (args.startDate && args.endDate
-            ? ctx.db.query("payments").withIndex("by_businessId", q => q.eq("businessId", businessId)).filter(q => q.and(q.gte(q.field("date"), args.startDate!), q.lte(q.field("date"), args.endDate! + "T23:59:59.999"))).collect()
-            : ctx.db.query("payments").withIndex("by_businessId", q => q.eq("businessId", businessId)).collect()
-        );
+        let payments = await paymentsForPeriod(ctx, businessId, args.startDate, args.endDate);
         if (args.shopId) payments = payments.filter(p => p.shopId === args.shopId);
         if (args.customerId) payments = payments.filter(p => p.customerId === args.customerId);
 
@@ -1802,18 +1942,32 @@ export const getAgedDebtors = query({
         //
         // The payments are read once and grouped by the loan they belong
         // to, rather than queried per loan.
+        //
+        // Only the payments taken since the oldest open loan can be the
+        // last payment on one of them — a loan is opened before any money
+        // is paid against it — so the read is bounded by that date instead
+        // of by every payment the business has ever received.
         // -----------------------------------------------------------------
-        const allPayments = await ctx.db
-            .query("payments")
-            .withIndex("by_businessId", q => q.eq("businessId", businessId))
-            .collect();
         const lastPaymentByLoan = new Map<string, string>();
-        for (const payment of allPayments) {
-            const loanId = payment.loanId as string;
-            const current = lastPaymentByLoan.get(loanId);
-            const paymentDate = String(payment.date ?? "");
-            if (!current || paymentDate > current) {
-                lastPaymentByLoan.set(loanId, paymentDate);
+        const oldestOpenLoan = outstanding.reduce<number | null>((oldest, loan) => {
+            const at = new Date(loan.date).getTime();
+            if (!Number.isFinite(at)) return oldest;
+            return oldest === null || at < oldest ? at : oldest;
+        }, null);
+
+        if (oldestOpenLoan !== null) {
+            const from = new Date(oldestOpenLoan).toISOString();
+            const allPayments = await ctx.db
+                .query("payments")
+                .withIndex("by_businessId_date", q => q.eq("businessId", businessId).gte("date", from))
+                .collect();
+            for (const payment of allPayments) {
+                const loanId = payment.loanId as string;
+                const current = lastPaymentByLoan.get(loanId);
+                const paymentDate = String(payment.date ?? "");
+                if (!current || paymentDate > current) {
+                    lastPaymentByLoan.set(loanId, paymentDate);
+                }
             }
         }
 

@@ -999,10 +999,12 @@ export const reconcile = mutation({
       }
 
       // Credit taken and then repaid by this method also reached the account.
+      // The month is asked of the payments index, rather than every payment
+      // the business has ever received being read and then discarded.
       const payments = await ctx.db
         .query("payments")
-        .withIndex("by_businessId", (q: any) =>
-          q.eq("businessId", tenant.businessId)
+        .withIndex("by_businessId_date", (q: any) =>
+          q.eq("businessId", tenant.businessId).gte("date", from).lte("date", to)
         )
         .collect();
       for (const payment of payments) {
