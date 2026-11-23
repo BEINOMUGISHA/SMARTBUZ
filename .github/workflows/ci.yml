@@ -55,6 +55,14 @@ jobs:
           RESEND_API_KEY: re_ci_placeholder_key_value
         run: node scripts/validate-config.mjs
 
+      - name: Check the workflow files
+        # A workflow GitHub cannot parse is rejected before a single job
+        # starts: the run is marked failed, with no jobs and no reason.
+        # This repository's CI was in that state for weeks and every gate
+        # in this file had never once run. The check is here so that the
+        # next invalid workflow is a failed job rather than a silent one.
+        run: node scripts/check-workflows.mjs
+
   # ────────────────────────────────────────────────────────────────────
   # BUG-053 · The lint gate.
   #
@@ -292,11 +300,23 @@ jobs:
         run: npm test
 
       - name: Build
+        # The build must not depend on a live deployment, a real email
+        # provider or a real secret, so the same placeholders the
+        # pre-flight uses are used here. The step needs a `run:` as well as
+        # its environment: a step with only a name and an environment is
+        # not a step GitHub knows how to run, and the whole workflow is
+        # rejected before a single job starts.
+        run: npm run build
         env:
           # Placeholder values: the build must not depend on a live deployment,
           # a real email provider or a real session secret. See
           # src/lib/convex-url.ts and src/app/api/send-reset-email/route.ts
           # for the failure behaviour.
           NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+          NEXT_PUBLIC_CONVEX_SITE_URL: https://placeholder.convex.site
+          NEXT_PUBLIC_APP_VERSION: ci
+          SMARTBUZ_JWT_PRIVATE_KEY: U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVktU01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6U01BUlRCVVotQ0ktUExBQ0VIT0xERVItUFJJVkFURS1LRVk6
           SESSION_SECRET: ci-placeholder-session-secret-at-least-32-chars
-          RESEND_API_KEY: ci-placeholder-key
+          SMARTBUZ_SERVER_SECRET: ci-placeholder-server-secret-at-least-16-chars
+          RESEND_API_KEY: re_ci_placeholder_key_value
+          RESEND_FROM_EMAIL: ci@example.com
