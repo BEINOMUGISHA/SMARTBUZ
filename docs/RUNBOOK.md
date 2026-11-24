@@ -606,7 +606,7 @@ ticket.** The authoritative list is `.env.example`; the validator is
 | `SMARTBUZ_JWT_PRIVATE_KEY` | Secret | yes | RSA private key (PKCS#8 DER, base64url) that signs access tokens. **The cause of the 19 Nov 2026 outage.** |
 | `SESSION_SECRET` | Secret | yes (≥32 chars) | Signs the session cookie. Rotating it signs everyone out. |
 | `SMARTBUZ_SERVER_SECRET` | Secret | yes (≥16 chars) | Shared secret with the Convex backend. Must be identical on both sides. |
-| `RESEND_API_KEY` | Secret | for email | Transactional email provider. |
+| `RESEND_API_KEY` | Secret | for email | Transactional email provider. **Not set on the project as of 24 Nov 2026**, so verification and password-reset emails are not sent. |
 | `RESEND_FROM_EMAIL` | Secret | no | Sender address. Defaults to `noreply@smartbuz.app`. |
 | `NEXT_PUBLIC_APP_VERSION` | **Config** | no | Version stamped on offline devices. |
 

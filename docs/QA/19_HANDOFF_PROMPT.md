@@ -355,6 +355,14 @@ would close it properly and neither is in the repository: a scheduled
 `node scripts/validate-config.mjs --prod` against the *real* Vercel
 environment (needs a Vercel token), and an outside uptime service.
 
+**One variable is still not set at all.** `RESEND_API_KEY` is absent from the
+Vercel project, so transactional email does not work in production: address
+verification and password-reset emails are never sent. The health endpoint does
+not report it, because it is not required to start the application — the
+failure is silent and lands on the person trying to sign in. Set it (and
+`RESEND_FROM_EMAIL`, which defaults to `noreply@smartbuz.app`) when the email
+provider is to be used.
+
 ### 5.3 Nothing is watching — as much as nothing
 `/api/health` is now polled by CI (§5.2). That is better than nothing, and it
 is not monitoring: it knows about failure but not about slowness; it runs only
