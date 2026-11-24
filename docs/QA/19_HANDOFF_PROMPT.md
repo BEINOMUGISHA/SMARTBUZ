@@ -264,6 +264,12 @@ operations, scheduling, tax) and `convex/packages/`.
 - **`GET /api/health`** — 200 when every required dependency answers and every
   required variable is set, 503 otherwise. It names missing *variables* and
   never their values, and it never forwards an upstream body.
+- **Something polls it.** `.github/workflows/health-check.yml` runs
+  `scripts/check-live-health.mjs` every half hour, so an application that is
+  down is a failed job rather than a silence. The script tells *"the
+  application says it is broken"* apart from *"this machine could not reach
+  it"*, and only the first fails the job. Run it by hand with
+  `node scripts/check-live-health.mjs`.
 - The audit trail, with a `scope` on each row so a tenant reads its own trail
   and the platform reads the whole one.
 - `docs/RUNBOOK.md` — how to release the web app and the backend, which goes
