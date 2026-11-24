@@ -1,0 +1,49 @@
+name: Health check
+
+on:
+  # Every half hour. GitHub runs scheduled workflows from the default branch,
+  # and the interval is a floor rather than a promise — a run can be delayed
+  # when the platform is busy. Half an hour is short enough that an outage
+  # cannot pass unnoticed for a day and long enough not to cost anything.
+  schedule:
+    - cron: "*/30 * * * *"
+  # So that the check can be run by hand, and so that a repository that has
+  # been idle can prove the gate still works.
+  workflow_dispatch:
+
+# Least privilege: this workflow reads a public endpoint and nothing else.
+permissions:
+  contents: read
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # BUG-081 · The application was down for a day and nobody was told.
+  #
+  # On 23–24 Nov 2026 the Vercel Production environment lost every variable
+  # but one. Each deployment built from that point started without a Convex
+  # URL and without a session secret, so the application answered 503. The
+  # health endpoint said exactly what was missing — and nothing asked it, so
+  # the first sign of trouble was a customer.
+  #
+  # This job is the thing that asks. It needs no credentials: the health
+  # endpoint names the variables it is missing and never their values.
+  # ────────────────────────────────────────────────────────────────────
+  health:
+    name: The live application is answering
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the live application
+        # The script distinguishes "the application says it is broken" from
+        # "we could not reach it", and only fails the job on the first. A gate
+        # that cries wolf is a gate people learn to ignore.
+        run: node scripts/check-live-health.mjs

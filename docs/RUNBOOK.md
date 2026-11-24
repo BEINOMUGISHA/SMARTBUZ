@@ -453,7 +453,7 @@ The body is JSON and it never contains a secret value:
 - `checks[0].status` is `not-configured` → `NEXT_PUBLIC_CONVEX_URL` is not
   set on Vercel, or the running build was built without it. **§5.2**.
 
-### 5.2 A configuration variable is missing — the 19 Nov 2026 case
+### 5.2 A configuration variable is missing — the 19 and 23 Nov 2026 cases
 
 `missingVariables` names the variables that are not set. For each one:
 
@@ -488,6 +488,37 @@ The body is JSON and it never contains a secret value:
    ```bash
    curl -s https://smartbuz.vercel.app/api/health
    ```
+
+#### The 23–24 Nov 2026 case — the whole environment, not one variable
+
+On 23 November 2026 the Vercel Production environment was found to hold **one**
+variable, `SMARTBUZ_JWT_PRIVATE_KEY`. The four that make the application start
+were gone:
+
+| Variable | Type | Why it has to be that type |
+|---|---|---|
+| `NEXT_PUBLIC_CONVEX_URL` | **Config** | A `NEXT_PUBLIC_` variable is inlined into the browser bundle **at build time**. An encrypted (Secret) variable is not inlined at all — the client is handed `undefined` while the server looks perfectly well. |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | **Config** | Same reason. It is the issuer of every access token, and the browser has to be able to read it. |
+| `SESSION_SECRET` | Secret | Signs the session cookie. Only the server reads it. |
+| `SMARTBUZ_SERVER_SECRET` | Secret | The shared secret with the Convex backend. Only the server reads it. |
+
+Three things about that failure are worth keeping:
+
+- **Look at the whole list, not the one variable the health check named.** The
+  health check names the variables it needs; it cannot tell you that the other
+  four have also gone. Open the environment-variable list and read it.
+- **A `NEXT_PUBLIC_` variable saved as Secret breaks the browser while leaving
+  the server healthy.** The health check would report `ok` and the sign-in
+  screen would still fail, because the client bundle was built without the
+  value. Vercel warns about this on the form; the warning is correct.
+- **Adding the variables is not enough — the application has to be rebuilt.**
+  The running deployment keeps the environment it was built with.
+
+That outage lasted from about 19:02 on 23 November until the afternoon of 24
+November — roughly twenty-one hours — because nothing was watching. The fix
+that ends that is not a fix to the code: `.github/workflows/health-check.yml`
+runs `scripts/check-live-health.mjs` every half hour, so an application that is
+down is a failed job rather than a silence.
 
 The same problem on the **backend** side shows up differently: the health
 check passes (the backend is reachable) but the browser still fails. Check it
@@ -568,16 +599,27 @@ ticket.** The authoritative list is `.env.example`; the validator is
 
 ### 6.1 Web app — Vercel project settings, Production scope
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `NEXT_PUBLIC_CONVEX_URL` | yes | The Convex deployment the browser talks to. **Inlined at build time.** |
-| `NEXT_PUBLIC_CONVEX_SITE_URL` | yes | The deployment's site URL; the issuer of every access token. **Inlined at build time.** |
-| `SMARTBUZ_JWT_PRIVATE_KEY` | yes | RSA private key (PKCS#8 DER, base64url) that signs access tokens. **The cause of the 19 Nov 2026 outage.** |
-| `SESSION_SECRET` | yes (≥32 chars) | Signs the session cookie. Rotating it signs everyone out. |
-| `SMARTBUZ_SERVER_SECRET` | yes (≥16 chars) | Shared secret with the Convex backend. Must be identical on both sides. |
-| `RESEND_API_KEY` | for email | Transactional email provider. |
-| `RESEND_FROM_EMAIL` | no | Sender address. Defaults to `noreply@smartbuz.app`. |
-| `NEXT_PUBLIC_APP_VERSION` | no | Version stamped on offline devices. |
+| Variable | Type | Required | Purpose |
+|---|---|---|---|
+| `NEXT_PUBLIC_CONVEX_URL` | **Config** | yes | The Convex deployment the browser talks to. **Inlined at build time.** |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | **Config** | yes | The deployment's site URL; the issuer of every access token. **Inlined at build time.** |
+| `SMARTBUZ_JWT_PRIVATE_KEY` | Secret | yes | RSA private key (PKCS#8 DER, base64url) that signs access tokens. **The cause of the 19 Nov 2026 outage.** |
+| `SESSION_SECRET` | Secret | yes (≥32 chars) | Signs the session cookie. Rotating it signs everyone out. |
+| `SMARTBUZ_SERVER_SECRET` | Secret | yes (≥16 chars) | Shared secret with the Convex backend. Must be identical on both sides. |
+| `RESEND_API_KEY` | Secret | for email | Transactional email provider. |
+| `RESEND_FROM_EMAIL` | Secret | no | Sender address. Defaults to `noreply@smartbuz.app`. |
+| `NEXT_PUBLIC_APP_VERSION` | **Config** | no | Version stamped on offline devices. |
+
+**Type matters, and it is not the same for every row.** A `NEXT_PUBLIC_`
+variable must be **Config**: its value is inlined into the browser bundle at
+build time, and an encrypted variable is not inlined at all — the client is
+handed `undefined` while the server looks perfectly well. Everything else is
+**Secret**. Vercel warns on the form when a `NEXT_PUBLIC_` variable is saved as
+Secret; the warning is correct, and the variable will not work in the browser.
+
+**The scope matters too.** A variable set for *Preview* but not *Production*
+leaves the live application without it, and the health check names it as
+missing.
 
 ### 6.2 Backend — Convex deployment environment
 
@@ -610,8 +652,31 @@ ticket.** The authoritative list is `.env.example`; the validator is
 `.github/workflows/deploy-convex.yml` is a separate workflow that deploys the
 backend on a push to `main`. It deploys **only if** `CONVEX_DEPLOY_KEY` and
 `CONVEX_URL` are present as repository secrets; without them the deploy steps
-are skipped and the workflow says so in its log. Until those secrets are
-added, the backend must be deployed by hand (§2.2).
+are skipped and the workflow says so in its log. **Neither secret is set, so
+that workflow has never once done anything** — the backend is still published
+by hand (§2.2).
+
+`.github/workflows/health-check.yml` is a third workflow, and it is the one
+that watches. It runs on a schedule (every half hour) and on demand, and asks
+the live application whether it is well:
+
+| Job | What it proves |
+|---|---|
+| `health` | `https://smartbuz.vercel.app/api/health` answers 200 and says `status: "ok"`. It needs no credentials, because the endpoint names the variables it is missing and never their values. |
+
+The script behind it, `scripts/check-live-health.mjs`, tells two things apart:
+*the application says it is broken* (a failure) and *this machine could not
+reach it* (inconclusive, and it warns rather than fails). A gate that cries
+wolf is a gate people learn to ignore. It can be run by hand:
+
+```bash
+node scripts/check-live-health.mjs
+```
+
+Two things it does not do, so nobody is misled: it does not monitor the
+backend separately (§8, item 2), and a scheduled workflow only runs while the
+repository is active — GitHub disables scheduled workflows on a repository that
+has had no activity for 60 days.
 
 Note the order between the two workflows: they are independent, so a push to
 `main` can deploy the backend while the web build is still being produced.
@@ -633,16 +698,31 @@ backend are running different code and nothing will say so.
 
 ## 8. Monitoring — what a human still has to set up
 
-The repository now contains the pieces; the alerts themselves are configured
-outside it, in a service.
+One of these is now inside the repository. The rest are configured outside it,
+in a service.
 
 | # | What | Where | Why |
 |---|---|---|---|
-| 1 | An uptime monitor on `https://smartbuz.vercel.app/api/health`, alerting on a non-200 | Any uptime service | This is the signal that would have caught the 19 Nov outage in under a minute. |
-| 2 | An uptime monitor on `https://affable-panda-681.convex.cloud/version` | Same service | Separates "the web app is down" from "the backend is down" at 02:00. |
+| 1 | ~~An uptime monitor on `https://smartbuz.vercel.app/api/health`, alerting on a non-200~~ **In the repository since 24 Nov 2026**: `.github/workflows/health-check.yml` polls it every half hour and fails the job on a non-200. | `.github/workflows/health-check.yml` | This is the signal that would have caught the 19 Nov outage in under a minute — and the one that would have caught the 23–24 Nov outage in the same time instead of twenty-one hours later. **Still worth an external service** (§8.1). |
+| 2 | An uptime monitor on `https://affable-panda-681.convex.cloud/version` | Same service | Separates "the web app is down" from "the backend is down" at 02:00. The repository's own check only watches the web app. |
 | 3 | An alert on `5xx` rate from the Vercel runtime logs | Vercel log drain or an error-reporting service | The 503s on `/api/auth/convex-token` were invisible until a customer reported them. |
-| 4 | `node scripts/validate-config.mjs --prod` on a schedule, against the real environment | Wherever the environment variables live | Configuration drift is silent until it is not. |
+| 4 | `node scripts/validate-config.mjs --prod` on a schedule, against the real environment | Wherever the environment variables live | Configuration drift is silent until it is not. The health check sees the *effect* of drift; this sees the drift itself. |
 | 5 | A weekly `npm audit --audit-level=high` | CI schedule | The dependency vulnerability status is unknown (see `docs/QA/16_BUILD_DEPLOYMENT_REPORT.md`, BUILD-03). |
+
+### 8.1 Why the in-repository check is not the whole answer
+
+The GitHub workflow is free and it is inside the repository, which is worth
+something. It is still three things short of an uptime service:
+
+- **It only knows about failure, not about slowness.** A response that takes
+  thirty seconds is a pass.
+- **It is tied to the repository being active.** GitHub disables scheduled
+  workflows on a repository with no activity for 60 days.
+- **Its failure goes to GitHub's email, and nowhere else.** A person has to
+  be watching a repository page, or have GitHub's mail, and there is no
+  escalation.
+
+An outside uptime service is still the right answer for the overnight case.
 
 Point 5 is why `npm audit` in CI is written to tolerate a registry outage: a
 scan that fails because the registry is unreachable must not look like a

@@ -11,7 +11,7 @@ frontend, the POS and the finance audits); the canonical entry lists every sourc
 
 ---
 
-## 0. Status — 23 November 2026
+## 0. Status — 24 November 2026
 
 This register is the work order. The entries below record where each
 canonical entry stands after the remediation work.
@@ -23,10 +23,10 @@ the present state. Where the two disagree, this section is right.
 
 | | Entries |
 |---|---|
-| Fixed and deployed | 71 |
+| Fixed and deployed | 72 |
 | Partly fixed — what is left is written down below | 5 |
 | Closed by a decision, or verified as correct | 5 |
-| **Total canonical entries** | **81** (BUG-000 … BUG-080) |
+| **Total canonical entries** | **82** (BUG-000 … BUG-081) |
 
 ### Fixed and deployed
 
@@ -106,6 +106,7 @@ published to the deployment the application uses (`affable-panda-681`):
 | BUG-075 | The screen says where you are, and the focus goes with it. A new `RouteAnnouncer` names the page that has just arrived and moves the focus to its heading, so a person who cannot see the screen is told about the new page rather than left on the old one. The dashboard has a skip link, because the navigation is long and a person who cannot see it has no other way past it; the navigation is a labelled landmark and the page body is a main landmark. The four public sign-in screens are main landmarks with real headings. The loading skeletons already carried `aria-busy` and the error boundary already carried `role="alert"`, and both were left alone. |
 | BUG-079 | A report given one end of a period now reads that period. A report asked for "everything since 1 March" was answering with everything: the date was read, and then no date filter was applied to the rows that came back. The reports ask the index for the period instead, so a period with one end is a period like any other — and the rows outside it are never fetched. The debt book's reports are bounded the same way, and the ageing report reads only the payments taken since the oldest loan still owing, which is all it needs to find the last payment on each one. |
 | BUG-080 | The CI workflow was rejected by GitHub on every push since the day it was written: the Build step had a name and an environment and no `run:`. A workflow GitHub cannot parse is refused *before any job starts*, so the run was marked failed with zero jobs and no reason — and every gate in that file had never once been executed. The step runs the build now, and `scripts/check-workflows.mjs` checks the workflow files so the next invalid workflow is a failed job rather than a silent one. |
+| BUG-081 | The application's own configuration was lost, and the application was down for a day without anybody being told. On 23 November 2026 the Vercel Production environment was found to hold one variable — `SMARTBUZ_JWT_PRIVATE_KEY` — and the four that make the application start were gone: `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL`, `SESSION_SECRET` and `SMARTBUZ_SERVER_SECRET`. Every deployment built from that point answered 503, and the first sign of it was a customer. The cause was not in the code: the server still reads its configuration at run time, and the build did not bake the values in. The variables are back, the health endpoint that named them is now polled by CI every half hour so an outage is a failed job rather than a silence, and two things are written down so it cannot happen quietly again. A `NEXT_PUBLIC_` variable must be **Config**, not **Secret** — an encrypted variable is not inlined into the browser bundle, so the client is handed `undefined` while the server looks perfectly well — and the configuration a deployment is built with is only as good as the last time somebody checked it, which is why the check now happens on a schedule. |
 
 ### Still open
 
@@ -117,7 +118,7 @@ without needing a change, are at the foot of this table.
 |---|---|---|
 | BUG-014 | P0 | Five security headers are committed and deployed: `X-DNS-Prefetch-Control`, `Strict-Transport-Security`, `X-Frame-Options`, `X-Content-Type-Options` and `Referrer-Policy`. **The Content-Security-Policy is not among them.** It cannot be a static header either — it has to be built with a nonce in `next.config.ts` and the middleware, because a static CSP and `unsafe-inline` are the two things that make a CSP theatre rather than a defence. |
 | BUG-027 | P2 | The mobile app does not exist. `apps/mobile/` holds nothing but installed dependencies — no source, no `package.json`, nothing tracked by git. The recommendation was to commit the Expo project or record the work as roadmap, and it was recorded as roadmap. It is a decision nobody has taken: build it, or delete the directory. |
-| BUG-028 | P0 | `GET /api/health` exists and is correct — 200 when every required dependency answers and every required variable is set, 503 otherwise, naming missing *variables* and never their values. **Nothing polls it**: there is no uptime monitor. There is no error-reporting service in the dependency tree. Nobody is told when sign-in starts failing repeatedly — the throttle counts the failures and says nothing — and nobody is told when a platform action happens. This is the same class of failure as 19 November 2026, when the application returned 503 for a day and the first sign of trouble was a customer report. |
+| BUG-028 | P0 | `GET /api/health` exists and is correct — 200 when every required dependency answers and every required variable is set, 503 otherwise, naming missing *variables* and never their values. **Partly fixed 24 Nov 2026.** Something polls it now: `.github/workflows/health-check.yml` runs `scripts/check-live-health.mjs` every half hour, so an application that is down is a failed job and a failing repository page rather than a silence. The script tells "the application says it is broken" apart from "this machine could not reach it", and only the first fails the job — a gate that cries wolf is a gate people learn to ignore. **Still open:** there is still no uptime monitor and no error-reporting service in the dependency tree; GitHub's own email is the only channel, and a scheduled workflow only runs while the repository is active. Nobody is told when sign-in starts failing repeatedly — the throttle counts the failures and says nothing — and nobody is told when a platform action happens. This is the same class of failure as 19 November 2026, when the application returned 503 for a day and the first sign of trouble was a customer report. |
 | BUG-029 | P2 | ~~Some queries read a whole table with no bound.~~ **Partly fixed 22 Nov 2026.** The reads that grow without end are bounded where they can be, and the instruments that measure the rest are in place. The platform audit trail no longer reads every audit row in the deployment to find the few that are platform events — each row now says which trail it belongs to, and the trail is read a page at a time from a narrowed index. A business's own trail is read the same way: the action, the actor and the date are index ranges, not filters applied to everything that has ever happened. The debt book is read for the period it is asked for, and the cost of goods is read as at the end of the report's period rather than as the whole purchase history — a purchase made after the period cannot have costed anything in it. The debt book's cursor was the page *number* while the server returned the offset, so the second page of the list asked for the first page again; that is fixed and tested. The appointments and the rentals were read by collecting their whole tables and picking out this business's rows afterwards; they are now read through the business's own index. The low-stock audit asked for every sale the business has ever made and then discarded the ones outside its look-back window; the window is now asked of the sales index. The repayment analysis now asks the payments index for the period it reports on, and the cost history of a product or a supplier is read through the index that is about that product or that supplier rather than through the business's whole cost history. The reports themselves were the largest remaining reader: a report was given a period and read the whole ledger anyway, then applied the period to what came back — and a report given only one end of the period applied no date at all, so it answered with everything (that is BUG-079). The reports now ask the index for the period, through one shared helper, and the debt book's reports are bounded the same way. `scripts/check-ledger-reads.mjs` and `scripts/check-bounded-reads.mjs` list what is still unbounded, so the count can only go down: the unbounded ledger reads are down from 72 to 48, and the five reads that are whole on purpose — a report that was asked for no period at all is owed every row — are marked as such in the source and counted separately. **Still open:** the customer and supplier books are read whole — they are catalogues, bounded by the size of the business rather than by history, and the search that narrows them matches several fields at once, which cannot be pushed into an index without changing what it matches. The debt book still has to be read whole to find the loans that are still owing, because a loan's balance is on the loan and there is no index on it; that is the current state of the business, not a history. A report asked for "all time" still reads all time, because that is what was asked for. |
 | BUG-056 | P2 | The pipeline exists and does the right thing: it publishes to the deployment named by `CONVEX_DEPLOYMENT` or derived from `CONVEX_URL`, tries both the `dev:` and `prod:` forms, and then proves that every function in the commit is on the deployment the app points at. **It has never run, because none of the three settings exists** — `CONVEX_DEPLOY_KEY` and `CONVEX_URL` are not set as repository secrets and `CONVEX_DEPLOYMENT` is not set as a repository variable. The job reports that it did nothing, and the backend is published by hand. The web app deploys itself on every push; the backend does not. |
 | BUG-058 | P1 | ~~Convex has no multi-document transactions, so a failure part-way through a write can still leave partial state.~~ **Mitigated 22 Nov 2026.** Convex has no transaction across documents, and no cure is coming, so the cure is to make every step keyed and to have something that notices when one was missed. The stock movement of a sale is now keyed by the sale and the product it concerns: `stocks.repairSaleMovement` writes the movement a sale never had, and running it again writes nothing more, so a repair that can be repeated cannot double the books. `stocks.reconcileSales` compares the sales of a period with the movements behind them and names the sale whose movement is missing — the older reconciliation compared a balance with the history and could say that something was wrong but not what. A sale that never had its movement written is now findable and repairable. **Still open:** Convex still offers no transaction, so a write that is split across several mutations can still leave partial state; the sale itself is written in one mutation and is idempotent, but the paths around it are not all so. |
@@ -132,10 +133,10 @@ without needing a change, are at the foot of this table.
 |---|---|---|
 | CRITICAL | 12 | **6** |
 | HIGH | 39 | **23** |
-| MEDIUM | 58 | **36** |
+| MEDIUM | 58 | **37** |
 | LOW | 21 | **13** |
 | INFORMATIONAL | 6 | **3** |
-| **Total** | **136** | **81** (BUG-000 … BUG-080) |
+| **Total** | **136** | **82** (BUG-000 … BUG-081) |
 
 Raw findings by report: `04` 11 · `05` 8 · `03` 10 · `08` 17 · `09` 17 · `10` 20 · `11` 6 · `12` 6 ·
 `13` 5 · `14` 9 · `15` 8 · `06` 11 · `07` 8 · `16` 10.
@@ -224,7 +225,7 @@ P2: schedule · P3: backlog.
 
 ---
 
-## 4. MEDIUM — thirty-six canonical entries
+## 4. MEDIUM — thirty-seven canonical entries
 
 | ID | Title | Source findings | Priority | Effort |
 |---|---|---|---|---|
@@ -264,6 +265,7 @@ P2: schedule · P3: backlog.
 | BUG-062 | Sales-history search filters after pagination | POS-015 (`08`) | P2 | S |
 | BUG-079 | A report given one end of a period ignores it and answers with everything | found while bounding the reports (see BUG-029) | P1 | S |
 | BUG-080 | The CI workflow is invalid, so no gate has ever run | found while making CI run (see BUG-053, BUG-054) | P0 | S |
+| BUG-081 | The deployment's configuration was lost and the application was down for a day, unannounced | found while restoring the 23–24 Nov 2026 outage (see BUG-052, BUG-055, BUG-028) | P0 | S |
 
 ---
 

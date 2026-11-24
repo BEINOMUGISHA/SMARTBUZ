@@ -1,7 +1,7 @@
 # SMARTBUZ — hand-off prompt
 
 *Everything below is meant to be pasted into a new session, whole. It is the
-state of the application as of 23 November 2026: what is there, what is
+state of the application as of 24 November 2026: what is there, what is
 proven, and what is still owed.*
 
 ---
@@ -24,6 +24,7 @@ platform is built so that a shop owner can trust the numbers.
 | Repo | `C:\Users\beino\Desktop\SMARTBUZ` — branch `main`, remote `https://github.com/BEINOMUGISHA/SMARTBUZ` |
 | Web (live) | `https://smartbuz.vercel.app` |
 | Backend (live) | `https://affable-panda-681.convex.cloud` (site: `https://affable-panda-681.convex.site`) |
+| Health | `/api/health` answers 200 with `missingVariables: []`, and CI polls it every 30 minutes |
 
 Fifty pages, ten server routes, fifty-seven backend modules. Six industry
 packages (restaurant, supermarket, pharmacy, wholesaler, manage, registry) and
@@ -72,6 +73,14 @@ is `npx convex dev --once`. A stale, unused deployment also exists at
 10. **Never cap a read with `.take(n)` to make it look better.** That silently
     truncates a financial report. Bound the read by the period or the parent,
     not by a number.
+11. **A `NEXT_PUBLIC_` variable must be Vercel "Config", never "Secret".** Its
+    value is inlined into the browser bundle at build time; an encrypted
+    variable is not inlined at all, so the client is handed `undefined` while
+    the server looks perfectly well. Vercel warns on the form — the warning is
+    correct.
+12. **The application can go down without a single line of code changing.** The
+    Vercel project *is* part of the application. Read §5.2 before touching
+    anything else.
 
 ---
 
@@ -89,6 +98,7 @@ node scripts/check-ledger-reads.mjs            # unbounded ledger reads
 node scripts/check-bounded-reads.mjs           # whole tables read to serve one page
 node scripts/check-public-bundle.mjs           # no public route may reach the Convex client
 node scripts/check-workflows.mjs               # the CI files can actually be run
+node scripts/check-live-health.mjs             # the live application is answering
 npm run build                                  # the app builds
 ```
 
@@ -305,18 +315,52 @@ does not. Set the three, and the job will publish to the right deployment and
 prove afterwards that every function in the commit is on the deployment the
 app points at.
 
-### 5.2 Nothing is watching
-`/api/health` exists and is correct, but **nothing polls it** — there is no
-uptime monitor. There is no error-reporting service (no Sentry, no
-equivalent in the dependency tree). Nobody is told when a login starts
-failing repeatedly: the throttle counts the failures and says nothing. Nobody
-is told when a platform action happens. This is the same class of failure as
-19 November 2026, when the application returned 503 for a day and the first
-sign of trouble was a customer report. The fix is: point an uptime monitor at
-`/api/health`; add error reporting; notify on lockout and on platform
-actions.
+### 5.2 The application's configuration can be lost, and the code was never at fault
+On 23 November 2026 at about 19:02 the Vercel Production environment was found
+to hold **one** variable — `SMARTBUZ_JWT_PRIVATE_KEY` — and the four that make
+the application start were gone: `NEXT_PUBLIC_CONVEX_URL`,
+`NEXT_PUBLIC_CONVEX_SITE_URL`, `SESSION_SECRET` and `SMARTBUZ_SERVER_SECRET`.
+Every deployment built from that point answered **503**, and the first sign of
+it was a customer. The application was back up on the afternoon of 24
+November — about twenty-one hours.
 
-### 5.3 No Content-Security-Policy
+**The code was not the cause.** The server reads its configuration at run time
+and the build does not bake the values in; the same commit on the same machine
+was healthy the day before. What failed was a *project setting* — a thing that
+is invisible in the repository and that nothing in the repository was checking.
+
+What was done about it:
+
+- The four variables are restored, from the values in `.env.local`. The
+  `SMARTBUZ_SERVER_SECRET` in that file was hash-compared against the one
+  already inside the Convex deployment and they match, so the restored
+  configuration is the configuration the backend expects.
+- `/api/health` is now polled by CI every half hour —
+  `.github/workflows/health-check.yml` runs `scripts/check-live-health.mjs` —
+  so an application that is down is a failed job rather than a silence. The
+  script tells *"the application says it is broken"* apart from *"this machine
+  could not reach it"*, and only the first fails the job.
+- `docs/RUNBOOK.md` §5.2 now carries the case in full, including the rule
+  that a `NEXT_PUBLIC_` variable must be **Config** and not **Secret**.
+
+**What is still true of it:** the health check sees the *effect* of a lost
+variable, not the variable itself, and it only watches the web app. Two things
+would close it properly and neither is in the repository: a scheduled
+`node scripts/validate-config.mjs --prod` against the *real* Vercel
+environment (needs a Vercel token), and an outside uptime service.
+
+### 5.3 Nothing is watching — as much as nothing
+`/api/health` is now polled by CI (§5.2). That is better than nothing, and it
+is not monitoring: it knows about failure but not about slowness; it runs only
+while the repository is active; and it fails into GitHub's email, with no
+escalation. There is still no error-reporting service (no Sentry, no
+equivalent in the dependency tree) and no outside uptime service. Nobody is
+told when a login starts failing repeatedly: the throttle counts the failures
+and says nothing. Nobody is told when a platform action happens. The fix is:
+point an outside uptime monitor at `/api/health`; add error reporting; notify
+on lockout and on platform actions.
+
+### 5.4 No Content-Security-Policy
 Five security headers are committed and deployed (`X-DNS-Prefetch-Control`,
 `Strict-Transport-Security`, `X-Frame-Options`, `X-Content-Type-Options`,
 `Referrer-Policy`). The CSP the audit asked for is **not** among them. It
@@ -324,14 +368,14 @@ needs a nonce-based policy, which means it has to be built in `next.config.ts`
 and in the middleware — not added as a static header — because a static CSP
 and `unsafe-inline` are the two things that make a CSP theatre.
 
-### 5.4 The mobile application does not exist
+### 5.5 The mobile application does not exist
 `apps/mobile/` holds nothing but installed dependencies — no source, no
 `package.json`, nothing tracked by git. The audit's recommendation was to
 commit the Expo project or record the work as roadmap, and it was recorded as
 roadmap. It is a decision nobody has taken: build it, or delete the
 directory.
 
-### 5.5 The reads that are still unbounded
+### 5.6 The reads that are still unbounded
 The unbounded ledger reads are down from 72 to **48**, with five more read
 whole on purpose and counted apart. What is left:
 
@@ -346,7 +390,7 @@ whole on purpose and counted apart. What is left:
   was asked for. It says `all-time:` in the source so the checker can tell
   it apart from a read that forgot its period.
 
-### 5.6 Partial state
+### 5.7 Partial state
 Convex offers no cross-document transaction, so a write split across several
 mutations can still leave partial state. The sale itself is one idempotent
 mutation. Around it, `stocks.reconcileSales` names the sale whose stock
@@ -354,12 +398,12 @@ movement is missing and `stocks.repairSaleMovement` puts it right — keyed by
 (sale, product), so repeating the repair cannot double the books. The other
 paths are not all so.
 
-### 5.7 The lint backlog
+### 5.8 The lint backlog
 1,458 findings against a baseline of 1,468. The gate fails only on *new*
 problems, so the backlog stays visible and cannot grow. It is real debt, and
 it is almost all `no-explicit-any` in the Convex layer.
 
-### 5.8 The audit's own reports are snapshots
+### 5.9 The audit's own reports are snapshots
 `docs/QA/01`–`18` describe the application as it was on 20 November 2026.
 Only `17_BUG_REGISTER.md` has been kept current. Read the register's §0 and
 this prompt for the present state; read the rest for the detail of what was
@@ -384,6 +428,13 @@ There is a second, unused deployment — ignore it.
 Vercel. The **Redeploy** button on the Vercel dashboard needs a 6-digit
 authenticator code from the owner; a git push does not. The Vercel CLI is
 logged out, so the dashboard is the way in.
+
+**A variable that is added or changed is not in the running application until
+the application is rebuilt** — a deployment keeps the environment it was built
+with, and a `NEXT_PUBLIC_` variable is inlined into the bundle at build time.
+Either redeploy from the dashboard (2FA), or push a commit, which builds a new
+deployment carrying the new variables and needs no authenticator code. See
+§5.2.
 
 **Order.** Backend first, then the web app. The web app talks to the backend,
 and a web build that lands before the backend it expects will serve a client
@@ -425,9 +476,10 @@ retry loop.
 | `src/lib/offline/` | The offline engine: catalogue, device, network, queue, session cache, sync. |
 | `src/app/api/auth/*/route.ts` | The public auth routes. The verification code never reaches the browser. |
 | `tests/helpers/fake-context.ts` | The fake Convex context. `callHandler(registered, ctx, args)` is how a registered function is called. |
-| `scripts/` | The instruments. `check-ledger-reads`, `check-bounded-reads`, `check-public-bundle`, `check-workflows`, `lint-baseline`, `measure-bundle`, `verify-deployment`, `verify-identity`, `validate-config`. |
+| `scripts/` | The instruments. `check-ledger-reads`, `check-bounded-reads`, `check-public-bundle`, `check-workflows`, `check-live-health`, `lint-baseline`, `measure-bundle`, `verify-deployment`, `verify-identity`, `validate-config`. |
 | `docs/RUNBOOK.md` | Release, rollback, key rotation, and the rules above in the operational voice. |
 | `docs/QA/17_BUG_REGISTER.md` | The register. §0 is the current status; §2–§6 are the audit's findings. |
+| `.github/workflows/health-check.yml` | Polls the live application every 30 minutes. The watcher that was missing on 23 Nov 2026. |
 | `.scratch/` | Working files. Gitignored. Not a deliverable. |
 
 **Two things worth knowing about the code.** Convex's `query()` and
