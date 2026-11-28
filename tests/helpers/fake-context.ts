@@ -96,6 +96,8 @@ export interface FakeCtxOptions {
   controlledDrugEntries?: FakeRow[];
   vaccinations?: FakeRow[];
   industryPackages?: FakeRow[];
+  /** How one person wants one business to look. */
+  userPreferences?: FakeRow[];
 }
 
 const TABLES = [
@@ -186,6 +188,8 @@ const TABLES = [
   "controlledDrugEntries",
   "vaccinations",
   "industryPackages",
+  // How one person wants one business to look.
+  "userPreferences",
   // The members module — accounts, wallets, commissions and donations.
   "members",
   "memberTransactions",

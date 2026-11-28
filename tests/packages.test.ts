@@ -133,8 +133,12 @@ describe("the industry packages", () => {
 
     it("brings the screens into the menu", () => {
         const category = resolveCategory({ categoryId: "hotel" });
-        const withoutPackage = buildNavigation(category, ["business_owner"]);
-        const withPackage = buildNavigation(category, ["business_owner"], [
+        const withoutPackage = buildNavigation(
+            ["business_owner"],
+            category.modules
+        );
+        const withPackage = buildNavigation(["business_owner"], [
+            ...category.modules,
             "fees",
         ]);
 
@@ -154,7 +158,8 @@ describe("the industry packages", () => {
 
     it("ignores a module that has no screen behind it", () => {
         const category = resolveCategory({ categoryId: "retail" });
-        const items = buildNavigation(category, ["business_owner"], [
+        const items = buildNavigation(["business_owner"], [
+            ...category.modules,
             "not_a_module",
         ]);
 

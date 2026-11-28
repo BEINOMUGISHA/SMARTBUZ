@@ -23,7 +23,7 @@ import {
     type BusinessCategory,
     type FeatureId,
 } from "@/lib/business-categories";
-import { buildNavigation, accentFor, type NavItem } from "@/lib/category-nav";
+import { buildNavigation, accentFor, accentForName, type NavItem } from "@/lib/category-nav";
 import { normalizeBusinessRole } from "../../convex/rbac";
 
 export interface ActiveCategory {
@@ -54,6 +54,34 @@ export interface ActiveCategory {
     has: (feature: FeatureId) => boolean;
     /** True when the operator has not chosen a vertical yet. */
     needsSetup: boolean;
+    /**
+     * How this person wants *this* business to look.
+     *
+     * The trade decides what the business is; the person decides how they
+     * work in it. These are their own choices, remembered for this business
+     * and this trade only.
+     */
+    personalisation: {
+        /** The screens they chose, or null when they have not chosen. */
+        modules: string[] | null;
+        /** The colour they chose, or null. */
+        accent: string | null;
+        /** The screen that opens when they arrive, or null. */
+        landingModule: string | null;
+        /** comfortable | compact, or null. */
+        density: string | null;
+        /** The language they read this business in, or null. */
+        locale: string | null;
+        /** Whether the trade's dashboard widgets are shown, or null. */
+        showCategoryWidgets: boolean | null;
+        /**
+         * True when the business changed trade after they made their choice.
+         *
+         * Their screens were picked for the old trade, so the shell says so
+         * rather than quietly showing a menu that no longer fits.
+         */
+        tradeChanged: boolean;
+    };
 }
 
 export function useActiveCategory(role?: string | null): ActiveCategory {
@@ -62,6 +90,9 @@ export function useActiveCategory(role?: string | null): ActiveCategory {
     // its own screens, so the menu follows what the business has chosen
     // to trade in, not only what its vertical was set up as.
     const enabledPackages = useQuery(api.packages.manage.listEnabledPackages, {});
+    // How this person wants *this* business to look. Their own choice, and
+    // it is remembered for this business and this trade only.
+    const preferences = useQuery(api.userPreferences.getMine, {});
     const profile = (active as ActiveCategory["profile"]) ?? null;
     const backendRole = (active as { role?: string } | undefined)?.role ?? null;
 
@@ -85,33 +116,60 @@ export function useActiveCategory(role?: string | null): ActiveCategory {
         });
     }, [profile]);
 
-    const packageModules = useMemo(() => {
-        const ids = new Set<string>();
+    const personalisation = useMemo(() => {
+        const saved = preferences?.preferences ?? null;
+        return {
+            modules: saved?.modules ?? null,
+            accent: saved?.accent ?? null,
+            landingModule: saved?.landingModule ?? null,
+            density: saved?.density ?? null,
+            locale: saved?.locale ?? null,
+            showCategoryWidgets: saved?.showCategoryWidgets ?? null,
+            tradeChanged: preferences?.tradeChanged ?? false,
+        };
+    }, [preferences]);
 
-        // The business's own choice of screens, made on the settings
-        // screen. It is a choice on top of the vertical, not a replacement
-        // for it: a hotel that also runs a clinic keeps the front desk.
+    /**
+     * The screens this person works in, in this business.
+     *
+     * Their own choice wins outright — it is their workspace, not the
+     * business's, so a screen they switched off stays off.
+     */
+    const screens = useMemo(() => {
+        const own = personalisation.modules;
+        if (own && own.length > 0) return own;
+
+        // Without a choice of their own, the menu is the vertical's screens,
+        // the business's choice on top of them — a choice on top, not a
+        // replacement: a hotel that also runs a clinic keeps the front desk —
+        // and the screens the industry packages bring.
+        const ids = new Set<string>(category.modules);
         for (const moduleId of profile?.modules ?? []) ids.add(moduleId);
-
-        // And the screens the industry packages it has switched on bring.
         for (const pkg of enabledPackages ?? []) {
             for (const moduleId of pkg.modules) ids.add(moduleId);
         }
-
         return Array.from(ids);
-    }, [enabledPackages, profile?.modules]);
+    }, [
+        category.modules,
+        enabledPackages,
+        personalisation.modules,
+        profile?.modules,
+    ]);
 
     const navigation = useMemo(
         () =>
             buildNavigation(
-                category,
                 effectiveRole ? [effectiveRole] : [],
-                packageModules
+                screens
             ),
-        [category, effectiveRole, packageModules]
+        [effectiveRole, screens]
     );
 
-    const accent = useMemo(() => accentFor(category), [category]);
+    // The trade's colour, unless this person chose their own.
+    const accent = useMemo(
+        () => accentForName(personalisation.accent, category),
+        [category, personalisation.accent]
+    );
 
     const has = useMemo(
         () => (feature: FeatureId) => category.features.includes(feature),
@@ -136,6 +194,7 @@ export function useActiveCategory(role?: string | null): ActiveCategory {
         accent,
         has,
         needsSetup,
+        personalisation,
     };
 }
 

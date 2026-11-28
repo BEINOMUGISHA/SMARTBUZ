@@ -52,6 +52,14 @@ import {
     recordLoginFailure,
 } from "./loginThrottle";
 import { assertEmailAllowed, recordEmailSent } from "./emailThrottle";
+import {
+    generateResetCode as sharedGenerateResetCode,
+    hashCode,
+    issueEmailVerification,
+    RESET_CODE_TTL_MS,
+    VERIFICATION_CODE_TTL_MS,
+    verifyCode,
+} from "./authCodes";
 
 /**
  * SMARTBUZ — users and access.
@@ -80,11 +88,12 @@ function sanitizeUser<T extends { password?: string }>(user: T | null): Omit<T, 
 /**
  * Generate a 6-digit numeric code from a cryptographically secure source.
  * `Math.random()` is predictable and must not be used for security tokens.
+ *
+ * The rule lives in `convex/authCodes.ts` so that the business-registration
+ * path issues codes the same way this one does.
  */
 function generateResetCode(): string {
-    const range = 900000;
-    const random = crypto.getRandomValues(new Uint32Array(1))[0];
-    return (100000 + (random % range)).toString();
+    return sharedGenerateResetCode();
 }
 
 /**
@@ -110,11 +119,7 @@ const MAX_VERIFICATION_ATTEMPTS = 5;
 const MIN_PASSWORD_LENGTH = 8;
 
 /** How long a reset code stays valid: 1 hour. */
-const RESET_CODE_TTL_MS = 60 * 60 * 1000;
-
 /** How long a verification code stays valid: 24 hours. */
-const VERIFICATION_CODE_TTL_MS = 24 * 60 * 60 * 1000;
-
 /** How long a session stays valid: 7 days (matches the session cookie). */
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -223,16 +228,7 @@ export const register = mutation({
         });
 
         // Issue the verification code.
-        const code = generateResetCode();
-        const codeHash = await bcrypt.hash(code, 10);
-        await ctx.db.insert("emailVerifications", {
-            userId,
-            email,
-            codeHash,
-            expiresAt: Date.now() + VERIFICATION_CODE_TTL_MS,
-            attempts: 0,
-            createdAt: Date.now(),
-        });
+        const code = await issueEmailVerification(ctx, userId, email);
 
         await ctx.db.insert("activityLogs", {
             userId: userId,
@@ -290,7 +286,7 @@ export const verifyEmail = mutation({
         }
         await ctx.db.patch(pending._id, { attempts });
 
-        const matches = await bcrypt.compare(args.code, pending.codeHash);
+        const matches = verifyCode(args.code, pending.codeHash);
         if (!matches) {
             throw new ConvexError("Invalid or expired verification code.");
         }
@@ -368,7 +364,7 @@ export const requestVerification = mutation({
         await ctx.db.insert("emailVerifications", {
             userId: user._id,
             email,
-            codeHash: await bcrypt.hash(code, 10),
+            codeHash: hashCode(code),
             expiresAt: Date.now() + VERIFICATION_CODE_TTL_MS,
             attempts: 0,
             createdAt: Date.now(),
@@ -521,7 +517,7 @@ export const requestPasswordReset = mutation({
 
         await ctx.db.insert("passwordResets", {
             email,
-            codeHash: await bcrypt.hash(code, 10),
+            codeHash: hashCode(code),
             expiresAt,
             attempts: 0,
             createdAt: Date.now(),
@@ -607,7 +603,7 @@ export const resetPassword = mutation({
             );
         }
 
-        const matches = await bcrypt.compare(args.code, reset.codeHash);
+        const matches = verifyCode(args.code, reset.codeHash);
         if (!matches) {
             throw new ConvexError("Invalid or expired reset code");
         }

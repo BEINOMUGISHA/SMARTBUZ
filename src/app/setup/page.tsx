@@ -16,7 +16,6 @@ import { api } from "../../../convex/_generated/api";
 import { useAuth } from "@/context/auth-context";
 import {
     BUSINESS_CATEGORIES,
-    CATEGORY_SECTORS,
     type CategoryId,
 } from "@/lib/business-categories";
 import { Button } from "@/components/ui/button";
@@ -32,6 +31,7 @@ import {
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import { PlanPicker } from "@/components/subscription/plan-picker";
+import { CategoryPicker } from "@/components/setup/category-picker";
 import { Check, ChevronRight, Loader2, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -227,7 +227,7 @@ export default function SetupPage() {
                 }
             }
 
-            toast.success(`${category.name} workspace ready!`);
+            toast.success(t("{0} workspace ready!", { 0: t(category.name) }));
             router.push("/");
         } catch (err: any) {
             toast.error(err?.message ?? "Could not save your business profile.");
@@ -288,69 +288,7 @@ export default function SetupPage() {
 
                 {/* STEP 1 — pick a trade */}
                 {step === 1 && (
-                    <div className="space-y-8">
-                        {CATEGORY_SECTORS.map((sector) => (
-                            <div key={sector.id} className="space-y-3">
-                                <div>
-                                    <h2 className="text-lg font-semibold">{sector.name}</h2>
-                                    <p className="text-xs text-muted-foreground">
-                                        {t(sector.description)}
-                                    </p>
-                                </div>
-                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                    {sector.categories.map((id) => {
-                                        const c = BUSINESS_CATEGORIES.find((x) => x.id === id);
-                                        if (!c) return null;
-                                        const Icon = ICONS[c.icon] ?? StoreIcon;
-                                        const isSelected = selected === c.id;
-                                        return (
-                                            <Card
-                                                key={c.id}
-                                                role="button"
-                                                tabIndex={0}
-                                                onClick={() => setSelected(c.id)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === "Enter" || e.key === " ") {
-                                                        e.preventDefault();
-                                                        setSelected(c.id);
-                                                    }
-                                                }}
-                                                className={cn(
-                                                    "cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-                                                    isSelected &&
-                                                        "border-primary shadow-lg ring-2 ring-primary/30"
-                                                )}
-                                            >
-                                                <CardContent className="flex gap-3 p-4">
-                                                    <div
-                                                        className={cn(
-                                                            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-                                                            isSelected
-                                                                ? "bg-primary text-primary-foreground"
-                                                                : "bg-muted text-muted-foreground"
-                                                        )}
-                                                    >
-                                                        <Icon className="h-5 w-5" />
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="text-sm font-semibold leading-tight">
-                                                            {c.name}
-                                                        </p>
-                                                        <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted-foreground">
-                                                            {t(c.description)}
-                                                        </p>
-                                                    </div>
-                                                    {isSelected && (
-                                                        <Check className="h-5 w-5 shrink-0 text-primary" />
-                                                    )}
-                                                </CardContent>
-                                            </Card>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    <CategoryPicker selected={selected} onSelect={setSelected} />
                 )}
 
                 {/* STEP 2 — choose a plan */}
@@ -393,7 +331,7 @@ export default function SetupPage() {
                                     })()}
                                 </div>
                                 <div>
-                                    <h2 className="text-xl font-semibold">{category.name}</h2>
+                                    <h2 className="text-xl font-semibold">{t(category.name)}</h2>
                                     <p className="text-xs text-muted-foreground">
                                         {t(category.description)}
                                     </p>
@@ -407,7 +345,7 @@ export default function SetupPage() {
                                         id="bizName"
                                         value={businessName}
                                         onChange={(e) => setBusinessName(e.target.value)}
-                                        placeholder={category.name}
+                                        placeholder={t(category.name)}
                                     />
                                 </div>
                                 <div className="grid gap-4 sm:grid-cols-2">
@@ -473,7 +411,7 @@ export default function SetupPage() {
                                         <p className="text-xs text-muted-foreground">
                                             {category.sampleProducts.length} common{" "}
                                             {category.terminology.item.toLowerCase()}s for a{" "}
-                                            {category.name.toLowerCase()} {t("so you can start selling straight away. You can edit them later.")}
+                                            {t(category.name).toLowerCase()} {t("so you can start selling straight away. You can edit them later.")}
                                         </p>
                                     </div>
                                 </label>
@@ -501,12 +439,12 @@ export default function SetupPage() {
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">{t("Business")}</span>
                                     <span className="font-bold">
-                                        {businessName.trim() || category.name}
+                                        {businessName.trim() || t(category.name)}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">{t("Trade")}</span>
-                                    <span className="font-bold">{category.name}</span>
+                                    <span className="font-bold">{t(category.name)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">{t("Units")}</span>

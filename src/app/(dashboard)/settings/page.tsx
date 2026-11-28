@@ -11,11 +11,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, User, Lock, KeyRound, Eye, EyeOff, Store } from "lucide-react";
+import { Loader2, User, Lock, KeyRound, Eye, EyeOff, Store, Palette } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BusinessVerticalSettings } from "@/components/business-vertical-settings";
 import { BusinessManagement } from "@/components/business-management";
 import { BackupCard } from "@/components/backup-card";
+import { PersonalisationPanel } from "@/components/personalisation-panel";
 import { ActiveSessions } from "./active-sessions";
 import { useT } from "@/i18n/provider";
 
@@ -122,9 +123,12 @@ export default function SettingsPage() {
             </div>
 
             <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-[640px] h-11 bg-muted/50 p-1.5 rounded-xl border border-sidebar-border/30 shadow-sm">
+                <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 lg:w-[800px] h-11 bg-muted/50 p-1.5 rounded-xl border border-sidebar-border/30 shadow-sm">
                     <TabsTrigger value="profile" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
                         <User className="h-4 w-4 mr-2" /> {t("Profile")}
+                    </TabsTrigger>
+                    <TabsTrigger value="workspace" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
+                        <Palette className="h-4 w-4 mr-2" /> {t("My Workspace")}
                     </TabsTrigger>
                     <TabsTrigger value="security" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm font-bold text-sm">
                         <Lock className="h-4 w-4 mr-2" /> {t("Security")}
@@ -138,6 +142,10 @@ export default function SettingsPage() {
                         </TabsTrigger>
                     )}
                 </TabsList>
+
+                <TabsContent value="workspace" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <PersonalisationPanel />
+                </TabsContent>
 
                 <TabsContent value="profile" className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <Card className="border-sidebar-border/40 shadow-xl bg-card/30 backdrop-blur-sm overflow-hidden">

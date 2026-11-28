@@ -89,6 +89,49 @@ export function sanitizeModules(modules: string[] | undefined): string[] {
   return Array.from(result);
 }
 
+/**
+ * The accents a person may choose for their workspace.
+ *
+ * The same list the shell renders (src/lib/category-nav.ts). The server keeps
+ * its own copy so a tampered client cannot write an accent the shell has no
+ * colour for, which would leave the workspace unstyled.
+ */
+export const ALLOWED_ACCENTS = [
+  "emerald",
+  "teal",
+  "lime",
+  "amber",
+  "orange",
+  "red",
+  "rose",
+  "blue",
+  "indigo",
+  "violet",
+  "purple",
+  "fuchsia",
+  "pink",
+  "cyan",
+  "sky",
+  "yellow",
+  "stone",
+  "zinc",
+  "slate",
+  "green",
+  "gray",
+] as const;
+
+/**
+ * The languages a person may read their workspace in.
+ *
+ * The same four the product speaks. The server keeps its own copy so a
+ * tampered client cannot write a language the product has not been written
+ * in, which would show a person a screen they cannot read.
+ */
+export const ALLOWED_LOCALES = ["en", "sw", "lg", "fr"] as const;
+
+/** How crowded a workspace is. */
+export const ALLOWED_DENSITIES = ["comfortable", "compact"] as const;
+
 /** Currency metadata used when a business does not pick one. */
 export const SUPPORTED_CURRENCIES = [
   { code: "UGX", symbol: "UGX", name: "Ugandan Shilling" },

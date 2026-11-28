@@ -496,23 +496,22 @@ export const NAV_GROUPS: Array<{ id: NavItem["group"]; label: string }> = [
 ];
 
 /**
- * Build the sidebar for a category.
+ * Build the sidebar.
  *
- * @param category  the active vertical
- * @param roles     the signed-in user's roles
+ * @param roles   the signed-in user's roles
+ * @param screens the screens the menu is made of
+ *
+ * The screens are worked out by the caller, because there are two cases and
+ * they are not the same: a business that has not chosen gets the vertical's
+ * own screens with the business's choice and the industry packages' screens
+ * on top, while a person who has chosen for themselves gets exactly their
+ * own list — a screen they switched off must stay off.
  */
 export function buildNavigation(
-    category: BusinessCategory,
     roles: string[],
-    /**
-     * The modules an industry package has brought.
-     *
-     * A business that switches the hospitality package on gets the front
-     * desk in its menu, even though it trades in something else.
-     */
-    extraModules: string[] = []
+    screens: string[]
 ): NavItem[] {
-    const enabled = new Set([...category.modules, ...extraModules]);
+    const enabled = new Set(screens);
 
     // De-duplicate by href: several modules can point at the same route
     // (e.g. "bookings" and "appointments"), and we only want one entry.
@@ -712,3 +711,43 @@ export const ACCENT_STYLES: Record<
 export function accentFor(category: BusinessCategory) {
     return ACCENT_STYLES[category.accent] ?? ACCENT_STYLES.emerald;
 }
+
+/**
+ * Resolve an accent by name.
+ *
+ * A person may pick the colour of their own workspace, whatever the trade
+ * chose. An accent the shell has no colour for falls back to the trade's
+ * own rather than leaving the workspace unstyled.
+ */
+export function accentForName(name: string | null | undefined, category: BusinessCategory) {
+    if (!name) return accentFor(category);
+    return ACCENT_STYLES[name] ?? accentFor(category);
+}
+
+/** The accent names a person may choose. */
+export const ACCENT_NAMES = Object.keys(ACCENT_STYLES);
+
+/** The accent colour of each name, for the picker. */
+export const ACCENT_PREVIEW: Record<string, string> = {
+    emerald: "bg-emerald-500",
+    teal: "bg-teal-500",
+    lime: "bg-lime-500",
+    amber: "bg-amber-500",
+    orange: "bg-orange-500",
+    red: "bg-red-500",
+    rose: "bg-rose-500",
+    blue: "bg-blue-500",
+    indigo: "bg-indigo-500",
+    violet: "bg-violet-500",
+    purple: "bg-purple-500",
+    fuchsia: "bg-fuchsia-500",
+    pink: "bg-pink-500",
+    cyan: "bg-cyan-500",
+    sky: "bg-sky-500",
+    yellow: "bg-yellow-500",
+    stone: "bg-stone-500",
+    zinc: "bg-zinc-500",
+    slate: "bg-slate-500",
+    green: "bg-green-500",
+    gray: "bg-gray-500",
+};

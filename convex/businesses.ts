@@ -45,6 +45,11 @@ import {
   sanitizeModules,
 } from "./defaults";
 import { enablePackageForCategory } from "./packages/manage";
+import { findPackageByCategory } from "./packages/registry";
+import { writeDefaultPreferences } from "./userPreferences";
+import { issueEmailVerification } from "./authCodes";
+import { writeAudit } from "./audit";
+import { serverSecretMatches } from "./serverSecret";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -427,6 +432,324 @@ export const register = mutation({
 });
 
 /**
+ * Register an account *and* its business, in one go.
+ *
+ * This is the way a person actually joins SMART_BUZ: they say who they are,
+ * what they trade in, and where they trade from, and the workspace is ready
+ * when they arrive. The old flow made them an account, sent them to their
+ * inbox, and then asked all of it again in a second wizard — which is three
+ * questions asked twice.
+ *
+ * So the whole thing happens in one transaction:
+ *
+ *   • the account, with a verification code that has to be proved before it
+ *     can sign in;
+ *   • the business, with its vertical, its VAT configuration and its
+ *     currency;
+ *   • the branches the person trades from, each with its own storage;
+ *   • the industry package that goes with the trade;
+ *   • the free trial, so the subscription gate has something to work from;
+ *   • and the owner's own personalisation, so their first workspace is
+ *     already the trade's rather than a generic one.
+ *
+ * Nothing is taken on trust from the browser: the VAT rate comes from the
+ * vertical, the screens are checked against the module allow-list, and the
+ * verification code is only handed back to a caller holding the server
+ * secret — which is the server that mails it.
+ */
+export const registerWithSetup = mutation({
+    args: {
+        ownerFirstName: v.string(),
+        ownerLastName: v.string(),
+        ownerEmail: v.string(),
+        password: v.string(),
+        ownerPhone: v.optional(v.string()),
+
+        businessName: v.string(),
+        /** The trade. This is what decides the VAT, the screens and the terms. */
+        categoryId: v.string(),
+        modules: v.optional(v.array(v.string())),
+        currency: v.optional(v.string()),
+        timezone: v.optional(v.string()),
+        country: v.optional(v.string()),
+        businessAddress: v.optional(v.string()),
+        businessPhone: v.optional(v.string()),
+
+        /**
+         * Where the business trades from.
+         *
+         * The first one is the head office unless another is marked as the
+         * default; every one of them gets its own storage, because a branch
+         * without somewhere to keep its stock is not a branch.
+         */
+        branches: v.optional(
+            v.array(
+                v.object({
+                    name: v.string(),
+                    address: v.optional(v.string()),
+                    phone: v.optional(v.string()),
+                    isDefault: v.optional(v.boolean()),
+                })
+            )
+        ),
+
+        /** Storage locations of its own, beyond the ones the branches get. */
+        warehouses: v.optional(
+            v.array(
+                v.object({
+                    name: v.string(),
+                    type: v.optional(v.string()),
+                    address: v.optional(v.string()),
+                })
+            )
+        ),
+
+        /** The plan the business starts on. */
+        planKey: v.optional(v.string()),
+        serverSecret: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        const businessName = args.businessName.trim();
+        if (businessName.length < 2) {
+            throw new ConvexError("Enter the name of your business.");
+        }
+
+        const firstName = args.ownerFirstName.trim();
+        const lastName = args.ownerLastName.trim();
+        if (!firstName || !lastName) {
+            throw new ConvexError("Enter your first and last name.");
+        }
+
+        const email = normaliseEmail(args.ownerEmail);
+        assertValidEmail(email);
+        assertPassword(args.password);
+
+        const categoryId = args.categoryId.trim();
+        if (!categoryId) {
+            throw new ConvexError("Choose the trade you are in.");
+        }
+
+        const existing = await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", email))
+            .unique();
+        if (existing) {
+            throw new ConvexError("An account with this email already exists.");
+        }
+
+        const now = new Date().toISOString();
+        const currency = isSupportedCurrency(args.currency) ? args.currency! : DEFAULT_CURRENCY;
+        const timezone = args.timezone?.trim() || DEFAULT_TIMEZONE;
+        const country = args.country?.trim() || DEFAULT_COUNTRY;
+
+        // Server-authoritative VAT configuration (see verticals/tax.ts).
+        const tax = resolveTax(categoryId, { enabled: true, rate: 18, inclusive: true });
+
+        const modules = sanitizeModules(args.modules);
+
+        /* ── The account ─────────────────────────────────────────────── */
+
+        const ownerId = await ctx.db.insert("users", {
+            first_name: firstName,
+            last_name: lastName,
+            email,
+            password: bcrypt.hashSync(args.password, PASSWORD_HASH_COST),
+            roles: [],
+            phone_number: args.ownerPhone,
+            // The account cannot sign in until the address is proved.
+            status: "pending_verification",
+            emailVerified: false,
+            createdAt: now,
+        });
+
+        // The verification code is only ever handed to the server, which
+        // mails it. A browser that calls this directly gets nothing.
+        const verificationCode = await issueEmailVerification(ctx, ownerId, email);
+
+        /* ── The business ────────────────────────────────────────────── */
+
+        const businessId = await ctx.db.insert("businesses", {
+            name: businessName,
+            slug: slugify(businessName),
+            categoryId,
+            businessType: categoryId,
+            modules,
+            currency,
+            currencySymbol: currencySymbol(currency),
+            timezone,
+            locale: DEFAULT_LOCALE,
+            dateFormat: DEFAULT_DATE_FORMAT,
+            country,
+            taxEnabled: tax.enabled,
+            taxRate: tax.rate,
+            taxInclusive: tax.inclusive,
+            taxNote: tax.taxNote,
+            status: "active",
+            ownerId,
+            createdBy: ownerId,
+            createdAt: now,
+            updatedAt: now,
+            businessAddress: args.businessAddress,
+            businessPhone: args.businessPhone,
+            // The business is set up: the trade, the branches and the money
+            // were all chosen on the registration screen.
+            onboardingComplete: true,
+            onboardingStep: "done",
+            plan: "trial",
+            subscriptionStatus: "trial",
+        });
+
+        await ctx.db.insert("memberships", {
+            userId: ownerId,
+            businessId,
+            role: "owner",
+            status: "active",
+            createdAt: now,
+            joinedAt: now,
+        });
+
+        /* ── Where it trades from ─────────────────────────────────────── */
+
+        // The branches the person asked for. One at least — a business with
+        // nowhere to trade from is not a business.
+        const requested = (args.branches ?? []).filter((b) => b.name.trim().length > 0);
+        const branchList = requested.length > 0 ? requested : [{ name: "Main Branch" }];
+
+        // The head office is the default unless another branch says so.
+        const defaultIndex = branchList.findIndex((b) => b.isDefault === true);
+        const headOfficeIndex = defaultIndex === -1 ? 0 : defaultIndex;
+
+        const branchIds: Id<"branches">[] = [];
+        const warehouseIds: Id<"warehouses">[] = [];
+
+        for (let index = 0; index < branchList.length; index += 1) {
+            const branch = branchList[index];
+            const isHeadOffice = index === headOfficeIndex;
+
+            const warehouseId = await ctx.db.insert("warehouses", {
+                businessId,
+                name: isHeadOffice ? "Main Warehouse" : `${branch.name.trim()} Warehouse`,
+                code: isHeadOffice ? "WH-MAIN" : `WH-${String(index + 1).padStart(2, "0")}`,
+                type: isHeadOffice ? "main" : "branch",
+                address: branch.address,
+                isDefault: isHeadOffice,
+                isActive: true,
+                createdAt: now,
+                createdBy: ownerId,
+            });
+            warehouseIds.push(warehouseId);
+
+            const branchId = await ctx.db.insert("branches", {
+                businessId,
+                name: branch.name.trim(),
+                code: isHeadOffice ? "BR-MAIN" : `BR-${String(index + 1).padStart(2, "0")}`,
+                address: branch.address,
+                phone: branch.phone,
+                isDefault: isHeadOffice,
+                isActive: true,
+                warehouseId,
+                createdAt: now,
+                createdBy: ownerId,
+            });
+            branchIds.push(branchId);
+        }
+
+        // Storage locations the person asked for beyond the branches' own.
+        for (let index = 0; index < (args.warehouses ?? []).length; index += 1) {
+            const warehouse = args.warehouses![index];
+            if (!warehouse.name.trim()) continue;
+            const id = await ctx.db.insert("warehouses", {
+                businessId,
+                name: warehouse.name.trim(),
+                code: `WH-EXTRA-${String(index + 1).padStart(2, "0")}`,
+                type: warehouse.type || "branch",
+                address: warehouse.address,
+                isDefault: false,
+                isActive: true,
+                createdAt: now,
+                createdBy: ownerId,
+            });
+            warehouseIds.push(id);
+        }
+
+        for (const type of DEFAULT_CATEGORIES) {
+            await ctx.db.insert("categories", { type, businessId });
+        }
+
+        const headOffice = branchIds[headOfficeIndex];
+
+        await ctx.db.insert("employees", {
+            businessId,
+            userId: ownerId,
+            employeeCode: "EMP-001",
+            fullName: `${firstName} ${lastName}`.trim(),
+            email,
+            phone: args.ownerPhone,
+            jobTitle: "Owner",
+            branchId: headOffice,
+            role: "owner",
+            status: "active",
+            hiredAt: now.slice(0, 10),
+            createdAt: now,
+            createdBy: ownerId,
+        });
+
+        /* ── The trade, the trial and the person's own workspace ──────── */
+
+        // The vertical's own package goes on with the vertical: its features,
+        // its settings and the screens that go with it.
+        await enablePackageForCategory(ctx, businessId, categoryId, ownerId);
+
+        // Put the business on a real, tracked free trial straight away, so the
+        // subscription gate has a plan and an end date to work from.
+        await startTrial(ctx, businessId, args.planKey ?? DEFAULT_PLAN_KEY, {
+            userId: ownerId,
+            role: "owner",
+        });
+
+        // The owner's own workspace: the trade's screens from the first
+        // minute, so the product is already theirs and not a generic one.
+        const packageModules = findPackageByCategory(categoryId)?.modules ?? [];
+        await writeDefaultPreferences(
+            ctx,
+            ownerId,
+            businessId,
+            categoryId,
+            Array.from(new Set([...modules, ...packageModules])),
+            now
+        );
+
+        await ctx.db.patch(ownerId, { activeBusinessId: businessId });
+
+        await ctx.db.insert("activityLogs", {
+            businessId,
+            userId: ownerId,
+            action: "Business Registered",
+            details: `${businessName} registered as ${categoryId} with ${branchIds.length} branch(es)`,
+            timestamp: now,
+        });
+
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: ownerId,
+            action: "business.register",
+            targetType: "business",
+            targetId: businessId,
+            metadata: { email, categoryId, branches: branchIds.length },
+        });
+
+        const isServer = serverSecretMatches(args.serverSecret);
+        return {
+            businessId,
+            userId: ownerId,
+            branchIds,
+            warehouseIds,
+            ...(isServer ? { verificationCode } : {}),
+        };
+    },
+});
+
+/**
  * Create a business for the *already signed-in* caller.
  *
  * This is the "add another business" path for somebody who already has an
@@ -435,7 +758,7 @@ export const register = mutation({
  * shared — the new business starts empty.
  */
 export const createForCurrentUser = mutation({
-  args: {
+    args: {
     businessName: v.string(),
     categoryId: v.optional(v.string()),
     modules: v.optional(v.array(v.string())),

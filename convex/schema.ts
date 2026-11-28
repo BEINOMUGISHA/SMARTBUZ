@@ -124,6 +124,60 @@ export default defineSchema({
         .index("by_userId_status", ["userId", "status"]),
 
     /**
+     * How one person wants one business to look.
+     *
+     * The business decides what it *trades in*; the person decides how they
+     * want to work in it. A pharmacist who also runs a hardware shop keeps a
+     * different set of screens, a different accent and a different landing
+     * page in each — and both are remembered separately, because they belong
+     * to a different trade.
+     *
+     * The record is stamped with the vertical it was made for, so when the
+     * business changes trade the server can tell that the screens this
+     * person chose belong to the old trade and offer the new trade's ones
+     * instead of silently keeping a menu that no longer makes sense.
+     */
+    userPreferences: defineTable({
+        userId: v.id("users"),
+        businessId: v.id("businesses"),
+        /**
+         * The vertical these preferences were made for.
+         *
+         * A change of trade leaves the old value here, which is how the
+         * server knows the person's menu was chosen for a different trade.
+         */
+        categoryId: v.optional(v.string()),
+        /**
+         * The screens this person wants in this business.
+         *
+         * Empty/absent means "the business's own choice" — the vertical's
+         * screens plus whatever the industry packages bring. A list here is
+         * this person's own selection from those.
+         */
+        modules: v.optional(v.array(v.string())),
+        /** The accent this person prefers for this trade. */
+        accent: v.optional(v.string()),
+        /**
+         * Where this person lands when they open this business.
+         *
+         * A module id, not a path: the shell knows which screen each module
+         * is, and a stored path could be tampered with into somewhere the
+         * person has no business being.
+         */
+        landingModule: v.optional(v.string()),
+        /** comfortable | compact */
+        density: v.optional(v.string()),
+        /** The language this person reads this business in. */
+        locale: v.optional(v.string()),
+        /** Whether the dashboard widgets for this trade are shown. */
+        showCategoryWidgets: v.optional(v.boolean()),
+        createdAt: v.optional(v.string()),
+        updatedAt: v.optional(v.string()),
+    })
+        .index("by_userId_businessId", ["userId", "businessId"])
+        .index("by_businessId", ["businessId"]),
+
+    /**
      * Staff records of a business. An employee is a person who works for
      * the business; it may or may not have a linked login account.
      */

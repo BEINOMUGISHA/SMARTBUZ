@@ -439,7 +439,8 @@ function DashboardShell({
     const [isReportsOpen, setIsReportsOpen] = useState(false);
     const commandPalette = useCommandPalette();
 
-    const { category, profile, navigation, accent } = useActiveCategory(activeBusiness?.role);
+    const { category, profile, navigation, accent, personalisation } =
+        useActiveCategory(activeBusiness?.role);
 
     // The platform console is for the SMARTBUZ team, not for tenants.
     const whoami = useQuery(api.platform.whoami, {});
@@ -460,6 +461,20 @@ function DashboardShell({
             setIsReportsOpen(true);
         }
     }, [pathname]);
+
+    // The screen this person opens when they come to this business.
+    //
+    // It is their own choice, remembered for this business, so somebody who
+    // works mostly on the till lands on the till rather than on a dashboard
+    // they never look at.
+    useEffect(() => {
+        if (pathname !== "/") return;
+        const landing = personalisation.landingModule;
+        if (!landing || landing === "dashboard") return;
+        const item = navigation.find((entry) => entry.id === landing);
+        if (!item) return;
+        router.replace(item.href);
+    }, [pathname, personalisation.landingModule, navigation, router]);
 
     if (isLoading || !user) {
         return (

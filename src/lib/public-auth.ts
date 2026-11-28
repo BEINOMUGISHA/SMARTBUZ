@@ -56,6 +56,57 @@ function textField(body: unknown, name: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Read a nested object out of a request body that may be anything at all. */
+function objectField(body: unknown, name: string): Record<string, unknown> | null {
+  if (!body || typeof body !== "object") return null;
+  const value = (body as Record<string, unknown>)[name];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+/** Read a list of strings out of a request body that may be anything at all. */
+function stringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const list = value.filter((item): item is string => typeof item === "string");
+  return list.length > 0 ? list : undefined;
+}
+
+/**
+ * The branches a person asked for.
+ *
+ * Each one is trimmed and checked here, so the server receives names and not
+ * whatever the browser happened to have in the field.
+ */
+function branchList(value: unknown): Array<{
+  name: string;
+  address?: string;
+  phone?: string;
+  isDefault?: boolean;
+}> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const branches = value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (!name) return null;
+      return {
+        name,
+        address:
+          typeof row.address === "string" && row.address.trim()
+            ? row.address.trim()
+            : undefined,
+        phone:
+          typeof row.phone === "string" && row.phone.trim()
+            ? row.phone.trim()
+            : undefined,
+        isDefault: row.isDefault === true,
+      };
+    })
+    .filter((branch): branch is NonNullable<typeof branch> => branch !== null);
+  return branches.length > 0 ? branches : undefined;
+}
+
 /**
  * Create an account and email the verification code.
  *
@@ -63,6 +114,12 @@ function textField(body: unknown, name: string): string {
  * this server, to the inbox. That is what makes the verification worth
  * something — otherwise anybody could create an account for an address they
  * do not own and then activate it.
+ *
+ * When the request also describes a business — its name, its trade and its
+ * branches — the account and the business are created together, in one
+ * transaction on the backend. The person is then one step from a workspace
+ * that is already theirs, rather than being asked the same questions again
+ * in a second wizard.
  */
 export async function handleRegister(
   rawBody: unknown,
@@ -86,6 +143,62 @@ export async function handleRegister(
     return badRequest("Password must be at least 8 characters long");
   }
 
+  const secret = serverSecret();
+  const business = objectField(rawBody, "business");
+  const businessName = business ? textField(business, "name") : "";
+  const categoryId = business ? textField(business, "categoryId") : "";
+
+  /* ── The account and its business, created together ───────────── */
+
+  if (businessName && categoryId && secret) {
+    const created = await convexMutation<{
+      success: boolean;
+      businessId: string;
+      userId: string;
+      verificationCode?: string;
+    }>("businesses:registerWithSetup", {
+      ownerFirstName: firstName,
+      ownerLastName: lastName,
+      ownerEmail: email,
+      password,
+      ownerPhone: phone || undefined,
+      businessName,
+      categoryId,
+      modules: stringList(business?.modules),
+      currency: textField(business, "currency") || undefined,
+      timezone: textField(business, "timezone") || undefined,
+      country: textField(business, "country") || undefined,
+      businessAddress: textField(business, "address") || undefined,
+      businessPhone: textField(business, "phone") || undefined,
+      branches: branchList(business?.branches),
+      planKey: textField(rawBody, "planKey") || undefined,
+      serverSecret: secret,
+    });
+
+    if (!created.ok) {
+      if (created.unreachable) return unreachable();
+      return badRequest(created.error ?? "Could not create the account.");
+    }
+
+    const code = created.value?.verificationCode;
+    if (!code) {
+      return { status: 200, body: { success: true, emailed: false } };
+    }
+
+    const messageId = await sendAuthEmail({
+      to: email,
+      code,
+      heading: "Verify your email address",
+      description: `Welcome to SMART_BUZ. Use the 6-digit code below to verify ${email} and activate your account.`,
+      expiresIn: "24 hours",
+      subject: "Your SMART_BUZ Verification Code",
+    });
+
+    return { status: 200, body: { success: true, emailed: true, messageId } };
+  }
+
+  /* ── The account on its own ────────────────────────────────────── */
+
   const created = await convexMutation<{ success: boolean; userId: string }>("users:register", {
     first_name: firstName,
     last_name: lastName,
@@ -104,7 +217,6 @@ export async function handleRegister(
   // The code is only handed to a caller holding the server secret, so it
   // never reaches the browser. The send is throttled by the backend, so
   // this route cannot be used to make the server mail anybody at will.
-  const secret = serverSecret();
   if (!secret) {
     // The account exists. Say so, and let the person ask for the code
     // again from the verification screen once delivery is configured.
