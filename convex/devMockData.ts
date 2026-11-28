@@ -446,7 +446,7 @@ async function seedCategories(
     for (const name of names) {
         const existing = await ctx.db
             .query("categories")
-            .withIndex("by_businessId_type", (q: any) =>
+            .withIndex("by_businessId_type", (q) =>
                 q.eq("businessId", businessId).eq("type", name)
             )
             .first();
@@ -481,7 +481,7 @@ async function seedProducts(
     for (const product of products) {
         const existing = await ctx.db
             .query("stocks")
-            .withIndex("by_businessId_productCode", (q: any) =>
+            .withIndex("by_businessId_productCode", (q) =>
                 q.eq("businessId", businessId).eq("productCode", product.code)
             )
             .unique();
@@ -572,7 +572,7 @@ async function seedCustomers(
     for (const customer of MOCK_CUSTOMERS) {
         const existing = await ctx.db
             .query("customers")
-            .withIndex("by_businessId_phone", (q: any) =>
+            .withIndex("by_businessId_phone", (q) =>
                 q.eq("businessId", businessId).eq("phone", customer.phone)
             )
             .unique();
@@ -600,7 +600,7 @@ async function seedCustomers(
     for (const distributor of MOCK_DISTRIBUTORS) {
         const existing = await ctx.db
             .query("customers")
-            .withIndex("by_businessId_phone", (q: any) =>
+            .withIndex("by_businessId_phone", (q) =>
                 q.eq("businessId", businessId).eq("phone", distributor.phone)
             )
             .unique();
@@ -634,8 +634,8 @@ async function seedSuppliers(
     for (const supplier of MOCK_SUPPLIERS) {
         const existing = await ctx.db
             .query("suppliers")
-            .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
-            .filter((q: any) => q.eq(q.field("name"), supplier.name))
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .filter((q) => q.eq(q.field("name"), supplier.name))
             .first();
         if (existing) continue;
 
@@ -688,8 +688,8 @@ async function seedPromotions(
     for (const promotion of promotions) {
         const existing = await ctx.db
             .query("promotions")
-            .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
-            .filter((q: any) => q.eq(q.field("name"), promotion.name))
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .filter((q) => q.eq(q.field("name"), promotion.name))
             .first();
         if (existing) continue;
 
@@ -711,8 +711,8 @@ async function seedPromotions(
 
     const promotion = await ctx.db
         .query("promotions")
-        .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
-        .filter((q: any) => q.eq(q.field("name"), "Buy 3, get 1 free"))
+        .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+        .filter((q) => q.eq(q.field("name"), "Buy 3, get 1 free"))
         .first();
 
     let promotionId: Id<"promotions">;
@@ -730,8 +730,8 @@ async function seedPromotions(
 
     const linked = await ctx.db
         .query("promotionProducts")
-        .withIndex("by_promotion", (q: any) => q.eq("promotionId", promotionId))
-        .filter((q: any) => q.eq(q.field("stockId"), stockId))
+        .withIndex("by_promotion", (q) => q.eq("promotionId", promotionId))
+        .filter((q) => q.eq(q.field("stockId"), stockId))
         .first();
     if (linked) return;
 
@@ -799,7 +799,7 @@ async function seedExpenses(
 
             const existing = await ctx.db
                 .query("expenses")
-                .withIndex("by_businessId_date", (q: any) =>
+                .withIndex("by_businessId_date", (q) =>
                     q.eq("businessId", businessId).eq("date", date)
                 )
                 .first();
@@ -855,7 +855,7 @@ async function seedStaff(
 
         let account = await ctx.db
             .query("users")
-            .withIndex("by_email", (q: any) => q.eq("email", email))
+            .withIndex("by_email", (q) => q.eq("email", email))
             .unique();
 
         if (!account) {
@@ -882,7 +882,7 @@ async function seedStaff(
 
         const membership = await ctx.db
             .query("memberships")
-            .withIndex("by_businessId_userId", (q: any) =>
+            .withIndex("by_businessId_userId", (q) =>
                 q.eq("businessId", businessId).eq("userId", account!._id)
             )
             .unique();
@@ -921,7 +921,7 @@ async function resolveAnchor(
 ): Promise<number> {
     const sales = await ctx.db
         .query("sales")
-        .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
+        .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
         .collect();
 
     let earliest: number | null = null;
@@ -1111,8 +1111,8 @@ export const seedMockData = mutation({
 
         const warehouse = await ctx.db
             .query("warehouses")
-            .withIndex("by_businessId", (q: any) => q.eq("businessId", businessId))
-            .filter((q: any) => q.eq(q.field("isDefault"), true))
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .filter((q) => q.eq(q.field("isDefault"), true))
             .first();
 
         const stockIds = await seedProducts(

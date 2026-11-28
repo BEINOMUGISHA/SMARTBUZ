@@ -46,9 +46,28 @@ const SECRET = "a-test-server-secret-that-is-long-enough";
 /** The deployment the seeder says it means to write to. */
 const DEPLOYMENT = "dev:test-deployment";
 
+/** What the seeder says it did. */
+interface SeedReport {
+    products: number;
+    customers: number;
+    salesPlanned: number;
+    salesWritten: number;
+    nextCursor: number | null;
+    complete: boolean;
+    anchor: string;
+    staff: Array<{ email: string; password: string; role: string }>;
+}
+
 /** Invoke the mutation's handler directly. */
-async function call(ctx: unknown, args: Record<string, unknown> = {}): Promise<any> {
-    const handler = (seedMockData as unknown as { _handler: Function })._handler;
+async function call(
+    ctx: unknown,
+    args: Record<string, unknown> = {}
+): Promise<SeedReport> {
+    const handler = (
+        seedMockData as unknown as {
+            _handler: (ctx: unknown, args: unknown) => Promise<SeedReport>;
+        }
+    )._handler;
     return await handler(ctx, args);
 }
 
