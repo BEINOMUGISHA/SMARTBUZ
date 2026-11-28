@@ -33,6 +33,7 @@ import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requirePermission, requireTenant } from "../tenancy";
 import { assertBarcodeIsFree, normaliseBarcode } from "../barcode";
+import { assertScreenAvailable } from "./manage";
 
 /* ────────────────────────────────────────────────────────────────────────
  * The weight maths
@@ -234,6 +235,7 @@ export const setProductUnits = mutation({
             throw new ConvexError(
                 "Forbidden: that product belongs to another business."
             );
+        await assertScreenAvailable(ctx, businessId, ["pricing"]);
         }
 
         if (args.unitsPerPack !== undefined) {

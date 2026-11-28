@@ -1,3 +1,4 @@
+"use client";
 /**
  * SMARTBUZ Auth Context
  *
@@ -17,9 +18,14 @@
  * somebody type a password.
  */
 
-"use client";
 
-import React, { createContext, useContext, useEffect, useCallback } from "react";
+import React, {
+    createContext,
+    useContext,
+    useEffect,
+    useCallback,
+    useMemo,
+} from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
@@ -91,19 +97,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Remember the session as soon as the server confirms it, so the next
   // time the network goes the till still knows who is at it.
-  useEffect(() => {
-    if (!liveMe?.user || !email) return;
-    rememberSession({
+  //
+  // The dependency is the *content* of the session, not the identity of the
+  // object it arrives in. Convex hands back a fresh object on every update,
+  // so an identity-based dependency re-wrote the cache on every render —
+  // which woke every subscriber of the cache, which re-read the session,
+  // which came back as a fresh object again.
+  const sessionContent = useMemo(() => {
+    if (!liveMe?.user || !email) return null;
+    return JSON.stringify({
       email,
-      user: liveMe.user as unknown as Record<string, unknown>,
+      user: liveMe.user,
       businesses: liveMe.businesses ?? [],
       activeBusiness: liveMe.activeBusiness ?? null,
-      permissions: (liveMe.permissions as string[]) ?? [],
+      permissions: liveMe.permissions ?? [],
     });
-  }, [liveMe, email, rememberSession]);
+  }, [liveMe, email]);
+
+  useEffect(() => {
+    if (!sessionContent) return;
+    rememberSession(JSON.parse(sessionContent));
+  }, [sessionContent, rememberSession]);
 
   // The live session when there is one; the cached one when the server
   // cannot be reached.
+  //
+  // `me` is `null` rather than `undefined` while the query is in flight and
+  // nothing has been cached yet, so it must not be used to decide whether the
+  // session is still being confirmed. See `isLoading` below.
   const me = liveMe ?? cachedSession;
 
   const user = (me?.user as User | undefined) ?? null;
@@ -112,7 +133,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     (me?.activeBusiness as AuthContextType["activeBusiness"]) ?? null;
   const permissions: readonly string[] = (me?.permissions as string[] | undefined) ?? [];
 
-  const isLoading = isRestoring || (email !== null && me === undefined);
+  /**
+   * Is the session still being confirmed?
+   *
+   * `liveMe` is `undefined` while the query is in flight and `null` once the
+   * server has answered that there is no session. Those are different
+   * answers, and the difference matters: a cold load — a new tab, a hard
+   * refresh, a new device — has no cached session, so `me` is `null` the
+   * whole time the query is running.
+   *
+   * Testing `me === undefined` here meant the loading state ended before the
+   * session had been confirmed, `user` was `null`, and the dashboard layout
+   * signed the person out and sent them to the sign-in screen. It only
+   * worked on a warm load, where a cached session happened to be present.
+   *
+   * So the question is asked of the query, which is the thing that is
+   * actually pending.
+   */
+  const isLoading = isRestoring || (email !== null && liveMe === undefined);
 
   // If the server has answered and says the session is no good, the local
   // state goes too. An unanswered server (no network) does not sign the

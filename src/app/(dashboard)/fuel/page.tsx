@@ -31,6 +31,7 @@ import { Fuel, Droplets, Plus, Gauge } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 const FUEL_TYPES = [
     { value: "petrol", label: "Petrol" },
@@ -40,7 +41,8 @@ const FUEL_TYPES = [
 ];
 
 export default function FuelPage() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const { user } = useAuth();
     const [tab, setTab] = useState("pumps");
     const [dispenseOpen, setDispenseOpen] = useState(false);
@@ -86,8 +88,8 @@ export default function FuelPage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={Fuel}
-                title="Fuel Station"
-                description="Track pumps, litres dispensed and attendant reconciliation."
+                title={t("Fuel Station")}
+                description={t("Track pumps, litres dispensed and attendant reconciliation.")}
                 actions={
                     <>
                         <CreateButton
@@ -95,14 +97,14 @@ export default function FuelPage() {
                                 setSelectedPump(null);
                                 setPumpOpen(true);
                             }}
-                            label="Add pump"
+                            label={t("Add pump")}
                         />
                         <CreateButton
                             onClick={() => {
                                 setSelectedPump(null);
                                 setDispenseOpen(true);
                             }}
-                            label="Record dispense"
+                            label={t("Record dispense")}
                         />
                     </>
                 }
@@ -125,13 +127,13 @@ export default function FuelPage() {
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="grid h-11 w-full grid-cols-3 rounded-xl border bg-muted/50 p-1.5">
                     <TabsTrigger value="pumps" className="rounded-lg text-sm font-bold">
-                        <Gauge className="mr-2 h-4 w-4" /> Pumps
+                        <Gauge className="mr-2 h-4 w-4" /> {t("Pumps")}
                     </TabsTrigger>
                     <TabsTrigger value="types" className="rounded-lg text-sm font-bold">
-                        <Droplets className="mr-2 h-4 w-4" /> By fuel type
+                        <Droplets className="mr-2 h-4 w-4" /> {t("By fuel type")}
                     </TabsTrigger>
                     <TabsTrigger value="attendants" className="rounded-lg text-sm font-bold">
-                        Attendants
+                        {t("Attendants")}
                     </TabsTrigger>
                 </TabsList>
 
@@ -140,8 +142,8 @@ export default function FuelPage() {
                         <LoadingState />
                     ) : pumps.length === 0 ? (
                         <EmptyState
-                            title="No pumps registered"
-                            hint="Add your pumps so staff can record which pump dispensed which fuel."
+                            title={t("No pumps registered")}
+                            hint={t("Add your pumps so staff can record which pump dispensed which fuel.")}
                         />
                     ) : (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -156,14 +158,14 @@ export default function FuelPage() {
                                     className="rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/5 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-500 hover:shadow-md"
                                 >
                                     <div className="flex items-start justify-between">
-                                        <p className="text-lg font-black">{p.name}</p>
-                                        <Badge variant="outline" className="text-[10px]">
+                                        <p className="text-lg font-semibold">{p.name}</p>
+                                        <Badge variant="outline" className="text-xs">
                                             {p.assetTag}
                                         </Badge>
                                     </div>
                                     <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                                         <Droplets className="h-3.5 w-3.5" />
-                                        Tap to dispense
+                                        {t("Tap to dispense")}
                                     </p>
                                 </button>
                             ))}
@@ -175,31 +177,31 @@ export default function FuelPage() {
                     {!summary ? (
                         <LoadingState />
                     ) : Object.keys(summary.byType).length === 0 ? (
-                        <EmptyState title="No dispensing recorded yet" />
+                        <EmptyState title={t("No dispensing recorded yet")} />
                     ) : (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {Object.entries(summary.byType).map(([type, v]: any) => (
                                 <Card key={type}>
                                     <CardContent className="space-y-2 p-5">
-                                        <p className="text-sm font-black capitalize">{type}</p>
-                                        <p className="text-3xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                                        <p className="text-sm font-semibold capitalize">{type}</p>
+                                        <p className="text-3xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                                             {v.litres.toFixed(1)}
                                             <span className="ml-1 text-sm font-bold text-muted-foreground">
-                                                L
+                                                {t("L")}
                                             </span>
                                         </p>
                                         <Separator />
                                         <div className="flex justify-between text-xs">
-                                            <span className="text-muted-foreground">Revenue</span>
-                                            <span className="font-black tabular-nums">
+                                            <span className="text-muted-foreground">{t("Revenue")}</span>
+                                            <span className="font-semibold tabular-nums">
                                                 {ugx(v.revenue)}
                                             </span>
                                         </div>
                                         <div className="flex justify-between text-xs">
                                             <span className="text-muted-foreground">
-                                                Dispenses
+                                                {t("Dispenses")}
                                             </span>
-                                            <span className="font-black tabular-nums">{v.count}</span>
+                                            <span className="font-semibold tabular-nums">{v.count}</span>
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -212,19 +214,19 @@ export default function FuelPage() {
                     {!summary ? (
                         <LoadingState />
                     ) : summary.byAttendant.length === 0 ? (
-                        <EmptyState title="No attendant records yet" />
+                        <EmptyState title={t("No attendant records yet")} />
                     ) : (
                         <RecordList
                             records={summary.byAttendant}
                             renderItem={(a: any) => (
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="font-black">{a.name}</p>
+                                        <p className="font-semibold">{a.name}</p>
                                         <p className="text-xs text-muted-foreground">
                                             {a.litres.toFixed(1)} litres dispensed
                                         </p>
                                     </div>
-                                    <p className="text-sm font-black tabular-nums">
+                                    <p className="text-sm font-semibold tabular-nums">
                                         {ugx(a.revenue)}
                                     </p>
                                 </div>
@@ -237,8 +239,8 @@ export default function FuelPage() {
             <FormDialog
                 open={dispenseOpen}
                 onOpenChange={setDispenseOpen}
-                title="Record fuel dispense"
-                description="Litres and price per litre are recorded for reconciliation."
+                title={t("Record fuel dispense")}
+                description={t("Litres and price per litre are recorded for reconciliation.")}
                 submitLabel="Record dispense"
                 fields={[
                     {
@@ -269,7 +271,7 @@ export default function FuelPage() {
             <FormDialog
                 open={pumpOpen}
                 onOpenChange={setPumpOpen}
-                title="Add pump"
+                title={t("Add pump")}
                 submitLabel="Add pump"
                 fields={[
                     { name: "assetTag", label: "Pump tag", required: true, placeholder: "e.g. PUMP-01" },

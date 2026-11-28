@@ -1,0 +1,41 @@
+{
+  "sw": {
+    "Official POS for Retail, Wholesale & MLM": "POS Rasmi ya Rejareja, Uuzaji wa Wingi na MLM",
+    "The screens it brings": "Skrini zinaz huza",
+    "Retail Commerce in Uganda": "Biashara ya Uuzaji wa Rejareja Uganda",
+    "Unique customers": "Wateja wa pekee",
+    "UNIQUE CUSTOMERS": "WATEJA WA PEKEE",
+    "Unique beneficiaries": "Wanafaa wa pekee",
+    "Clear Filters": "Futa Vichujio",
+    "Clear All Filters": "Futa Vichujio Vyote",
+    "Manage your diary and keep every chair, room and practitioner booked.": "Simamia ratiba yako na kuhakikisha kila kiti, chumba na mtaalamu wamewekwa.",
+    "DUE DATE:": "TAREHE YA MWISHO:",
+    "Mark the register and keep a daily attendance rate.": "Weka alama kwenye rejesta na hifadhi kiwango cha ushiriki cha kila siku.",
+    "Record an attendance mark": "Rekodi alama ya ushiriki",
+    "Count the cash in the drawer and enter it. The expected figure is worked out from the sales you took and the money you moved in and out — it is not asked of you.": "Ihesabu pesa ilyo ndani ya kasha kisha uingize. Takribo inayotarajiwa hutokana na uuzaji uliofanywa na pesa uliyoingiza na kutoa — siwa uliulizwa.",
+    "Count the drawer and close": "Hesabu kasha kisha funga",
+    "Open a cash float at the start of a shift, and reconcile the drawer against what should be in it.": "Funga salio la kwanza la pesa mwanzo wa shifti, kisha sanidi kasha na kile kinachopaswa kuwa ndani yake.",
+    "Should be in the drawer": "Inapaswa kuwa ndani ya kasha",
+    "The printers, scanners, drawers and scales at your counters.": "Vichapisho, vichanganuzi, kasha na mizani katika kaunta zako.",
+    "SMART_BUZ applies URA&apos;s 18% standard rate. Exempt and zero-rated items must be marked per product so your VAT split stays accurate on every receipt.": "SMART_BUZ inatumia kiwango cha wastani cha URA cha 18%. Bidhaa zilizo hurithi na zilizobewa bei ya sifuri lazima zilelezwe kwa kila bidhaa ili mgawanyiko wa VAT ukae sahihi kwenye kila risiti.",
+    "Reset Password Background": "Mandhari ya Kuweka Nenosiri Jipya",
+    "The offers this business has put in front of its customers — what is still being written, what is out, and what has been accepted and is ready to become a sale.": "Ofa ambazo biashara hii imeweka mbele ya wateja wake — zile bado zikiandikwa, zile zilizo zimeisha, na zile zilizokubaliwa na ziko tayari kuwa uuzaji."
+  },
+  "lg": {
+    "Official POS for Retail, Wholesale & MLM": "POS Rasmi ya Retail, Wholesale n'MLM",
+    "Clear Filters": "Yogerako Ebichujio",
+    "Clear All Filters": "Yogerako Ebichujio Byonna",
+    "Queue Empty": "Olunaku lwa bweeri",
+    "Money in is a positive amount; money out is a negative one. The sign is what the ledger keeps.": "Ensimbi ez'etola ziba nkato; ez'eva ziba nkato. Omukango eno ekisomo kimutwala.",
+    "The ledger keeps the amount signed the same way.": "Ekitabo kikuumyeza kiwendererwa n'omukango.",
+    "Cancelled from the console.": "Yaggyibwa okuva ku kizibu.",
+    "Retired from the console.": "Waggalwa okuva ku kizibu.",
+    "Revoked from the console.": "Ebaggulwa okuva ku kizibu.",
+    "SMART_BUZ applies URA&apos;s 18% standard rate. Exempt and zero-rated items must be marked per product so your VAT split stays accurate on every receipt.": "SMART_BUZ ekozesa mutengo gwa kikulu gwa URA gwa 18%. Ebizibu ebitali kusembwa n'ebijja ebikka mutengo wa zero birina okulengolelwa buli kituku era omutwuka wa VAT wateekeregana mu kafandi buli.",
+    "Margin Percentage": "Buoto bwa Omutwuka",
+    "No menu items yet — add some from the Menu tab.": "Tewali ebizibu by'emmenu bado — yoongeza okuva ku tab y'emmenu.",
+    "Unique customers": "Abateekateeka abasinga",
+    "UNIQUE CUSTOMERS": "ABATEEKATEEKA ABASINGA",
+    "Unique beneficiaries": "Abasoma abasinga"
+  }
+}

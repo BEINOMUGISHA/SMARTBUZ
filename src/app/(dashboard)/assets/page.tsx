@@ -31,9 +31,11 @@ import { Boxes, Bus, Route, Plus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export default function AssetsPage() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const { user } = useAuth();
     const [tab, setTab] = useState("assets");
     const [search, setSearch] = useState("");
@@ -120,20 +122,20 @@ export default function AssetsPage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={Boxes}
-                title="Assets, Vehicles & Fares"
-                description="Track what you own, what it is worth and what it earns."
+                title={t("Assets, Vehicles & Fares")}
+                description={t("Track what you own, what it is worth and what it earns.")}
             />
 
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="grid h-11 w-full grid-cols-3 rounded-xl border bg-muted/50 p-1.5">
                     <TabsTrigger value="assets" className="rounded-lg text-sm font-bold">
-                        <Boxes className="mr-2 h-4 w-4" /> Asset register
+                        <Boxes className="mr-2 h-4 w-4" /> {t("Asset register")}
                     </TabsTrigger>
                     <TabsTrigger value="vehicles" className="rounded-lg text-sm font-bold">
-                        <Bus className="mr-2 h-4 w-4" /> Vehicles
+                        <Bus className="mr-2 h-4 w-4" /> {t("Vehicles")}
                     </TabsTrigger>
                     <TabsTrigger value="fares" className="rounded-lg text-sm font-bold">
-                        <Route className="mr-2 h-4 w-4" /> Route fares
+                        <Route className="mr-2 h-4 w-4" /> {t("Route fares")}
                     </TabsTrigger>
                 </TabsList>
 
@@ -143,7 +145,7 @@ export default function AssetsPage() {
                         <SearchBox
                             value={search}
                             onChange={setSearch}
-                            placeholder="Search assets…"
+                            placeholder={t("Search assets…")}
                             className="sm:max-w-sm"
                         />
                         <CreateButton
@@ -151,7 +153,7 @@ export default function AssetsPage() {
                                 setEditingAsset(null);
                                 setAssetOpen(true);
                             }}
-                            label="Add asset"
+                            label={t("Add asset")}
                         />
                     </div>
 
@@ -159,8 +161,8 @@ export default function AssetsPage() {
                         <LoadingState />
                     ) : visibleAssets.length === 0 ? (
                         <EmptyState
-                            title="No assets recorded"
-                            hint="Register pumps, generators, tools and equipment so you know what the business owns and what it is worth."
+                            title={t("No assets recorded")}
+                            hint={t("Register pumps, generators, tools and equipment so you know what the business owns and what it is worth.")}
                         />
                     ) : (
                         <RecordList
@@ -171,8 +173,8 @@ export default function AssetsPage() {
                                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <p className="font-black">{a.name}</p>
-                                                <Badge variant="outline" className="font-mono text-[10px]">
+                                                <p className="font-semibold">{a.name}</p>
+                                                <Badge variant="outline" className="font-mono text-xs">
                                                     {a.assetTag}
                                                 </Badge>
                                                 <StatusBadge status={a.status} />
@@ -185,12 +187,12 @@ export default function AssetsPage() {
                                         </div>
                                         <div className="flex shrink-0 items-center gap-3">
                                             <div className="text-right">
-                                                <p className="text-sm font-black tabular-nums">
+                                                <p className="text-sm font-semibold tabular-nums">
                                                     {ugx(a.currentValue ?? a.purchaseCost ?? 0)}
                                                 </p>
                                                 {dep !== null && (
-                                                    <p className="text-[10px] text-muted-foreground">
-                                                        {dep}% depreciated
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {dep}{t("% depreciated")}
                                                     </p>
                                                 )}
                                             </div>
@@ -203,7 +205,7 @@ export default function AssetsPage() {
                                                 }}
                                             >
                                                 <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                                Edit
+                                                {t("Edit")}
                                             </Button>
                                         </div>
                                     </div>
@@ -221,7 +223,7 @@ export default function AssetsPage() {
                                 setEditingVehicle(null);
                                 setVehicleOpen(true);
                             }}
-                            label="Add vehicle"
+                            label={t("Add vehicle")}
                         />
                     </div>
 
@@ -229,8 +231,8 @@ export default function AssetsPage() {
                         <LoadingState />
                     ) : vehicles.length === 0 ? (
                         <EmptyState
-                            title="No vehicles registered"
-                            hint="Add your taxis, buses and trucks to track drivers, routes and servicing dates."
+                            title={t("No vehicles registered")}
+                            hint={t("Add your taxis, buses and trucks to track drivers, routes and servicing dates.")}
                         />
                     ) : (
                         <RecordList
@@ -239,12 +241,12 @@ export default function AssetsPage() {
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-mono text-sm font-black">
+                                            <p className="font-mono text-sm font-semibold">
                                                 {v.registration}
                                             </p>
                                             <StatusBadge status={v.status ?? "active"} />
                                             {v.type && (
-                                                <Badge variant="outline" className="text-[10px] capitalize">
+                                                <Badge variant="outline" className="text-xs capitalize">
                                                     {v.type}
                                                 </Badge>
                                             )}
@@ -256,13 +258,11 @@ export default function AssetsPage() {
                                         </p>
                                         {v.nextServiceDate && (
                                             <p
-                                                className={`mt-0.5 text-[10px] font-bold ${
-                                                    serviceOverdue(v)
+                                                className={`mt-0.5 text-xs font-bold ${serviceOverdue(v)
                                                         ? "text-red-600 dark:text-red-400"
-                                                        : "text-muted-foreground"
-                                                }`}
+                                                        : "text-muted-foreground"}`}
                                             >
-                                                Next service {shortDate(v.nextServiceDate)}
+                                                {t("Next service")} {shortDate(v.nextServiceDate)}
                                                 {serviceOverdue(v) ? " — OVERDUE" : ""}
                                             </p>
                                         )}
@@ -276,7 +276,7 @@ export default function AssetsPage() {
                                         }}
                                     >
                                         <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                        Edit
+                                        {t("Edit")}
                                     </Button>
                                 </div>
                             )}
@@ -292,7 +292,7 @@ export default function AssetsPage() {
                                 setEditingFare(null);
                                 setFareOpen(true);
                             }}
-                            label="Add fare"
+                            label={t("Add fare")}
                         />
                     </div>
 
@@ -300,8 +300,8 @@ export default function AssetsPage() {
                         <LoadingState />
                     ) : fares.length === 0 ? (
                         <EmptyState
-                            title="No routes yet"
-                            hint="Add your routes and fares so trips can be priced consistently."
+                            title={t("No routes yet")}
+                            hint={t("Add your routes and fares so trips can be priced consistently.")}
                         />
                     ) : (
                         <RecordList
@@ -310,15 +310,15 @@ export default function AssetsPage() {
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-black">{f.routeName}</p>
+                                            <p className="font-semibold">{f.routeName}</p>
                                             {f.vehicleType && (
-                                                <Badge variant="outline" className="text-[10px] capitalize">
+                                                <Badge variant="outline" className="text-xs capitalize">
                                                     {f.vehicleType}
                                                 </Badge>
                                             )}
                                             {f.active === false && (
-                                                <Badge variant="destructive" className="text-[10px]">
-                                                    Inactive
+                                                <Badge variant="destructive" className="text-xs">
+                                                    {t("Inactive")}
                                                 </Badge>
                                             )}
                                         </div>
@@ -329,7 +329,7 @@ export default function AssetsPage() {
                                         )}
                                     </div>
                                     <div className="flex shrink-0 items-center gap-3">
-                                        <p className="text-sm font-black tabular-nums">{ugx(f.fare)}</p>
+                                        <p className="text-sm font-semibold tabular-nums">{ugx(f.fare)}</p>
                                         <Button
                                             size="sm"
                                             variant="outline"
@@ -339,7 +339,7 @@ export default function AssetsPage() {
                                             }}
                                         >
                                             <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                            Edit
+                                            {t("Edit")}
                                         </Button>
                                     </div>
                                 </div>

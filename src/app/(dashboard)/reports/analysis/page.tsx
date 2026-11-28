@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import type { ExportColumn } from "@/lib/export";
 import { number, percent, date } from "@/lib/export";
+import { useT } from "@/i18n/provider";
 
 function startOfMonth(): string {
     return new Date().toISOString().slice(0, 8) + "01";
@@ -62,7 +63,8 @@ function today(): string {
 const DEFAULT_FILTERS: FinanceFilters = { from: startOfMonth(), to: today() };
 
 export default function BusinessIntelligencePage() {
-    const { can } = useAuth();
+    
+    const t = useT();const { can } = useAuth();
     const [filters, setFilters] = useState<FinanceFilters>(DEFAULT_FILTERS);
     const [tab, setTab] = useState("sales");
     const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
@@ -119,12 +121,12 @@ export default function BusinessIntelligencePage() {
             <div className="space-y-6">
                 <VerticalPageHeader
                     icon={BarChart3}
-                    title="Business Intelligence"
-                    description="Sales, profit, stock and debt — all from the records."
+                    title={t("Business Intelligence")}
+                    description={t("Sales, profit, stock and debt — all from the records.")}
                 />
                 <EmptyState
-                    title="Reports are not available to your role"
-                    hint="Ask an administrator if you need to run the reporting suite."
+                    title={t("Reports are not available to your role")}
+                    hint={t("Ask an administrator if you need to run the reporting suite.")}
                 />
             </div>
         );
@@ -134,8 +136,8 @@ export default function BusinessIntelligencePage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={BarChart3}
-                title="Business Intelligence"
-                description="Sales, profit, stock and debt — all from the records."
+                title={t("Business Intelligence")}
+                description={t("Sales, profit, stock and debt — all from the records.")}
             />
 
             <FinanceFilterBar
@@ -147,34 +149,34 @@ export default function BusinessIntelligencePage() {
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="flex h-11 w-full flex-wrap gap-1 rounded-xl border bg-muted/50 p-1.5">
                     <TabsTrigger value="sales" className="rounded-lg text-sm font-bold">
-                        Sales
+                        {t("Sales")}
                     </TabsTrigger>
                     <TabsTrigger value="profit" className="rounded-lg text-sm font-bold">
-                        Profit
+                        {t("Profit")}
                     </TabsTrigger>
                     <TabsTrigger value="expenses" className="rounded-lg text-sm font-bold">
-                        Expenses
+                        {t("Expenses")}
                     </TabsTrigger>
                     <TabsTrigger value="products" className="rounded-lg text-sm font-bold">
-                        Products
+                        {t("Products")}
                     </TabsTrigger>
                     <TabsTrigger value="stock" className="rounded-lg text-sm font-bold">
-                        Stock value
+                        {t("Stock value")}
                     </TabsTrigger>
                     <TabsTrigger value="people" className="rounded-lg text-sm font-bold">
-                        By cashier
+                        {t("By cashier")}
                     </TabsTrigger>
                     <TabsTrigger value="branches" className="rounded-lg text-sm font-bold">
-                        By branch
+                        {t("By branch")}
                     </TabsTrigger>
                     <TabsTrigger value="methods" className="rounded-lg text-sm font-bold">
-                        Payment methods
+                        {t("Payment methods")}
                     </TabsTrigger>
                     <TabsTrigger value="receivables" className="rounded-lg text-sm font-bold">
-                        Customer debt
+                        {t("Customer debt")}
                     </TabsTrigger>
                     <TabsTrigger value="payables" className="rounded-lg text-sm font-bold">
-                        Supplier debt
+                        {t("Supplier debt")}
                     </TabsTrigger>
                 </TabsList>
 
@@ -194,10 +196,15 @@ export default function BusinessIntelligencePage() {
                         {sales && (
                             <div className="ml-auto">
                                 <ExportMenu
-                                    title={`${period}-sales`}
+                                    title={t("{0}-sales", {
+            0: period,
+        })}
                                     rows={sales.series as any[]}
                                     columns={SALES_COLUMNS}
-                                    subtitle={`${filters.from} to ${filters.to}`}
+                                    subtitle={t("{0} to {1}", {
+            0: filters.from,
+            1: filters.to,
+        })}
                                 />
                             </div>
                         )}
@@ -227,8 +234,8 @@ export default function BusinessIntelligencePage() {
                                 <CardContent className="p-0">
                                     {sales.series.length === 0 ? (
                                         <EmptyState
-                                            title="No sales in this period"
-                                            hint="Nothing was sold between these dates."
+                                            title={t("No sales in this period")}
+                                            hint={t("Nothing was sold between these dates.")}
                                         />
                                     ) : (
                                         <ReportTable
@@ -287,7 +294,7 @@ export default function BusinessIntelligencePage() {
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="text-base">
-                                        Profit and loss
+                                        {t("Profit and loss")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="profit-and-loss"
@@ -309,42 +316,45 @@ export default function BusinessIntelligencePage() {
                                             { header: "Line", key: "line" },
                                             { header: "Amount", key: "amount", format: (v) => number(v) },
                                         ]}
-                                        subtitle={`${filters.from} to ${filters.to}`}
+                                        subtitle={t("{0} to {1}", {
+            0: filters.from,
+            1: filters.to,
+        })}
                                     />
                                 </CardHeader>
                                 <CardContent className="space-y-2">
-                                    <Line label="Revenue" value={ugx(profit.revenue)} />
+                                    <Line label={t("Revenue")} value={ugx(profit.revenue)} />
                                     <Line
-                                        label="Cost of the goods sold"
+                                        label={t("Cost of the goods sold")}
                                         value={`− ${ugx(profit.costOfGoodsSold)}`}
                                     />
                                     <Line
-                                        label="Gross profit"
+                                        label={t("Gross profit")}
                                         value={ugx(profit.grossProfit)}
                                         strong
-                                        hint={`${profit.grossMargin.toFixed(1)}% margin`}
+                                        hint={t("{0}% margin", {
+            0: profit.grossMargin.toFixed(1),
+        })}
                                     />
-                                    <Line label="Other income" value={ugx(profit.otherIncome)} />
+                                    <Line label={t("Other income")} value={ugx(profit.otherIncome)} />
                                     <Line
-                                        label="Running costs"
+                                        label={t("Running costs")}
                                         value={`− ${ugx(profit.operatingExpenses)}`}
                                     />
                                     <div className="mt-3 flex items-center justify-between border-t pt-3 text-lg">
-                                        <span className="font-black">Net profit</span>
+                                        <span className="font-semibold">{t("Net profit")}</span>
                                         <span
-                                            className={`font-black tabular-nums ${
-                                                profit.netProfit >= 0
+                                            className={`font-semibold tabular-nums ${profit.netProfit >= 0
                                                     ? "text-emerald-600 dark:text-emerald-400"
-                                                    : "text-destructive"
-                                            }`}
+                                                    : "text-destructive"}`}
                                         >
                                             {ugx(profit.netProfit)}
                                         </span>
                                     </div>
-                                    <p className="text-[10px] text-muted-foreground">
-                                        Net margin {profit.netMargin.toFixed(1)}% ·{" "}
-                                        {profit.transactions} transaction(s) ·{" "}
-                                        {profit.itemsSold} item(s) sold
+                                    <p className="text-xs text-muted-foreground">
+                                        {t("Net margin")} {profit.netMargin.toFixed(1)}% ·{" "}
+                                        {profit.transactions} {t("transaction(s) ·")}{" "}
+                                        {profit.itemsSold} {t("item(s) sold")}
                                     </p>
                                 </CardContent>
                             </Card>
@@ -374,17 +384,20 @@ export default function BusinessIntelligencePage() {
                             />
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between">
-                                    <CardTitle className="text-base">Running costs</CardTitle>
+                                    <CardTitle className="text-base">{t("Running costs")}</CardTitle>
                                     <ExportMenu
                                         title="expenses"
                                         rows={(expenses.page ?? []) as any[]}
                                         columns={EXPENSE_COLUMNS}
-                                        subtitle={`${filters.from} to ${filters.to}`}
+                                        subtitle={t("{0} to {1}", {
+            0: filters.from,
+            1: filters.to,
+        })}
                                     />
                                 </CardHeader>
                                 <CardContent className="p-0">
                                     {expenses.page.length === 0 ? (
-                                        <EmptyState title="No running costs" hint="Nothing was recorded." />
+                                        <EmptyState title={t("No running costs")} hint={t("Nothing was recorded.")} />
                                     ) : (
                                         <ReportTable
                                             head={["Date", "Type", "Expense", "Received by", "Amount"]}
@@ -436,18 +449,21 @@ export default function BusinessIntelligencePage() {
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <TrendingUp className="h-4 w-4 text-emerald-600" />
-                                        Best sellers
+                                        {t("Best sellers")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="best-selling-products"
                                         rows={(best.page ?? []) as any[]}
                                         columns={BEST_COLUMNS}
-                                        subtitle={`${filters.from} to ${filters.to}`}
+                                        subtitle={t("{0} to {1}", {
+            0: filters.from,
+            1: filters.to,
+        })}
                                     />
                                 </CardHeader>
                                 <CardContent className="p-0">
                                     {best.page.length === 0 ? (
-                                        <EmptyState title="Nothing sold" hint="No sales in this period." />
+                                        <EmptyState title={t("Nothing sold")} hint={t("No sales in this period.")} />
                                     ) : (
                                         <ReportTable
                                             head={["Product", "Code", "Units", "Revenue", "Cost", "Gross profit", "Margin"]}
@@ -469,20 +485,23 @@ export default function BusinessIntelligencePage() {
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <TrendingDown className="h-4 w-4 text-amber-600" />
-                                        Slow-moving stock
+                                        {t("Slow-moving stock")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="slow-moving-products"
                                         rows={(slow.page ?? []) as any[]}
                                         columns={SLOW_COLUMNS}
-                                        subtitle={`${filters.from} to ${filters.to}`}
+                                        subtitle={t("{0} to {1}", {
+            0: filters.from,
+            1: filters.to,
+        })}
                                     />
                                 </CardHeader>
                                 <CardContent className="p-0">
                                     {slow.page.length === 0 ? (
                                         <EmptyState
-                                            title="No stock on the shelf"
-                                            hint="There is nothing sitting in stock."
+                                            title={t("No stock on the shelf")}
+                                            hint={t("There is nothing sitting in stock.")}
                                         />
                                     ) : (
                                         <ReportTable
@@ -532,7 +551,7 @@ export default function BusinessIntelligencePage() {
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Boxes className="h-4 w-4 text-muted-foreground" />
-                                        Stock valuation
+                                        {t("Stock valuation")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="stock-valuation"
@@ -542,7 +561,7 @@ export default function BusinessIntelligencePage() {
                                 </CardHeader>
                                 <CardContent className="p-0">
                                     {valuation.page.length === 0 ? (
-                                        <EmptyState title="No stock" hint="Nothing to value." />
+                                        <EmptyState title={t("No stock")} hint={t("Nothing to value.")} />
                                     ) : (
                                         <ReportTable
                                             head={["Product", "Code", "Qty", "Unit cost", "Unit price", "Value at cost", "Value at retail"]}
@@ -594,18 +613,21 @@ export default function BusinessIntelligencePage() {
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Users className="h-4 w-4 text-muted-foreground" />
-                                        Sales by cashier
+                                        {t("Sales by cashier")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="sales-by-cashier"
                                         rows={(byCashier.page ?? []) as any[]}
                                         columns={CASHIER_COLUMNS}
-                                        subtitle={`${filters.from} to ${filters.to}`}
+                                        subtitle={t("{0} to {1}", {
+            0: filters.from,
+            1: filters.to,
+        })}
                                     />
                                 </CardHeader>
                                 <CardContent className="p-0">
                                     {byCashier.page.length === 0 ? (
-                                        <EmptyState title="No sales" hint="Nothing was sold in this period." />
+                                        <EmptyState title={t("No sales")} hint={t("Nothing was sold in this period.")} />
                                     ) : (
                                         <ReportTable
                                             head={["Cashier", "Sales", "Items", "Revenue", "Gross profit", "Avg ticket"]}
@@ -656,18 +678,21 @@ export default function BusinessIntelligencePage() {
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Building2 className="h-4 w-4 text-muted-foreground" />
-                                        Sales by branch
+                                        {t("Sales by branch")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="sales-by-branch"
                                         rows={(byBranch.page ?? []) as any[]}
                                         columns={BRANCH_COLUMNS}
-                                        subtitle={`${filters.from} to ${filters.to}`}
+                                        subtitle={t("{0} to {1}", {
+            0: filters.from,
+            1: filters.to,
+        })}
                                     />
                                 </CardHeader>
                                 <CardContent className="p-0">
                                     {byBranch.page.length === 0 ? (
-                                        <EmptyState title="No sales" hint="Nothing was sold in this period." />
+                                        <EmptyState title={t("No sales")} hint={t("Nothing was sold in this period.")} />
                                     ) : (
                                         <ReportTable
                                             head={["Branch", "Sales", "Revenue", "Cost", "Gross profit", "Avg ticket"]}
@@ -717,18 +742,21 @@ export default function BusinessIntelligencePage() {
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <PieChart className="h-4 w-4 text-muted-foreground" />
-                                        How the money came in
+                                        {t("How the money came in")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="payment-method-analysis"
                                         rows={(methods.page ?? []) as any[]}
                                         columns={METHOD_COLUMNS}
-                                        subtitle={`${filters.from} to ${filters.to}`}
+                                        subtitle={t("{0} to {1}", {
+            0: filters.from,
+            1: filters.to,
+        })}
                                     />
                                 </CardHeader>
                                 <CardContent className="p-0">
                                     {methods.page.length === 0 ? (
-                                        <EmptyState title="No sales" hint="Nothing was sold in this period." />
+                                        <EmptyState title={t("No sales")} hint={t("Nothing was sold in this period.")} />
                                     ) : (
                                         <ReportTable
                                             head={["Method", "Sales", "Items", "Revenue", "Share", "Avg ticket", "Credit repaid"]}
@@ -781,7 +809,7 @@ export default function BusinessIntelligencePage() {
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Banknote className="h-4 w-4 text-muted-foreground" />
-                                        Customer debt
+                                        {t("Customer debt")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="customer-debt"
@@ -792,8 +820,8 @@ export default function BusinessIntelligencePage() {
                                 <CardContent className="p-0">
                                     {customerDebt.page.length === 0 ? (
                                         <EmptyState
-                                            title="Nobody owes anything"
-                                            hint="Every credit sale has been settled."
+                                            title={t("Nobody owes anything")}
+                                            hint={t("Every credit sale has been settled.")}
                                         />
                                     ) : (
                                         <ReportTable
@@ -850,7 +878,7 @@ export default function BusinessIntelligencePage() {
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <CreditCard className="h-4 w-4 text-muted-foreground" />
-                                        Supplier debt
+                                        {t("Supplier debt")}
                                     </CardTitle>
                                     <ExportMenu
                                         title="supplier-debt"
@@ -861,8 +889,8 @@ export default function BusinessIntelligencePage() {
                                 <CardContent className="p-0">
                                     {supplierDebt.page.length === 0 ? (
                                         <EmptyState
-                                            title="Nothing owed"
-                                            hint="Every supplier invoice has been settled."
+                                            title={t("Nothing owed")}
+                                            hint={t("Every supplier invoice has been settled.")}
                                         />
                                     ) : (
                                         <ReportTable
@@ -904,11 +932,12 @@ function Line({
     strong?: boolean;
     hint?: string;
 }) {
-    return (
+    
+    const t = useT();return (
         <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
                 {label}
-                {hint && <span className="ml-1 text-[10px]">({hint})</span>}
+                {hint && <span className="ml-1 text-xs">({hint})</span>}
             </span>
             <span className={`font-bold tabular-nums ${strong ? "text-base" : ""}`}>
                 {value}
@@ -929,7 +958,8 @@ function ReportTable({
     head: string[];
     rows: (string | number)[][];
 }) {
-    return (
+    
+    const t = useT();return (
         <div className="overflow-x-auto">
             <table className="w-full text-xs">
                 <thead className="bg-muted/60">
@@ -937,9 +967,7 @@ function ReportTable({
                         {head.map((h, i) => (
                             <th
                                 key={h}
-                                className={`px-3 py-2 font-bold ${
-                                    i === 0 ? "text-left" : "text-right"
-                                }`}
+                                className={`px-3 py-2 font-bold ${i === 0 ? "text-left" : "text-right"}`}
                             >
                                 {h}
                             </th>
@@ -952,11 +980,9 @@ function ReportTable({
                             {row.map((cell, i) => (
                                 <td
                                     key={i}
-                                    className={`px-3 py-2 ${
-                                        i === 0
+                                    className={`px-3 py-2 ${i === 0
                                             ? "text-left font-medium"
-                                            : "text-right tabular-nums"
-                                    }`}
+                                            : "text-right tabular-nums"}`}
                                 >
                                     {cell}
                                 </td>

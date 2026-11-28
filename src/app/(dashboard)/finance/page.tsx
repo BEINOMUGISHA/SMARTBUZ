@@ -55,6 +55,7 @@ import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import type { ExportColumn } from "@/lib/export";
 import { number } from "@/lib/export";
+import { useT } from "@/i18n/provider";
 /** The first day of this month — the default period for the reports. */
 function startOfMonth(): string {
     return new Date().toISOString().slice(0, 8) + "01";
@@ -70,7 +71,8 @@ const DEFAULT_FILTERS: FinanceFilters = {
 };
 
 export default function FinancePage() {
-    const { can } = useAuth();
+    
+    const t = useT();const { can } = useAuth();
     const [tab, setTab] = useState("overview");
     const [filters, setFilters] = useState<FinanceFilters>(DEFAULT_FILTERS);
 
@@ -97,12 +99,12 @@ export default function FinancePage() {
             <div className="space-y-6">
                 <VerticalPageHeader
                     icon={Wallet}
-                    title="Finance"
-                    description="The till, the cash book and the running costs of the business."
+                    title={t("Finance")}
+                    description={t("The till, the cash book and the running costs of the business.")}
                 />
                 <EmptyState
-                    title="Finance is not available to your role"
-                    hint="Ask an administrator if you need to work with the cash drawer, the shifts or the books."
+                    title={t("Finance is not available to your role")}
+                    hint={t("Ask an administrator if you need to work with the cash drawer, the shifts or the books.")}
                 />
             </div>
         );
@@ -112,8 +114,8 @@ export default function FinancePage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={Wallet}
-                title="Finance"
-                description="The till, the cash book and the running costs of the business."
+                title={t("Finance")}
+                description={t("The till, the cash book and the running costs of the business.")}
             />
 
             <FinanceFilterBar
@@ -126,32 +128,32 @@ export default function FinancePage() {
                 <TabsList className="flex h-11 w-full flex-wrap gap-1 rounded-xl border bg-muted/50 p-1.5">
                     {canSeeReports && (
                         <TabsTrigger value="overview" className="rounded-lg text-sm font-bold">
-                            Overview
+                            {t("Overview")}
                         </TabsTrigger>
                     )}
                     {canManageShifts && (
                         <TabsTrigger value="till" className="rounded-lg text-sm font-bold">
-                            Till &amp; shifts
+                            {t("Till &amp; shifts")}
                         </TabsTrigger>
                     )}
                     {canManageCash && (
                         <TabsTrigger value="cash" className="rounded-lg text-sm font-bold">
-                            Cash in / out
+                            {t("Cash in / out")}
                         </TabsTrigger>
                     )}
                     {canRecordIncome && (
                         <TabsTrigger value="income" className="rounded-lg text-sm font-bold">
-                            Income
+                            {t("Income")}
                         </TabsTrigger>
                     )}
                     {canSeeReports && (
                         <TabsTrigger value="expenses" className="rounded-lg text-sm font-bold">
-                            Expenses
+                            {t("Expenses")}
                         </TabsTrigger>
                     )}
                     {canReconcile && (
                         <TabsTrigger value="reconciliation" className="rounded-lg text-sm font-bold">
-                            Reconciliation
+                            {t("Reconciliation")}
                         </TabsTrigger>
                     )}
                 </TabsList>
@@ -201,7 +203,8 @@ export default function FinancePage() {
  * ──────────────────────────────────────────────────────────────────────── */
 
 function OverviewTab({ summary }: { summary: any }) {
-    if (!summary) return <LoadingState />;
+    
+    const t = useT();if (!summary) return <LoadingState />;
 
     const expenseColumns: ExportColumn[] = [
         { header: "Type", key: "type" },
@@ -250,7 +253,7 @@ function OverviewTab({ summary }: { summary: any }) {
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Receipt className="h-4 w-4 text-muted-foreground" />
-                            Running costs by type
+                            {t("Running costs by type")}
                         </CardTitle>
                         <ExportMenu
                             title="expenses-by-type"
@@ -261,7 +264,7 @@ function OverviewTab({ summary }: { summary: any }) {
                     <CardContent>
                         {summary.expensesByType.length === 0 ? (
                             <p className="py-6 text-center text-sm text-muted-foreground">
-                                No running costs recorded in this period.
+                                {t("No running costs recorded in this period.")}
                             </p>
                         ) : (
                             <ul className="divide-y">
@@ -272,10 +275,10 @@ function OverviewTab({ summary }: { summary: any }) {
                                     >
                                         <span className="font-medium">{row.type}</span>
                                         <span className="flex items-center gap-3">
-                                            <Badge variant="secondary" className="text-[10px]">
-                                                {row.count} item(s)
+                                            <Badge variant="secondary" className="text-xs">
+                                                {row.count} {t("item(s)")}
                                             </Badge>
-                                            <span className="font-black tabular-nums">
+                                            <span className="font-semibold tabular-nums">
                                                 {ugx(row.total)}
                                             </span>
                                         </span>
@@ -290,42 +293,42 @@ function OverviewTab({ summary }: { summary: any }) {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Scale className="h-4 w-4 text-muted-foreground" />
-                            How the money came in
+                            {t("How the money came in")}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         <Row
-                            label="Cash"
+                            label={t("Cash")}
                             value={ugx(summary.cashRevenue)}
                         />
                         <Row
-                            label="Card and transfer"
+                            label={t("Card and transfer")}
                             value={ugx(summary.otherRevenue)}
                         />
                         <Row
-                            label="Sold on credit"
+                            label={t("Sold on credit")}
                             value={ugx(summary.creditRevenue)}
-                            hint={`${summary.creditTransactions} sale(s) on credit`}
+                            hint={t("{0} sale(s) on credit", {
+            0: summary.creditTransactions,
+        })}
                         />
                         <div className="border-t pt-3">
-                            <Row label="Cost of the goods sold" value={ugx(summary.costOfGoodsSold)} />
-                            <Row label="Gross profit" value={ugx(summary.grossProfit)} />
-                            <Row label="Other income" value={ugx(summary.otherIncome)} />
-                            <Row label="Running costs" value={`− ${ugx(summary.operatingExpenses)}`} />
+                            <Row label={t("Cost of the goods sold")} value={ugx(summary.costOfGoodsSold)} />
+                            <Row label={t("Gross profit")} value={ugx(summary.grossProfit)} />
+                            <Row label={t("Other income")} value={ugx(summary.otherIncome)} />
+                            <Row label={t("Running costs")} value={`− ${ugx(summary.operatingExpenses)}`} />
                             <div className="mt-2 flex items-center justify-between border-t pt-2 text-base">
-                                <span className="font-black">Net profit</span>
+                                <span className="font-semibold">{t("Net profit")}</span>
                                 <span
-                                    className={`font-black tabular-nums ${
-                                        summary.netProfit >= 0
+                                    className={`font-semibold tabular-nums ${summary.netProfit >= 0
                                             ? "text-emerald-600 dark:text-emerald-400"
-                                            : "text-destructive"
-                                    }`}
+                                            : "text-destructive"}`}
                                 >
                                     {ugx(summary.netProfit)}
                                 </span>
                             </div>
-                            <p className="text-[10px] text-muted-foreground">
-                                Gross margin {summary.grossMargin.toFixed(1)}% · net margin{" "}
+                            <p className="text-xs text-muted-foreground">
+                                {t("Gross margin")} {summary.grossMargin.toFixed(1)}{t("% · net margin")}{" "}
                                 {summary.netMargin.toFixed(1)}%
                             </p>
                         </div>
@@ -349,7 +352,7 @@ function Row({
         <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
                 {label}
-                {hint && <span className="ml-1 text-[10px]">({hint})</span>}
+                {hint && <span className="ml-1 text-xs">({hint})</span>}
             </span>
             <span className="font-bold tabular-nums">{value}</span>
         </div>
@@ -367,7 +370,8 @@ function TillTab({
     drawer: any;
     filters: FinanceFilters;
 }) {
-    const { can } = useAuth();
+    
+    const t = useT();const { can } = useAuth();
     const [openShift, setOpenShift] = useState(false);
     const [closeShift, setCloseShift] = useState<any>(null);
 
@@ -405,17 +409,17 @@ function TillTab({
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Banknote className="h-4 w-4 text-emerald-600" />
-                            Your shift is open
+                            {t("Your shift is open")}
                         </CardTitle>
                         <Button size="sm" onClick={() => setCloseShift(current)}>
-                            Count the drawer and close
+                            {t("Count the drawer and close")}
                         </Button>
                     </CardHeader>
                     <CardContent className="grid gap-3 sm:grid-cols-4">
-                        <Mini label="Opening float" value={ugx(current.openingFloat)} />
-                        <Mini label="Cash taken" value={ugx(current.breakdown.cashSales)} />
-                        <Mini label="Put in" value={ugx(current.breakdown.cashIn)} />
-                        <Mini label="Should be in the drawer" value={ugx(current.expectedCash)} strong />
+                        <Mini label={t("Opening float")} value={ugx(current.openingFloat)} />
+                        <Mini label={t("Cash taken")} value={ugx(current.breakdown.cashSales)} />
+                        <Mini label={t("Put in")} value={ugx(current.breakdown.cashIn)} />
+                        <Mini label={t("Should be in the drawer")} value={ugx(current.expectedCash)} strong />
                     </CardContent>
                 </Card>
             ) : (
@@ -423,12 +427,12 @@ function TillTab({
                     <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
                         <Banknote className="h-10 w-10 text-muted-foreground opacity-40" />
                         <div>
-                            <p className="font-bold">You have no open shift</p>
+                            <p className="font-bold">{t("You have no open shift")}</p>
                             <p className="text-sm text-muted-foreground">
-                                Open a shift to get your float and start taking money.
+                                {t("Open a shift to get your float and start taking money.")}
                             </p>
                         </div>
-                        <Button onClick={() => setOpenShift(true)}>Open a shift</Button>
+                        <Button onClick={() => setOpenShift(true)}>{t("Open a shift")}</Button>
                     </CardContent>
                 </Card>
             )}
@@ -446,7 +450,7 @@ function TillTab({
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="text-base">Shifts</CardTitle>
+                    <CardTitle className="text-base">{t("Shifts")}</CardTitle>
                     <ExportMenu
                         title="cash-shifts"
                         rows={(shifts?.page ?? []) as any[]}
@@ -458,8 +462,8 @@ function TillTab({
                         <LoadingState />
                     ) : shifts.page.length === 0 ? (
                         <EmptyState
-                            title="No shifts in this period"
-                            hint="Shifts appear here once the till has been opened and closed."
+                            title={t("No shifts in this period")}
+                            hint={t("Shifts appear here once the till has been opened and closed.")}
                         />
                     ) : (
                         <RecordList
@@ -482,7 +486,7 @@ function TillTab({
                                                 shift.variance !== 0 && (
                                                     <Badge
                                                         variant="outline"
-                                                        className="text-[10px] font-bold text-destructive"
+                                                        className="text-xs font-bold text-destructive"
                                                     >
                                                         <AlertTriangle className="mr-1 h-3 w-3" />
                                                         {ugx(shift.variance)}
@@ -490,7 +494,7 @@ function TillTab({
                                                 )}
                                         </div>
                                         <p className="text-xs text-muted-foreground">
-                                            Opened {shortDate(shift.openedAt)}
+                                            {t("Opened")} {shortDate(shift.openedAt)}
                                             {shift.closedAt
                                                 ? ` · closed ${shortDate(shift.closedAt)}`
                                                 : " · still open"}
@@ -498,20 +502,20 @@ function TillTab({
                                     </div>
                                     <div className="flex items-center gap-4 text-xs">
                                         <span className="text-muted-foreground">
-                                            Float{" "}
+                                            {t("Float")}{" "}
                                             <span className="font-bold text-foreground">
                                                 {ugx(shift.openingFloat)}
                                             </span>
                                         </span>
                                         <span className="text-muted-foreground">
-                                            Expected{" "}
+                                            {t("Expected")}{" "}
                                             <span className="font-bold text-foreground">
                                                 {ugx(shift.expectedCash)}
                                             </span>
                                         </span>
                                         {shift.countedCash !== undefined && (
                                             <span className="text-muted-foreground">
-                                                Counted{" "}
+                                                {t("Counted")}{" "}
                                                 <span className="font-bold text-foreground">
                                                     {ugx(shift.countedCash)}
                                                 </span>
@@ -539,8 +543,8 @@ function TillTab({
             <FormDialog
                 open={openShift}
                 onOpenChange={setOpenShift}
-                title="Open a shift"
-                description="The cash you are given to start with."
+                title={t("Open a shift")}
+                description={t("The cash you are given to start with.")}
                 submitLabel="Open shift"
                 fields={[
                     {
@@ -577,7 +581,7 @@ function TillTab({
                 onOpenChange={(v) => {
                     if (!v) setCloseShift(null);
                 }}
-                title="Close the shift"
+                title={t("Close the shift")}
                 description={
                     closeShift
                         ? `Count the cash in the drawer. It should hold ${ugx(
@@ -625,15 +629,14 @@ function Mini({
     value: string;
     strong?: boolean;
 }) {
-    return (
+    
+    const t = useT();return (
         <div className="rounded-lg border bg-card p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <p className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">
                 {label}
             </p>
             <p
-                className={`mt-0.5 text-lg font-black tabular-nums ${
-                    strong ? "text-emerald-600 dark:text-emerald-400" : ""
-                }`}
+                className={`mt-0.5 text-lg font-semibold tabular-nums ${strong ? "text-emerald-600 dark:text-emerald-400" : ""}`}
             >
                 {value}
             </p>
@@ -646,7 +649,8 @@ function Mini({
  * ──────────────────────────────────────────────────────────────────────── */
 
 function CashTab({ filters }: { filters: FinanceFilters }) {
-    const [open, setOpen] = useState(false);
+    
+    const t = useT();const [open, setOpen] = useState(false);
     const movements = useQuery(api.finance.listCashMovements, {
         from: filters.from,
         to: filters.to,
@@ -676,12 +680,12 @@ function CashTab({ filters }: { filters: FinanceFilters }) {
                         { label: "Net", value: ugx(movements?.net ?? 0) },
                     ]}
                 />
-                <CreateButton onClick={() => setOpen(true)} label="Record a movement" />
+                <CreateButton onClick={() => setOpen(true)} label={t("Record a movement")} />
             </div>
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="text-base">Cash movements</CardTitle>
+                    <CardTitle className="text-base">{t("Cash movements")}</CardTitle>
                     <ExportMenu
                         title="cash-movements"
                         rows={(movements?.page ?? []) as any[]}
@@ -693,8 +697,8 @@ function CashTab({ filters }: { filters: FinanceFilters }) {
                         <LoadingState />
                     ) : movements.page.length === 0 ? (
                         <EmptyState
-                            title="No cash movements"
-                            hint="Money put into the till and money taken out of it appears here."
+                            title={t("No cash movements")}
+                            hint={t("Money put into the till and money taken out of it appears here.")}
                         />
                     ) : (
                         <RecordList
@@ -704,11 +708,9 @@ function CashTab({ filters }: { filters: FinanceFilters }) {
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span
-                                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
-                                                    movement.type === "in"
+                                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${movement.type === "in"
                                                         ? "bg-emerald-500/10 text-emerald-600"
-                                                        : "bg-amber-500/10 text-amber-600"
-                                                }`}
+                                                        : "bg-amber-500/10 text-amber-600"}`}
                                             >
                                                 {movement.type === "in" ? (
                                                     <ArrowDownLeft className="h-3.5 w-3.5" />
@@ -718,9 +720,9 @@ function CashTab({ filters }: { filters: FinanceFilters }) {
                                             </span>
                                             <div className="min-w-0">
                                                 <p className="truncate text-sm font-semibold">
-                                                    {movement.reason}
+                                                    {t(movement.reason)}
                                                 </p>
-                                                <p className="text-[11px] text-muted-foreground">
+                                                <p className="text-xs text-muted-foreground">
                                                     {movement.category} ·{" "}
                                                     {shortDate(movement.date)}
                                                     {movement.reference
@@ -731,11 +733,9 @@ function CashTab({ filters }: { filters: FinanceFilters }) {
                                         </div>
                                     </div>
                                     <p
-                                        className={`shrink-0 text-sm font-black tabular-nums ${
-                                            movement.type === "in"
+                                        className={`shrink-0 text-sm font-semibold tabular-nums ${movement.type === "in"
                                                 ? "text-emerald-600 dark:text-emerald-400"
-                                                : "text-amber-600 dark:text-amber-400"
-                                        }`}
+                                                : "text-amber-600 dark:text-amber-400"}`}
                                     >
                                         {movement.type === "in" ? "+" : "−"}
                                         {ugx(movement.amount)}
@@ -750,8 +750,8 @@ function CashTab({ filters }: { filters: FinanceFilters }) {
             <FormDialog
                 open={open}
                 onOpenChange={setOpen}
-                title="Record a cash movement"
-                description="Money into the till, or money out of it. A reference stops the same movement being recorded twice."
+                title={t("Record a cash movement")}
+                description={t("Money into the till, or money out of it. A reference stops the same movement being recorded twice.")}
                 submitLabel="Record movement"
                 fields={[
                     {
@@ -816,7 +816,8 @@ function CashTab({ filters }: { filters: FinanceFilters }) {
  * ──────────────────────────────────────────────────────────────────────── */
 
 function IncomeTab({ filters }: { filters: FinanceFilters }) {
-    const [open, setOpen] = useState(false);
+    
+    const t = useT();const [open, setOpen] = useState(false);
     const income = useQuery(api.finance.listIncome, {
         from: filters.from,
         to: filters.to,
@@ -843,12 +844,12 @@ function IncomeTab({ filters }: { filters: FinanceFilters }) {
                         { label: "Records", value: String(income?.totalCount ?? 0) },
                     ]}
                 />
-                <CreateButton onClick={() => setOpen(true)} label="Record income" />
+                <CreateButton onClick={() => setOpen(true)} label={t("Record income")} />
             </div>
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="text-base">Income that is not a sale</CardTitle>
+                    <CardTitle className="text-base">{t("Income that is not a sale")}</CardTitle>
                     <ExportMenu
                         title="other-income"
                         rows={(income?.page ?? []) as any[]}
@@ -860,8 +861,8 @@ function IncomeTab({ filters }: { filters: FinanceFilters }) {
                         <LoadingState />
                     ) : income.page.length === 0 ? (
                         <EmptyState
-                            title="No other income"
-                            hint="Rent from a third party, a service fee, a grant — money that came in without goods leaving the shelf."
+                            title={t("No other income")}
+                            hint={t("Rent from a third party, a service fee, a grant — money that came in without goods leaving the shelf.")}
                         />
                     ) : (
                         <RecordList
@@ -872,12 +873,12 @@ function IncomeTab({ filters }: { filters: FinanceFilters }) {
                                         <p className="truncate text-sm font-semibold">
                                             {row.source}
                                         </p>
-                                        <p className="text-[11px] text-muted-foreground">
+                                        <p className="text-xs text-muted-foreground">
                                             {shortDate(row.date)}
                                             {row.description ? ` · ${row.description}` : ""}
                                         </p>
                                     </div>
-                                    <p className="shrink-0 text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                                    <p className="shrink-0 text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                                         +{ugx(row.amount)}
                                     </p>
                                 </div>
@@ -890,8 +891,8 @@ function IncomeTab({ filters }: { filters: FinanceFilters }) {
             <FormDialog
                 open={open}
                 onOpenChange={setOpen}
-                title="Record income"
-                description="Money that came in without goods leaving the shelf."
+                title={t("Record income")}
+                description={t("Money that came in without goods leaving the shelf.")}
                 submitLabel="Record income"
                 fields={[
                     {
@@ -937,7 +938,8 @@ function IncomeTab({ filters }: { filters: FinanceFilters }) {
  * ──────────────────────────────────────────────────────────────────────── */
 
 function ExpensesTab({ filters }: { filters: FinanceFilters }) {
-    const report = useQuery(api.analytics.getExpenseReport, {
+    
+    const t = useT();const report = useQuery(api.analytics.getExpenseReport, {
         from: filters.from,
         to: filters.to,
         branchId: filters.branchId,
@@ -970,7 +972,7 @@ function ExpensesTab({ filters }: { filters: FinanceFilters }) {
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="text-base">Running costs</CardTitle>
+                    <CardTitle className="text-base">{t("Running costs")}</CardTitle>
                     <ExportMenu
                         title="expenses"
                         rows={(report.page ?? []) as any[]}
@@ -980,8 +982,8 @@ function ExpensesTab({ filters }: { filters: FinanceFilters }) {
                 <CardContent>
                     {report.page.length === 0 ? (
                         <EmptyState
-                            title="No running costs"
-                            hint="The costs of running the business appear here once they are recorded."
+                            title={t("No running costs")}
+                            hint={t("The costs of running the business appear here once they are recorded.")}
                         />
                     ) : (
                         <RecordList
@@ -992,12 +994,12 @@ function ExpensesTab({ filters }: { filters: FinanceFilters }) {
                                         <p className="truncate text-sm font-semibold">
                                             {row.expense}
                                         </p>
-                                        <p className="text-[11px] text-muted-foreground">
-                                            {row.type} · {shortDate(row.date)} · received by{" "}
+                                        <p className="text-xs text-muted-foreground">
+                                            {row.type} · {shortDate(row.date)} {t("· received by")}{" "}
                                             {row.receivedBy}
                                         </p>
                                     </div>
-                                    <p className="shrink-0 text-sm font-black tabular-nums">
+                                    <p className="shrink-0 text-sm font-semibold tabular-nums">
                                         {ugx(row.amount)}
                                     </p>
                                 </div>
@@ -1015,7 +1017,8 @@ function ExpensesTab({ filters }: { filters: FinanceFilters }) {
  * ──────────────────────────────────────────────────────────────────────── */
 
 function ReconciliationTab() {
-    const [open, setOpen] = useState(false);
+    
+    const t = useT();const [open, setOpen] = useState(false);
     const list = useQuery(api.finance.listReconciliations, { limit: 50 });
     const reconcile = useMutation(api.finance.reconcile);
 
@@ -1043,14 +1046,14 @@ function ReconciliationTab() {
                         },
                     ]}
                 />
-                <CreateButton onClick={() => setOpen(true)} label="Reconcile" />
+                <CreateButton onClick={() => setOpen(true)} label={t("Reconcile")} />
             </div>
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle className="flex items-center gap-2 text-base">
                         <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                        Reconciliations
+                        {t("Reconciliations")}
                     </CardTitle>
                     <ExportMenu
                         title="reconciliations"
@@ -1063,8 +1066,8 @@ function ReconciliationTab() {
                         <LoadingState />
                     ) : list.page.length === 0 ? (
                         <EmptyState
-                            title="Nothing reconciled yet"
-                            hint="Compare what a provider says was paid in against what the books recorded."
+                            title={t("Nothing reconciled yet")}
+                            hint={t("Compare what a provider says was paid in against what the books recorded.")}
                         />
                     ) : (
                         <RecordList
@@ -1082,25 +1085,23 @@ function ReconciliationTab() {
                                                         ? "secondary"
                                                         : "destructive"
                                                 }
-                                                className="text-[10px] font-bold"
+                                                className="text-xs font-bold"
                                             >
                                                 {row.status === "reconciled"
                                                     ? "BALANCED"
                                                     : "DISCREPANCY"}
                                             </Badge>
                                         </div>
-                                        <p className="text-[11px] text-muted-foreground">
-                                            {row.statementReference} · statement{" "}
-                                            {ugx(row.statementAmount)} · books{" "}
+                                        <p className="text-xs text-muted-foreground">
+                                            {row.statementReference} {t("· statement")}{" "}
+                                            {ugx(row.statementAmount)} {t("· books")}{" "}
                                             {ugx(row.recordedAmount)}
                                         </p>
                                     </div>
                                     <p
-                                        className={`shrink-0 text-sm font-black tabular-nums ${
-                                            row.variance === 0
+                                        className={`shrink-0 text-sm font-semibold tabular-nums ${row.variance === 0
                                                 ? "text-emerald-600 dark:text-emerald-400"
-                                                : "text-destructive"
-                                        }`}
+                                                : "text-destructive"}`}
                                     >
                                         {row.variance > 0 ? "+" : ""}
                                         {ugx(row.variance)}
@@ -1115,8 +1116,8 @@ function ReconciliationTab() {
             <FormDialog
                 open={open}
                 onOpenChange={setOpen}
-                title="Reconcile a payment method"
-                description="What the provider says was paid in, against what the books recorded."
+                title={t("Reconcile a payment method")}
+                description={t("What the provider says was paid in, against what the books recorded.")}
                 submitLabel="Reconcile"
                 fields={[
                     {

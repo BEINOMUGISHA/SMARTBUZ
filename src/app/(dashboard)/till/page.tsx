@@ -5,6 +5,22 @@
  *
  * Cash-shift management. Every cashier opens a till with a float and closes
  * it against counted cash, so variance is visible instead of guessed.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * Why this page reads from `finance` and not from `verticals.operations`
+ * ────────────────────────────────────────────────────────────────────────
+ *
+ * It used to use a second, parallel set of tables (`tillSessions`) whose
+ * "expected cash" was a number the browser supplied. The form pre-filled it
+ * with the opening float, so the variance was counted minus the float — the
+ * cash taken during the shift was never part of the comparison, and a till
+ * that had taken a thousand in sales would report a thousand missing.
+ *
+ * The real shift model already exists in `convex/finance.ts`: it adds the
+ * cash sales, the money put in and the money taken out to the opening float
+ * and works out the variance on the server, where the numbers cannot be
+ * faked. This page uses that model, and the expected figure is shown to the
+ * operator rather than asked of them.
  */
 
 import { useState } from "react";
@@ -12,240 +28,476 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useAuth } from "@/context/auth-context";
 import {
-    VerticalPageHeader,
-    StatStrip,
-    StatusBadge,
-    LoadingState,
-    EmptyState,
-    FormDialog,
-    CreateButton,
-    RecordList,
-    ugx,
-    shortDate,
-} from "@/components/vertical/ui-kit";
+    PageHeader,
+    SectionCard,
+    StatCard,
+    StatGrid,
+    DataState,
+} from "@/components/app/page-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Wallet, Plus, Lock, AlertTriangle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { Wallet, Lock, AlertTriangle, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { statusTone } from "@/lib/status-tone";
+import { useT } from "@/i18n/provider";
+
+function money(amount: number | undefined | null, currency: string): string {
+    return `${currency} ${Math.round(amount ?? 0).toLocaleString("en-UG")}`;
+}
+
+function shortDate(value?: string | null): string {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleDateString("en-UG", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+    });
+}
+
+function shortTime(value?: string | null): string {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleTimeString("en-UG", {
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
 
 export default function TillPage() {
-    const { currency } = useCurrency();
-    const { user } = useAuth();
+    
+    const t = useT();const { currency } = useCurrency();
     const [openOpen, setOpenOpen] = useState(false);
     const [closeFor, setCloseFor] = useState<any>(null);
-    const [tab, setTab] = useState("open");
+    const [tab, setTab] = useState<"open" | "closed">("open");
 
-    const openSessions = useQuery(api.verticals.operations.listTillSessions, {
+    const [floatValue, setFloatValue] = useState("0");
+    const [openNotes, setOpenNotes] = useState("");
+    const [opening, setOpening] = useState(false);
+
+    const [countedCash, setCountedCash] = useState("");
+    const [closeNotes, setCloseNotes] = useState("");
+    const [closing, setClosing] = useState(false);
+
+    const openSessions = useQuery(api.finance.listShifts, {
         status: "open",
         limit: 50,
     });
-    const closedSessions = useQuery(api.verticals.operations.listTillSessions, {
+    const closedSessions = useQuery(api.finance.listShifts, {
         status: "closed",
         limit: 50,
     });
 
-    const openTill = useMutation(api.verticals.operations.openTillSession);
-    const closeTill = useMutation(api.verticals.operations.closeTillSession);
+    const openShift = useMutation(api.finance.openShift);
+    const closeShift = useMutation(api.finance.closeShift);
 
-    const handleOpen = async (values: Record<string, string>) => {
-        if (!user) return;
-        await openTill({
-            userId: user._id,
-            userName: `${user.first_name} ${user.last_name}`,
-            openingFloat: Number(values.openingFloat) || 0,
-            notes: values.notes || undefined,
-        });
-        toast.success("Till opened");
-    };
+    const sessions = tab === "open" ? openSessions : closedSessions;
+    const rows = sessions?.page ?? [];
 
-    const handleClose = async (values: Record<string, string>) => {
-        if (!closeFor) return;
-        const expected = Number(values.expectedCash);
-        const counted = Number(values.countedCash);
+    const totalFloat = (openSessions?.page ?? []).reduce(
+        (s: number, x: any) => s + (x.openingFloat ?? 0),
+        0
+    );
+    const totalVariance = (closedSessions?.page ?? []).reduce(
+        (s: number, x: any) => s + (x.variance ?? 0),
+        0
+    );
+    const shortCount = (closedSessions?.page ?? []).filter(
+        (x: any) => Math.abs(x.variance ?? 0) > 0.01
+    ).length;
+
+    /* ── Open a shift ─────────────────────────────────────────────── */
+    const handleOpen = async () => {
+        setOpening(true);
         try {
-            const res: any = await closeTill({
-                id: closeFor._id,
-                expectedCash: expected,
-                countedCash: counted,
-                notes: values.notes || undefined,
+            await openShift({
+                openingFloat: Number(floatValue) || 0,
+                notes: openNotes || undefined,
             });
-            const v = res.variance ?? 0;
-            toast.success(
-                v === 0
-                    ? "Till closed — cash matches perfectly"
-                    : `Till closed — variance ${v > 0 ? "+" : ""}${ugx(v)}`
-            );
-            setCloseFor(null);
+            toast.success("Till opened");
+            setOpenOpen(false);
+            setFloatValue("0");
+            setOpenNotes("");
         } catch (err) {
             toast.error(formatError(err));
+        } finally {
+            setOpening(false);
         }
     };
 
-    const sessions = tab === "open" ? openSessions : closedSessions;
-    const totalFloat = (openSessions ?? []).reduce(
-        (s, x: any) => s + (x.openingFloat ?? 0),
-        0
-    );
-    const variances = (closedSessions ?? []).filter((x: any) => x.variance !== undefined);
-    const totalVariance = variances.reduce((s: number, x: any) => s + (x.variance ?? 0), 0);
+    /* ── Close a shift ─────────────────────────────────────────────── */
+    const handleClose = async () => {
+        if (!closeFor) return;
+        setClosing(true);
+        try {
+            const res: any = await closeShift({
+                shiftId: closeFor._id,
+                countedCash: Number(countedCash) || 0,
+                notes: closeNotes || undefined,
+            });
+            const v = res?.variance ?? 0;
+            toast.success(
+                Math.abs(v) < 0.01
+                    ? "Till closed — the cash matches exactly"
+                    : `Till closed — variance ${v > 0 ? "+" : ""}${money(v, currency)}`
+            );
+            setCloseFor(null);
+            setCountedCash("");
+            setCloseNotes("");
+        } catch (err) {
+            toast.error(formatError(err));
+        } finally {
+            setClosing(false);
+        }
+    };
+
+    const varianceTone = (value: number) =>
+        value < 0 ? "text-danger" : value > 0 ? "text-warning" : "text-success";
 
     return (
         <div className="space-y-6">
-            <VerticalPageHeader
+            <PageHeader
                 icon={Wallet}
-                title="Till & Cash Reconciliation"
-                description="Open a cash float at the start of a shift and reconcile it at close."
-                actions={<CreateButton onClick={() => setOpenOpen(true)} label="Open till" />}
+                title={t("Till & Cash Reconciliation")}
+                description={t("Open a cash float at the start of a shift, and reconcile the drawer against what should be in it.")}
+                badge={
+                    <Badge variant="neutral">
+                        {openSessions?.totalCount ?? 0} open
+                    </Badge>
+                }
+                actions={
+                    <Button onClick={() => setOpenOpen(true)}>
+                        <Lock className="mr-2 size-4" />
+                        {t("Open till")}
+                    </Button>
+                }
             />
 
-            <StatStrip
-                stats={[
-                    { label: "Open tills", value: openSessions?.length ?? 0 },
-                    { label: "Total float", value: ugx(totalFloat) },
-                    { label: "Closed shifts", value: closedSessions?.length ?? 0 },
-                    {
-                        label: "Net variance",
-                        value: ugx(totalVariance),
-                        tone: totalVariance < 0 ? "danger" : totalVariance > 0 ? "warn" : "good",
-                    },
-                ]}
-            />
-
-            <div className="flex gap-1.5">
-                <Button
-                    size="sm"
-                    variant={tab === "open" ? "default" : "outline"}
-                    onClick={() => setTab("open")}
-                >
-                    Open tills
-                </Button>
-                <Button
-                    size="sm"
-                    variant={tab === "closed" ? "default" : "outline"}
-                    onClick={() => setTab("closed")}
-                >
-                    Closed shifts
-                </Button>
-            </div>
-
-            {!sessions ? (
-                <LoadingState />
-            ) : sessions.length === 0 ? (
-                <EmptyState
-                    title={tab === "open" ? "No open tills" : "No closed shifts yet"}
+            <StatGrid>
+                <StatCard
+                    label={t("Open tills")}
+                    value={openSessions?.totalCount ?? 0}
+                    hint={t("Shifts currently in progress")}
+                />
+                <StatCard
+                    label={t("Cash in the drawer")}
+                    value={money(totalFloat, currency)}
+                    hint={t("Opening float across open shifts")}
+                />
+                <StatCard
+                    label={t("Closed shifts")}
+                    value={closedSessions?.totalCount ?? 0}
+                />
+                <StatCard
+                    label={t("Net variance")}
+                    value={money(totalVariance, currency)}
+                    tone={
+                        totalVariance < 0
+                            ? "danger"
+                            : totalVariance > 0
+                              ? "warning"
+                              : "success"
+                    }
                     hint={
-                        tab === "open"
-                            ? "Open a till with your cash float before you start selling."
-                            : "Closed shifts with their cash variance will appear here."
+                        shortCount > 0
+                            ? `${shortCount} of these shifts did not balance`
+                            : "Every closed shift balanced"
                     }
                 />
-            ) : (
-                <RecordList
-                    records={sessions}
-                    renderItem={(s: any) => (
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <p className="font-mono text-xs font-bold text-muted-foreground">
-                                        {s.sessionNumber}
-                                    </p>
-                                    <StatusBadge status={s.status} />
-                                </div>
-                                <p className="mt-1 font-black">{s.userName}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    Opened {shortDate(s.openedAt)}
-                                    {s.closedAt ? ` · closed ${shortDate(s.closedAt)}` : ""}
-                                    {s.shopId ? "" : " · Head Office"}
-                                </p>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-4">
-                                <div className="text-right">
-                                    <p className="text-[10px] uppercase text-muted-foreground">
-                                        Float
-                                    </p>
-                                    <p className="text-sm font-black tabular-nums">
-                                        {ugx(s.openingFloat)}
-                                    </p>
-                                </div>
-                                {s.status === "closed" ? (
-                                    <div className="text-right">
-                                        <p className="text-[10px] uppercase text-muted-foreground">
-                                            Variance
-                                        </p>
-                                        <p
-                                            className={cn(
-                                                "text-sm font-black tabular-nums",
-                                                (s.variance ?? 0) < 0
-                                                    ? "text-red-600 dark:text-red-400"
-                                                    : (s.variance ?? 0) > 0
-                                                      ? "text-amber-600 dark:text-amber-400"
-                                                      : "text-emerald-600 dark:text-emerald-400"
-                                            )}
-                                        >
-                                            {ugx(s.variance ?? 0)}
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <Button size="sm" onClick={() => setCloseFor(s)}>
-                                        <Lock className="mr-1.5 h-3.5 w-3.5" />
-                                        Close till
-                                    </Button>
-                                )}
-                            </div>
+            </StatGrid>
+
+            <SectionCard
+                title={tab === "open" ? "Open tills" : "Closed shifts"}
+                description={
+                    tab === "open"
+                        ? "Shifts that are still running. Close one to reconcile its cash."
+                        : "Every closed shift, with the difference between the count and what should have been there."
+                }
+                padded={false}
+                actions={
+                    <div className="flex items-center gap-1.5">
+                        <Button
+                            size="sm"
+                            variant={tab === "open" ? "default" : "outline"}
+                            onClick={() => setTab("open")}
+                        >
+                            {t("Open")}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant={tab === "closed" ? "default" : "outline"}
+                            onClick={() => setTab("closed")}
+                        >
+                            {t("Closed")}
+                        </Button>
+                    </div>
+                }
+                bodyClassName="px-0 pb-0"
+            >
+                <DataState
+                    isLoading={!sessions}
+                    isEmpty={rows.length === 0}
+                    emptyTitle={
+                        tab === "open" ? "No open tills" : "No closed shifts yet"
+                    }
+                    emptyHint={
+                        tab === "open"
+                            ? "Open a till with your cash float before you start selling."
+                            : "Closed shifts, with their cash variance, will appear here."
+                    }
+                    emptyAction={
+                        tab === "open" ? (
+                            <Button size="sm" onClick={() => setOpenOpen(true)}>
+                                {t("Open till")}
+                            </Button>
+                        ) : undefined
+                    }
+                    loadingRows={3}
+                >
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="hover:bg-transparent">
+                                <TableHead className="pl-4">{t("Shift")}</TableHead>
+                                <TableHead>{t("Cashier")}</TableHead>
+                                <TableHead>{t("Opened")}</TableHead>
+                                <TableHead className="text-right">{t("Float")}</TableHead>
+                                <TableHead className="text-right">
+                                    {tab === "open" ? "Cash taken" : "Variance"}
+                                </TableHead>
+                                <TableHead className="pr-4 text-right">
+                                    <span className="sr-only">{t("Actions")}</span>
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {rows.map((s: any) => (
+                                <TableRow key={s._id}>
+                                    <TableCell className="pl-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-mono text-xs text-muted-foreground">
+                                                {s.sessionNumber ??
+                                                    shortTime(s.openedAt)}
+                                            </span>
+                                            <Badge
+                                                variant={
+                                                    s.status === "open"
+                                                        ? "success"
+                                                        : statusTone(s.status)
+                                                }
+                                            >
+                                                {s.status}
+                                            </Badge>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="font-medium">
+                                        {s.userName ?? "—"}
+                                    </TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                        {shortDate(s.openedAt)}
+                                        {s.closedAt
+                                            ? ` · ${shortTime(s.closedAt)}`
+                                            : ""}
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                        {money(s.openingFloat, currency)}
+                                    </TableCell>
+                                    <TableCell
+                                        className={cn(
+                                            "text-right tabular-nums",
+                                            tab === "closed"
+                                                ? varianceTone(s.variance ?? 0)
+                                                : "text-muted-foreground"
+                                        )}
+                                    >
+                                        {tab === "open"
+                                            ? "—"
+                                            : money(s.variance ?? 0, currency)}
+                                    </TableCell>
+                                    <TableCell className="pr-4 text-right">
+                                        {s.status === "open" ? (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => {
+                                                    setCloseFor(s);
+                                                    setCountedCash("");
+                                                    setCloseNotes("");
+                                                }}
+                                            >
+                                                {t("Close")}
+                                            </Button>
+                                        ) : null}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </DataState>
+            </SectionCard>
+
+            {/* ── Open a shift ─────────────────────────────────────── */}
+            <Dialog open={openOpen} onOpenChange={setOpenOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t("Open a till session")}</DialogTitle>
+                        <DialogDescription>
+                            {t("Enter the cash you are starting the shift with. You can only have one open session at a time.")}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="openingFloat">
+                                {t("Opening cash float (")}{currency})
+                            </Label>
+                            <Input
+                                id="openingFloat"
+                                type="number"
+                                min={0}
+                                value={floatValue}
+                                onChange={(e) => setFloatValue(e.target.value)}
+                                className="tabular-nums"
+                            />
                         </div>
-                    )}
-                />
-            )}
+                        <div className="space-y-2">
+                            <Label htmlFor="openNotes">{t("Notes")}</Label>
+                            <Textarea
+                                id="openNotes"
+                                rows={3}
+                                value={openNotes}
+                                onChange={(e) => setOpenNotes(e.target.value)}
+                                placeholder={t("Anything worth remembering about this shift")}
+                            />
+                        </div>
+                    </div>
 
-            <FormDialog
-                open={openOpen}
-                onOpenChange={setOpenOpen}
-                title="Open a till session"
-                description="Enter the cash you are starting the shift with. You can only have one open session at a time."
-                submitLabel="Open till"
-                fields={[
-                    {
-                        name: "openingFloat",
-                        label: `Opening cash float (${currency})`,
-                        type: "number",
-                        required: true,
-                        min: 0,
-                        defaultValue: "0",
-                    },
-                    { name: "notes", label: "Notes", type: "textarea", full: true },
-                ]}
-                onSubmit={handleOpen}
-            />
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setOpenOpen(false)}
+                            disabled={opening}
+                        >
+                            {t("Cancel")}
+                        </Button>
+                        <Button onClick={handleOpen} disabled={opening}>
+                            {opening ? "Opening…" : "Open till"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
-            <FormDialog
+            {/* ── Close a shift ────────────────────────────────────── */}
+            <Dialog
                 open={!!closeFor}
                 onOpenChange={(v) => !v && setCloseFor(null)}
-                title={closeFor ? `Close till — ${closeFor.sessionNumber}` : "Close till"}
-                description="Count the cash and enter it. Any difference from the expected amount is recorded as a variance."
-                submitLabel="Close till"
-                fields={[
-                    {
-                        name: "expectedCash",
-                        label: `Expected cash (${currency})`,
-                        type: "number",
-                        required: true,
-                        min: 0,
-                        defaultValue: closeFor?.openingFloat,
-                    },
-                    {
-                        name: "countedCash",
-                        label: `Counted cash (${currency})`,
-                        type: "number",
-                        required: true,
-                        min: 0,
-                    },
-                    { name: "notes", label: "Notes", type: "textarea", full: true },
-                ]}
-                onSubmit={handleClose}
-            />
+            >
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {t("Close the till")}
+                            {closeFor?.sessionNumber
+                                ? ` — ${closeFor.sessionNumber}`
+                                : ""}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {t("Count the cash in the drawer and enter it. The expected figure is worked out from the sales you took and the money you moved in and out — it is not asked of you.")}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {closeFor ? (
+                        <div className="space-y-4">
+                            <div className="rounded-xl border border-border/70 bg-muted/40 p-4">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">
+                                        {t("Opening float")}
+                                    </span>
+                                    <span className="font-medium tabular-nums">
+                                        {money(closeFor.openingFloat, currency)}
+                                    </span>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">
+                                        {t("Expected in the drawer")}
+                                    </span>
+                                    <span className="font-semibold tabular-nums text-foreground">
+                                        {money(
+                                            closeFor.expectedCash ??
+                                                closeFor.openingFloat,
+                                            currency
+                                        )}
+                                    </span>
+                                </div>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    {t("The expected figure is finalised by the server when you close, from the cash sales and the cash movements on this shift.")}
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="countedCash">
+                                    {t("Counted cash (")}{currency})
+                                </Label>
+                                <Input
+                                    id="countedCash"
+                                    type="number"
+                                    min={0}
+                                    value={countedCash}
+                                    onChange={(e) => setCountedCash(e.target.value)}
+                                    className="tabular-nums"
+                                    placeholder="0"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="closeNotes">{t("Notes")}</Label>
+                                <Textarea
+                                    id="closeNotes"
+                                    rows={3}
+                                    value={closeNotes}
+                                    onChange={(e) => setCloseNotes(e.target.value)}
+                                    placeholder={t("Why the drawer did not balance, if it did not")}
+                                />
+                            </div>
+                        </div>
+                    ) : null}
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setCloseFor(null)}
+                            disabled={closing}
+                        >
+                            {t("Cancel")}
+                        </Button>
+                        <Button onClick={handleClose} disabled={closing}>
+                            {closing ? "Closing…" : "Close till"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

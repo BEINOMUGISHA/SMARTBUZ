@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Monitor, MapPin, Clock, Loader2, LogOut } from "lucide-react";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 function formatWhen(timestamp: number | undefined): string {
     if (!timestamp) return "Unknown";
@@ -50,7 +51,8 @@ function describeAgent(userAgent: string | undefined): string {
 }
 
 export function ActiveSessions() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const sessions = useQuery(
         api.users.listSessions,
         user ? {} : "skip"
@@ -94,10 +96,9 @@ export function ActiveSessions() {
             <CardHeader>
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <CardTitle className="text-lg font-black">Active sessions</CardTitle>
+                        <CardTitle className="text-lg font-semibold">{t("Active sessions")}</CardTitle>
                         <CardDescription className="font-medium">
-                            Where your account is currently signed in. Signing one out
-                            stops it immediately.
+                            {t("Where your account is currently signed in. Signing one out stops it immediately.")}
                         </CardDescription>
                     </div>
                     {list.length > 1 && (
@@ -112,7 +113,7 @@ export function ActiveSessions() {
                             {busy === "others" && (
                                 <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                             )}
-                            Sign out others
+                            {t("Sign out others")}
                         </Button>
                     )}
                 </div>
@@ -120,7 +121,7 @@ export function ActiveSessions() {
             <CardContent>
                 {list.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                        No active sessions.
+                        {t("No active sessions.")}
                     </p>
                 ) : (
                     <ul className="space-y-3">
@@ -144,7 +145,7 @@ export function ActiveSessions() {
                                             </span>
                                             <span className="inline-flex items-center gap-1">
                                                 <Clock className="h-3 w-3" />
-                                                Last seen {formatWhen(session.lastSeenAt ?? session.createdAt)}
+                                                {t("Last seen")} {formatWhen(session.lastSeenAt ?? session.createdAt)}
                                             </span>
                                         </div>
                                     </div>
@@ -162,7 +163,7 @@ export function ActiveSessions() {
                                     ) : (
                                         <LogOut className="mr-2 h-3.5 w-3.5" />
                                     )}
-                                    Sign out
+                                    {t("Sign out")}
                                 </Button>
                             </li>
                         ))}
@@ -172,10 +173,9 @@ export function ActiveSessions() {
                 <p className="mt-4 text-xs text-muted-foreground">
                     <Badge variant="outline" className="mr-2">
                         <LogOut className="mr-1 h-3 w-3" />
-                        Revoked
+                        {t("Revoked")}
                     </Badge>
-                    A revoked session cannot be used again, even if its access
-                    token has not yet expired.
+                    {t("A revoked session cannot be used again, even if its access token has not yet expired.")}
                 </p>
             </CardContent>
         </Card>

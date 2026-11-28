@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 export interface PlanOption {
     key: string;
@@ -66,7 +67,8 @@ export function PlanPicker({
     currentPlanKey?: string | null;
     className?: string;
 }) {
-    const plans = useQuery(api.plans.list, {});
+    
+    const t = useT();const plans = useQuery(api.plans.list, {});
     const entitlements = useQuery(api.plans.listEntitlements, {});
 
     const labels = new Map<string, { label: string; group: string }>(
@@ -88,7 +90,7 @@ export function PlanPicker({
     if (plans.length === 0) {
         return (
             <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                No plans are on offer at the moment. Please contact SMARTBUZ.
+                {t("No plans are on offer at the moment. Please contact SMARTBUZ.")}
             </p>
         );
     }
@@ -140,30 +142,30 @@ export function PlanPicker({
                             <CardContent className="space-y-3 p-4">
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
-                                        <p className="text-base font-black leading-tight">
+                                        <p className="text-base font-semibold leading-tight">
                                             {plan.name}
                                         </p>
                                         {plan.description && (
-                                            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                                                {plan.description}
+                                            <p className="mt-1 text-xs leading-snug text-muted-foreground">
+                                                {t(plan.description)}
                                             </p>
                                         )}
                                     </div>
                                     {isCurrent && (
                                         <Badge
                                             variant="outline"
-                                            className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-bold text-primary"
+                                            className="shrink-0 border-primary/30 bg-primary/10 text-xs font-bold text-primary"
                                         >
-                                            Current
+                                            {t("Current")}
                                         </Badge>
                                     )}
                                 </div>
 
                                 <div>
-                                    <p className="text-xl font-black tabular-nums">
+                                    <p className="text-xl font-semibold tabular-nums">
                                         {planPrice(plan, billingCycle)}
                                     </p>
-                                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                    <p className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">
                                         per {billingCycle === "annual" ? "year" : "month"}
                                         {billingCycle === "annual" && (
                                             <span className="ml-1 normal-case text-emerald-600">
@@ -184,12 +186,12 @@ export function PlanPicker({
                                 </div>
 
                                 {plan.trialDays > 0 && (
-                                    <p className="rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                                    <p className="rounded-md bg-emerald-500/10 px-2 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">
                                         {plan.trialDays}-day free trial
                                     </p>
                                 )}
 
-                                <ul className="space-y-1 text-[11px] text-muted-foreground">
+                                <ul className="space-y-1 text-xs text-muted-foreground">
                                     <li>
                                         • {limitLabel(plan.maxUsers, "staff account")}
                                     </li>
@@ -208,7 +210,7 @@ export function PlanPicker({
                                     </li>
                                 </ul>
 
-                                <div className="space-y-0.5 border-t pt-2 text-[10px] text-muted-foreground">
+                                <div className="space-y-0.5 border-t pt-2 text-xs text-muted-foreground">
                                     {plan.features.slice(0, 6).map((f) => (
                                         <p key={f} className="flex items-start gap-1">
                                             <Check className="mt-0.5 h-2.5 w-2.5 shrink-0 text-emerald-600" />
@@ -223,8 +225,8 @@ export function PlanPicker({
                                 </div>
 
                                 {isSelected && (
-                                    <div className="flex items-center gap-1 text-[11px] font-bold text-primary">
-                                        <Check className="h-3.5 w-3.5" /> Selected
+                                    <div className="flex items-center gap-1 text-xs font-bold text-primary">
+                                        <Check className="h-3.5 w-3.5" /> {t("Selected")}
                                     </div>
                                 )}
                             </CardContent>

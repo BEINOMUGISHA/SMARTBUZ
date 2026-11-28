@@ -43,9 +43,11 @@ import {
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export default function BatchesPage() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const { user } = useAuth();
     const [tab, setTab] = useState("batches");
     const [search, setSearch] = useState("");
@@ -107,13 +109,13 @@ export default function BatchesPage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={Boxes}
-                title="Batches & Expiry"
-                description="Track batch numbers, expiry dates and serial/IMEI numbers for every stock line."
+                title={t("Batches & Expiry")}
+                description={t("Track batch numbers, expiry dates and serial/IMEI numbers for every stock line.")}
                 actions={
                     tab === "serials" ? (
-                        <CreateButton onClick={() => setSerialOpen(true)} label="Register serial" />
+                        <CreateButton onClick={() => setSerialOpen(true)} label={t("Register serial")} />
                     ) : (
-                        <CreateButton onClick={() => setAddOpen(true)} label="Add batch" />
+                        <CreateButton onClick={() => setAddOpen(true)} label={t("Add batch")} />
                     )
                 }
             />
@@ -136,13 +138,13 @@ export default function BatchesPage() {
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="grid h-11 w-full grid-cols-3 rounded-xl border bg-muted/50 p-1.5">
                     <TabsTrigger value="batches" className="rounded-lg text-sm font-bold">
-                        <Boxes className="mr-2 h-4 w-4" /> Batches
+                        <Boxes className="mr-2 h-4 w-4" /> {t("Batches")}
                     </TabsTrigger>
                     <TabsTrigger value="expiry" className="rounded-lg text-sm font-bold">
-                        <AlertTriangle className="mr-2 h-4 w-4" /> Expiry watch
+                        <AlertTriangle className="mr-2 h-4 w-4" /> {t("Expiry watch")}
                     </TabsTrigger>
                     <TabsTrigger value="serials" className="rounded-lg text-sm font-bold">
-                        <ScanLine className="mr-2 h-4 w-4" /> Serials &amp; IMEI
+                        <ScanLine className="mr-2 h-4 w-4" /> {t("Serials &amp; IMEI")}
                     </TabsTrigger>
                 </TabsList>
 
@@ -151,15 +153,15 @@ export default function BatchesPage() {
                     <SearchBox
                         value={search}
                         onChange={setSearch}
-                        placeholder="Search batch number or supplier…"
+                        placeholder={t("Search batch number or supplier…")}
                     />
 
                     {!batches ? (
                         <LoadingState />
                     ) : visibleBatches.length === 0 ? (
                         <EmptyState
-                            title="No batches recorded"
-                            hint="Add a batch whenever you receive stock with a batch number or expiry date. Quantities are added to your stock automatically."
+                            title={t("No batches recorded")}
+                            hint={t("Add a batch whenever you receive stock with a batch number or expiry date. Quantities are added to your stock automatically.")}
                         />
                     ) : (
                         <RecordList
@@ -168,7 +170,7 @@ export default function BatchesPage() {
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-black">{b.batchNumber}</p>
+                                            <p className="font-semibold">{b.batchNumber}</p>
                                             <StatusBadge status={b.status} />
                                         </div>
                                         <p className="mt-1 text-xs text-muted-foreground">
@@ -185,7 +187,7 @@ export default function BatchesPage() {
                                                 {ugx(b.costPrice)}
                                             </p>
                                         ) : null}
-                                        <p className="text-[10px] text-muted-foreground">
+                                        <p className="text-xs text-muted-foreground">
                                             {shortDate(b.date)}
                                         </p>
                                     </div>
@@ -201,8 +203,8 @@ export default function BatchesPage() {
                         <LoadingState />
                     ) : expiry.soon.length === 0 ? (
                         <EmptyState
-                            title="Nothing is expiring"
-                            hint="No batch expires within the next 30 days. Keep up the good work."
+                            title={t("Nothing is expiring")}
+                            hint={t("No batch expires within the next 30 days. Keep up the good work.")}
                         />
                     ) : (
                         <RecordList
@@ -211,17 +213,17 @@ export default function BatchesPage() {
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-black">{b.productName}</p>
+                                            <p className="font-semibold">{b.productName}</p>
                                             <StatusBadge status={b.status} />
                                         </div>
                                         <p className="mt-1 text-xs text-muted-foreground">
-                                            Batch {b.batchNumber} · {b.qtyRemaining} units
+                                            {t("Batch")} {b.batchNumber} · {b.qtyRemaining} units
                                             {b.expiryDate ? ` · ${shortDate(b.expiryDate)}` : ""}
                                         </p>
                                     </div>
                                     <Badge
                                         variant={b.daysToExpiry < 0 ? "destructive" : "outline"}
-                                        className="shrink-0 text-[10px] font-bold"
+                                        className="shrink-0 text-xs font-bold"
                                     >
                                         {b.daysToExpiry < 0
                                             ? `Expired ${Math.abs(b.daysToExpiry)}d ago`
@@ -238,15 +240,15 @@ export default function BatchesPage() {
                     <SearchBox
                         value={search}
                         onChange={setSearch}
-                        placeholder="Search serial number or IMEI…"
+                        placeholder={t("Search serial number or IMEI…")}
                     />
 
                     {!serials ? (
                         <LoadingState />
                     ) : serials.length === 0 ? (
                         <EmptyState
-                            title="No serials registered"
-                            hint="Register IMEI and serial numbers for phones, appliances and second-hand goods so you can trace every unit."
+                            title={t("No serials registered")}
+                            hint={t("Register IMEI and serial numbers for phones, appliances and second-hand goods so you can trace every unit.")}
                         />
                     ) : (
                         <RecordList
@@ -255,24 +257,24 @@ export default function BatchesPage() {
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-mono text-sm font-black">
+                                            <p className="font-mono text-sm font-semibold">
                                                 {s.serialNumber}
                                             </p>
                                             <StatusBadge status={s.status} />
                                             {s.condition && (
-                                                <Badge variant="outline" className="text-[10px] capitalize">
+                                                <Badge variant="outline" className="text-xs capitalize">
                                                     {s.condition.replace(/_/g, " ")}
                                                 </Badge>
                                             )}
                                         </div>
                                         {s.imei && (
                                             <p className="mt-1 flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                                                <Smartphone className="h-3 w-3" /> IMEI {s.imei}
+                                                <Smartphone className="h-3 w-3" /> {t("IMEI")} {s.imei}
                                             </p>
                                         )}
                                         {s.warrantyExpiry && (
                                             <p className="mt-1 text-xs text-muted-foreground">
-                                                Warranty until {shortDate(s.warrantyExpiry)}
+                                                {t("Warranty until")} {shortDate(s.warrantyExpiry)}
                                             </p>
                                         )}
                                     </div>
@@ -287,8 +289,8 @@ export default function BatchesPage() {
             <FormDialog
                 open={addOpen}
                 onOpenChange={setAddOpen}
-                title="Add stock batch"
-                description="Adds the received quantity to your stock and starts tracking the expiry date."
+                title={t("Add stock batch")}
+                description={t("Adds the received quantity to your stock and starts tracking the expiry date.")}
                 submitLabel="Add batch"
                 fields={[
                     {
@@ -312,8 +314,8 @@ export default function BatchesPage() {
             <FormDialog
                 open={serialOpen}
                 onOpenChange={setSerialOpen}
-                title="Register serial / IMEI"
-                description="Every unit gets a traceable identity for warranty and resale."
+                title={t("Register serial / IMEI")}
+                description={t("Every unit gets a traceable identity for warranty and resale.")}
                 submitLabel="Register"
                 fields={[
                     {

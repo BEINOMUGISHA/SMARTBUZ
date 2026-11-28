@@ -9,9 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Eye, EyeOff, ArrowLeft, MailCheck } from "lucide-react";
+import { useT } from "@/i18n/provider";
 
 export default function RegisterPage() {
-  const router = useRouter();
+  
+    const t = useT();const router = useRouter();
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -148,16 +150,15 @@ export default function RegisterPage() {
               <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
                 <MailCheck className="h-6 w-6 text-primary" />
               </div>
-              <h1 className="text-3xl font-black leading-none">Verify your email</h1>
+              <h1 className="text-3xl font-semibold leading-none">{t("Verify your email")}</h1>
               <CardDescription>
-                We sent a 6-digit code to {form.email}. Enter it below to activate
-                your account.
+                {t("We sent a 6-digit code to")} {form.email}{t(". Enter it below to activate your account.")}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleVerify} className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="code">Verification code</Label>
+                  <Label htmlFor="code">{t("Verification code")}</Label>
                   <Input
                     id="code"
                     inputMode="numeric"
@@ -200,20 +201,20 @@ export default function RegisterPage() {
         <div className="mb-4">
           <Link href="/auth/login" className="inline-flex items-center text-sm font-bold text-muted-foreground hover:text-primary transition-colors group">
             <ArrowLeft className="mr-2 h-4 w-4 transform group-hover:-translate-x-1 transition-transform" />
-            Back to Login
+            {t("Back to Login")}
           </Link>
         </div>
 
         <Card className="shadow-xl border">
           <CardHeader className="space-y-1">
-            <h1 className="text-3xl font-black leading-none">Create your account</h1>
-            <CardDescription>Register a new SMART_BUZ user to get started.</CardDescription>
+            <h1 className="text-3xl font-semibold leading-none">{t("Create your account")}</h1>
+            <CardDescription>{t("Register a new SMART_BUZ user to get started.")}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="first_name">First name</Label>
+                  <Label htmlFor="first_name">{t("First name")}</Label>
                   <Input
                     id="first_name"
                     required
@@ -222,7 +223,7 @@ export default function RegisterPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="last_name">Last name</Label>
+                  <Label htmlFor="last_name">{t("Last name")}</Label>
                   <Input
                     id="last_name"
                     required
@@ -233,7 +234,7 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("Email")}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -244,7 +245,7 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone_number">Phone number</Label>
+                <Label htmlFor="phone_number">{t("Phone number")}</Label>
                 <Input
                   id="phone_number"
                   type="tel"
@@ -254,7 +255,7 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("Password")}</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -277,7 +278,7 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm password</Label>
+                <Label htmlFor="confirmPassword">{t("Confirm password")}</Label>
                 <div className="relative">
                   <Input
                     id="confirmPassword"

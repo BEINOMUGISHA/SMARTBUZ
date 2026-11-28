@@ -29,7 +29,9 @@ import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
+import { writeAudit } from "../audit";
 import { logActivity, requirePermission, requireTenant } from "../tenancy";
+import { assertScreenAvailable } from "../packages/manage";
 import {
   listSuppliersHandler,
   upsertSupplierHandler,
@@ -204,6 +206,7 @@ export const createDelivery = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "purchasing.manage");
         const businessId = tenant.businessId;
         const count = (await ctx.db.query("deliveries").collect()).length + 1;
         const reference = `DEL-${String(count).padStart(4, "0")}`;
@@ -235,7 +238,13 @@ export const updateDeliveryStatus = mutation({
         notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "purchasing.manage");
         const businessId = tenant.businessId;
+        const delivery = await ctx.db.get(args.id);
+        if (!delivery) throw new ConvexError("Delivery not found");
+        if (delivery.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
         const patch: Record<string, unknown> = { status: args.status, notes: args.notes };
         if (args.status === "dispatched") patch.dispatchDate = args.dispatchDate || new Date().toISOString();
         if (args.status === "delivered") patch.deliveryDate = args.deliveryDate || new Date().toISOString();
@@ -275,7 +284,9 @@ export const upsertAsset = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "hardware.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["assets"]);
         const payload = {
             businessId,
             assetTag: args.assetTag,
@@ -312,7 +323,9 @@ export const recordFuelDispense = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.create");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["fuelPump"]);
         if (args.litres <= 0) throw new ConvexError("Litres must be greater than zero");
 
         const total = Math.round(args.litres * args.pricePerLitre);
@@ -402,7 +415,9 @@ export const upsertVehicle = mutation({
         notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "hardware.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["assets"]);
         const payload = {
             businessId,
             registration: args.registration,
@@ -435,7 +450,9 @@ export const upsertRouteFare = mutation({
         active: v.optional(v.boolean()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "hardware.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["services"]);
         const payload = {
             businessId,
             routeName: args.routeName,
@@ -476,6 +493,7 @@ export const openTillSession = mutation({
         notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "finance.cash.shift.manage");
         const businessId = tenant.businessId;
 
         // Only one open session per user per shop.
@@ -513,6 +531,7 @@ export const closeTillSession = mutation({
         notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "finance.cash.shift.manage");
         const businessId = tenant.businessId;
         const session = await ctx.db.get(args.id);
         if (!session) throw new ConvexError("Till session not found");
@@ -577,7 +596,9 @@ export const createServiceTicket = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["services"]);
         const count = (await ctx.db.query("serviceTickets").collect()).length + 1;
         const ticketNumber = `JOB-${String(count).padStart(4, "0")}`;
 
@@ -616,16 +637,81 @@ export const updateServiceTicket = mutation({
         status: v.optional(v.string()),
         finalCost: v.optional(v.number()),
         deliveredDate: v.optional(v.string()),
-        notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
+        notes: v.optional(v.string()),
+        customerName: v.optional(v.string()),
+        customerPhone: v.optional(v.string()),
+        serviceType: v.optional(v.string()),
+        description: v.optional(v.string()),
+        priority: v.optional(v.string()),
+        estimatedCost: v.optional(v.number()),
+        assignedToName: v.optional(v.string()),
+        dueDate: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
+
+        const ticket = await ctx.db.get(args.id);
+        if (!ticket) throw new ConvexError("Job ticket not found");
+        if (ticket.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        // Amending the job details is a change to a customer's job, so it is
+        // permission-checked. Moving the ticket along its workflow is not.
+        const amending =
+            args.customerName !== undefined ||
+            args.customerPhone !== undefined ||
+            args.serviceType !== undefined ||
+            args.description !== undefined ||
+            args.priority !== undefined ||
+            args.estimatedCost !== undefined ||
+            args.assignedToName !== undefined ||
+            args.dueDate !== undefined;
+        if (amending) {
+            await requirePermission(ctx, businessId, "sales.create");
+        }
+
         const patch: Record<string, unknown> = {};
         if (args.status) patch.status = args.status;
         if (args.finalCost !== undefined) patch.finalCost = args.finalCost;
         if (args.notes !== undefined) patch.notes = args.notes;
+        if (args.customerName !== undefined) patch.customerName = args.customerName;
+        if (args.customerPhone !== undefined) patch.customerPhone = args.customerPhone;
+        if (args.serviceType !== undefined) patch.serviceType = args.serviceType;
+        if (args.description !== undefined) patch.description = args.description;
+        if (args.priority !== undefined) patch.priority = args.priority;
+        if (args.estimatedCost !== undefined) patch.estimatedCost = args.estimatedCost;
+        if (args.assignedToName !== undefined) patch.assignedToName = args.assignedToName;
+        if (args.dueDate !== undefined) patch.dueDate = args.dueDate;
         if (args.status === "delivered") patch.deliveredDate = args.deliveredDate || new Date().toISOString();
         await ctx.db.patch(args.id, patch);
+
+        if (amending) {
+            await logActivity(
+                ctx,
+                businessId,
+                tenant.user._id,
+                "Update Job Ticket",
+                `${ticket.ticketNumber} — ${args.serviceType ?? ticket.serviceType} amended`
+            );
+        await assertScreenAvailable(ctx, businessId, ["services"]);
+            await writeAudit(ctx, {
+                businessId,
+                actorUserId: tenant.user._id,
+                actorRole: tenant.membership.role,
+                action: "service_ticket.update",
+                targetType: "service_ticket",
+                targetId: args.id,
+                metadata: {
+                    ticketNumber: ticket.ticketNumber,
+                    customerName: args.customerName ?? ticket.customerName,
+                    serviceType: args.serviceType ?? ticket.serviceType,
+                    priority: args.priority ?? ticket.priority,
+                },
+            });
+        }
+
         return args.id;
     },
 });
@@ -661,7 +747,9 @@ export const createRental = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "hardware.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["rentals"]);
         const id = await ctx.db.insert("rentals", {
             businessId,
             assetId: args.assetId,
@@ -687,7 +775,9 @@ export const returnRental = mutation({
     args: { id: v.id("rentals"), condition: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "hardware.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["rentals"]);
         const rental = await ctx.db.get(args.id);
         if (!rental) throw new ConvexError("Rental not found");
         if (rental.businessId !== businessId) {
@@ -713,7 +803,9 @@ export const recordAttendance = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "employees.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["attendance"]);
 
         // One record per person per day — update if it already exists.
         const existing = await ctx.db
@@ -790,7 +882,9 @@ export const createEnrolment = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "members.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["classes"]);
         const id = await ctx.db.insert("classEnrolments", {
             businessId,
             className: args.className,
@@ -833,7 +927,9 @@ export const createProductionBatch = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.create");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["production"]);
         const id = await ctx.db.insert("productionBatches", {
             businessId,
             productName: args.productName,
@@ -879,7 +975,9 @@ export const upsertRecurringCharge = mutation({
         notes: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["services"]);
         const payload = {
             businessId,
             customerId: args.customerId,
@@ -892,9 +990,643 @@ export const upsertRecurringCharge = mutation({
             notes: args.notes,
         };
         if (args.id) {
+            const existing = await ctx.db.get(args.id);
+            if (!existing) throw new ConvexError("Recurring charge not found");
+            if (existing.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that record belongs to another business.");
+            }
             await ctx.db.patch(args.id, payload);
             return args.id;
         }
         return await ctx.db.insert("recurringCharges", payload);
+    },
+});
+
+/* ───────────────────────── record lifecycle ───────────────────────── */
+
+/** Amend a delivery note. */
+export const updateDelivery = mutation({
+    args: {
+        id: v.id("deliveries"),
+        customerName: v.optional(v.string()),
+        destination: v.optional(v.string()),
+        assignedToName: v.optional(v.string()),
+        amount: v.optional(v.number()),
+        status: v.optional(v.string()),
+        notes: v.optional(v.string()),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "sales.create");
+
+        const delivery = await ctx.db.get(args.id);
+        if (!delivery) throw new ConvexError("Delivery not found");
+        if (delivery.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        const patch: Record<string, unknown> = {};
+        if (args.customerName !== undefined) patch.customerName = args.customerName;
+        if (args.destination !== undefined) patch.destination = args.destination;
+        if (args.assignedToName !== undefined) patch.assignedToName = args.assignedToName;
+        if (args.amount !== undefined) patch.amount = args.amount;
+        if (args.notes !== undefined) patch.notes = args.notes;
+        if (args.status !== undefined) {
+            patch.status = args.status;
+            // The hand-over dates are stamped by the server, never by the client.
+            if (args.status === "dispatched") patch.dispatchDate = new Date().toISOString();
+            if (args.status === "delivered") patch.deliveryDate = new Date().toISOString();
+        }
+        await ctx.db.patch(args.id, patch);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Update Delivery",
+            `${delivery.reference} — ${args.customerName ?? delivery.customerName} amended`
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "delivery.update",
+            targetType: "delivery",
+            targetId: args.id,
+            metadata: {
+                reference: delivery.reference,
+                customerName: args.customerName ?? delivery.customerName,
+                status: args.status ?? delivery.status,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a delivery note.
+ *
+ * A delivery that has already been handed over is the proof that the goods
+ * reached the customer, so it cannot be removed — cancel it instead.
+ */
+export const deleteDelivery = mutation({
+    args: {
+        id: v.id("deliveries"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "sales.create");
+
+        const delivery = await ctx.db.get(args.id);
+        if (!delivery) throw new ConvexError("Delivery not found");
+        if (delivery.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+        if (delivery.status === "delivered") {
+            throw new ConvexError(
+                `${delivery.reference} was already handed over. The delivery note must be kept — mark it failed instead.`
+            );
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Delivery",
+            `${delivery.reference} — ${delivery.customerName} deleted`
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "delivery.delete",
+            targetType: "delivery",
+            targetId: args.id,
+            metadata: {
+                reference: delivery.reference,
+                customerName: delivery.customerName,
+                status: delivery.status,
+                amount: delivery.amount,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a job ticket.
+ *
+ * Refused when a recurring charge is attached to the ticket: the charge
+ * points at the ticket, so removing it would break the recurring schedule.
+ */
+export const deleteServiceTicket = mutation({
+    args: {
+        id: v.id("serviceTickets"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "sales.create");
+
+        const ticket = await ctx.db.get(args.id);
+        if (!ticket) throw new ConvexError("Job ticket not found");
+        if (ticket.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        const charges = await ctx.db.query("recurringCharges").collect();
+        const linked = charges.find((c) => c.businessId === businessId && c.serviceId === args.id);
+        if (linked) {
+            throw new ConvexError(
+                `${ticket.ticketNumber} is on a recurring charge. Remove the charge before deleting the ticket.`
+            );
+        await assertScreenAvailable(ctx, businessId, ["services"]);
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Job Ticket",
+            `${ticket.ticketNumber} — ${ticket.serviceType} for ${ticket.customerName} deleted`
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "service_ticket.delete",
+            targetType: "service_ticket",
+            targetId: args.id,
+            metadata: {
+                ticketNumber: ticket.ticketNumber,
+                customerName: ticket.customerName,
+                serviceType: ticket.serviceType,
+                status: ticket.status,
+                finalCost: ticket.finalCost,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/** Amend a hire record. The asset state is managed by the hire workflow. */
+export const updateRental = mutation({
+    args: {
+        id: v.id("rentals"),
+        assetName: v.optional(v.string()),
+        customerName: v.optional(v.string()),
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+        rate: v.optional(v.number()),
+        deposit: v.optional(v.number()),
+        notes: v.optional(v.string()),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "inventory.transfer");
+
+        const rental = await ctx.db.get(args.id);
+        if (!rental) throw new ConvexError("Rental not found");
+        if (rental.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        await ctx.db.patch(args.id, {
+            ...(args.assetName !== undefined ? { assetName: args.assetName } : {}),
+            ...(args.customerName !== undefined ? { customerName: args.customerName } : {}),
+            ...(args.startDate !== undefined ? { startDate: args.startDate } : {}),
+            ...(args.endDate !== undefined ? { endDate: args.endDate } : {}),
+            ...(args.rate !== undefined ? { rate: args.rate } : {}),
+            ...(args.deposit !== undefined ? { deposit: args.deposit } : {}),
+            ...(args.notes !== undefined ? { notes: args.notes } : {}),
+        });
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Update Rental",
+            `${args.assetName ?? rental.assetName} for ${args.customerName ?? rental.customerName} amended`
+        );
+        await assertScreenAvailable(ctx, businessId, ["rentals"]);
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "rental.update",
+            targetType: "rental",
+            targetId: args.id,
+            metadata: {
+                assetName: args.assetName ?? rental.assetName,
+                customerName: args.customerName ?? rental.customerName,
+                rate: args.rate ?? rental.rate,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a hire record.
+ *
+ * Refused while the item is still with the customer: the asset is out on
+ * hire and the hire record is the proof of it.
+ */
+export const deleteRental = mutation({
+    args: {
+        id: v.id("rentals"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "inventory.transfer");
+
+        const rental = await ctx.db.get(args.id);
+        if (!rental) throw new ConvexError("Rental not found");
+        if (rental.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+        if (rental.status === "out" || rental.status === "overdue") {
+            throw new ConvexError(
+                `${rental.assetName} is still out on hire. Take the return first, then delete the record.`
+            );
+        await assertScreenAvailable(ctx, businessId, ["rentals"]);
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Rental",
+            `${rental.assetName} for ${rental.customerName} deleted`
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "rental.delete",
+            targetType: "rental",
+            targetId: args.id,
+            metadata: {
+                assetName: rental.assetName,
+                customerName: rental.customerName,
+                status: rental.status,
+                rate: rental.rate,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/** Amend an attendance mark. */
+export const updateAttendance = mutation({
+    args: {
+        id: v.id("attendance"),
+        personName: v.optional(v.string()),
+        className: v.optional(v.string()),
+        date: v.optional(v.string()),
+        status: v.optional(v.string()),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "customers.manage");
+
+        const mark = await ctx.db.get(args.id);
+        if (!mark) throw new ConvexError("Attendance record not found");
+        if (mark.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        await ctx.db.patch(args.id, {
+            ...(args.personName !== undefined ? { personName: args.personName } : {}),
+            ...(args.className !== undefined ? { className: args.className } : {}),
+            ...(args.date !== undefined ? { date: args.date } : {}),
+            ...(args.status !== undefined ? { status: args.status } : {}),
+        });
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Update Attendance",
+            `${args.personName ?? mark.personName} on ${args.date ?? mark.date} marked ${args.status ?? mark.status}`
+        );
+        await assertScreenAvailable(ctx, businessId, ["attendance"]);
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "attendance.update",
+            targetType: "attendance",
+            targetId: args.id,
+            metadata: {
+                personName: args.personName ?? mark.personName,
+                className: args.className ?? mark.className,
+                date: args.date ?? mark.date,
+                status: args.status ?? mark.status,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/** Delete an attendance mark. */
+export const deleteAttendance = mutation({
+    args: {
+        id: v.id("attendance"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "customers.manage");
+
+        const mark = await ctx.db.get(args.id);
+        if (!mark) throw new ConvexError("Attendance record not found");
+        if (mark.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Attendance",
+            `${mark.personName} on ${mark.date} removed from the register`
+        );
+        await assertScreenAvailable(ctx, businessId, ["attendance"]);
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "attendance.delete",
+            targetType: "attendance",
+            targetId: args.id,
+            metadata: { personName: mark.personName, className: mark.className, date: mark.date, status: mark.status },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Amend a class enrolment.
+ *
+ * The amount already paid is never writable here — it only moves through a
+ * fee payment, so the outstanding balance is derived on the server.
+ */
+export const updateEnrolment = mutation({
+    args: {
+        id: v.id("classEnrolments"),
+        className: v.optional(v.string()),
+        studentName: v.optional(v.string()),
+        term: v.optional(v.string()),
+        amountDue: v.optional(v.number()),
+        status: v.optional(v.string()),
+        notes: v.optional(v.string()),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "customers.manage");
+
+        const enrolment = await ctx.db.get(args.id);
+        if (!enrolment) throw new ConvexError("Enrolment not found");
+        if (enrolment.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        await ctx.db.patch(args.id, {
+            ...(args.className !== undefined ? { className: args.className } : {}),
+            ...(args.studentName !== undefined ? { studentName: args.studentName } : {}),
+            ...(args.term !== undefined ? { term: args.term } : {}),
+            ...(args.amountDue !== undefined ? { amountDue: args.amountDue } : {}),
+            ...(args.status !== undefined ? { status: args.status } : {}),
+            ...(args.notes !== undefined ? { notes: args.notes } : {}),
+        });
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Update Enrolment",
+            `${args.studentName ?? enrolment.studentName} in ${args.className ?? enrolment.className} amended`
+        );
+        await assertScreenAvailable(ctx, businessId, ["classes"]);
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "enrolment.update",
+            targetType: "class_enrolment",
+            targetId: args.id,
+            metadata: {
+                className: args.className ?? enrolment.className,
+                studentName: args.studentName ?? enrolment.studentName,
+                amountDue: args.amountDue ?? enrolment.amountDue,
+                status: args.status ?? enrolment.status,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a class enrolment.
+ *
+ * Refused when fees have already been collected against it: the enrolment is
+ * the record of what was billed and received.
+ */
+export const deleteEnrolment = mutation({
+    args: {
+        id: v.id("classEnrolments"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "customers.manage");
+
+        const enrolment = await ctx.db.get(args.id);
+        if (!enrolment) throw new ConvexError("Enrolment not found");
+        if (enrolment.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+        if (enrolment.amountPaid > 0) {
+            throw new ConvexError(
+                `Fees have been collected on this enrolment. The record must be kept — withdraw the student instead.`
+            );
+        await assertScreenAvailable(ctx, businessId, ["classes"]);
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Enrolment",
+            `${enrolment.studentName} removed from ${enrolment.className}`
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "enrolment.delete",
+            targetType: "class_enrolment",
+            targetId: args.id,
+            metadata: {
+                className: enrolment.className,
+                studentName: enrolment.studentName,
+                amountDue: enrolment.amountDue,
+                amountPaid: enrolment.amountPaid,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Amend a production batch.
+ *
+ * The quantity already sold is never writable here — it is the running
+ * figure of what left the batch.
+ */
+export const updateProductionBatch = mutation({
+    args: {
+        id: v.id("productionBatches"),
+        productName: v.optional(v.string()),
+        category: v.optional(v.string()),
+        quantityProduced: v.optional(v.number()),
+        unit: v.optional(v.string()),
+        batchNumber: v.optional(v.string()),
+        expiryDate: v.optional(v.string()),
+        costPerUnit: v.optional(v.number()),
+        status: v.optional(v.string()),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "inventory.adjust");
+
+        const batch = await ctx.db.get(args.id);
+        if (!batch) throw new ConvexError("Batch not found");
+        if (batch.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+        if (args.quantityProduced !== undefined && args.quantityProduced < batch.quantitySold) {
+            throw new ConvexError(
+                `${batch.quantitySold} ${batch.unit ?? "units"} of this batch have already been sold. The produced quantity cannot go below that.`
+            );
+        await assertScreenAvailable(ctx, businessId, ["production"]);
+        }
+
+        await ctx.db.patch(args.id, {
+            ...(args.productName !== undefined ? { productName: args.productName } : {}),
+            ...(args.category !== undefined ? { category: args.category } : {}),
+            ...(args.quantityProduced !== undefined ? { quantityProduced: args.quantityProduced } : {}),
+            ...(args.unit !== undefined ? { unit: args.unit } : {}),
+            ...(args.batchNumber !== undefined ? { batchNumber: args.batchNumber } : {}),
+            ...(args.expiryDate !== undefined ? { expiryDate: args.expiryDate } : {}),
+            ...(args.costPerUnit !== undefined ? { costPerUnit: args.costPerUnit } : {}),
+            ...(args.status !== undefined ? { status: args.status } : {}),
+        });
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Update Production Batch",
+            `${args.productName ?? batch.productName} batch ${args.batchNumber ?? batch.batchNumber ?? ""} amended`.trim()
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "production_batch.update",
+            targetType: "production_batch",
+            targetId: args.id,
+            metadata: {
+                productName: args.productName ?? batch.productName,
+                quantityProduced: args.quantityProduced ?? batch.quantityProduced,
+                batchNumber: args.batchNumber ?? batch.batchNumber,
+                status: args.status ?? batch.status,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a production batch.
+ *
+ * Refused when the batch has already sold units: the batch is then the
+ * record of what was produced and sold.
+ */
+export const deleteProductionBatch = mutation({
+    args: {
+        id: v.id("productionBatches"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "inventory.adjust");
+
+        const batch = await ctx.db.get(args.id);
+        if (!batch) throw new ConvexError("Batch not found");
+        if (batch.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+        if (batch.quantitySold > 0) {
+            throw new ConvexError(
+                `${batch.quantitySold} ${batch.unit ?? "units"} of this batch have been sold. The batch record must be kept.`
+            );
+        await assertScreenAvailable(ctx, businessId, ["production"]);
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Production Batch",
+            `${batch.productName} batch ${batch.batchNumber ?? ""} deleted`.trim()
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "production_batch.delete",
+            targetType: "production_batch",
+            targetId: args.id,
+            metadata: {
+                productName: batch.productName,
+                quantityProduced: batch.quantityProduced,
+                quantitySold: batch.quantitySold,
+                batchNumber: batch.batchNumber,
+            },
+        });
+
+        return args.id;
     },
 });

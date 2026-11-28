@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
-import { useState } from "react";
+
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Doc, Id } from "../../../../convex/_generated/dataModel";
@@ -29,6 +30,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { MODULE_OPTIONS } from "@/lib/category-nav";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { useCurrency } from "@/hooks/use-currency";
 import { Plus, Search, Edit, Trash2, MoreHorizontal, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Minus } from "lucide-react";
@@ -50,25 +52,27 @@ import { AuditLogsManager } from "./audit-logs";
 import { SecurityAuditTrail } from "./security-audit";
 import { useAuth } from "@/context/auth-context";
 import { ASSIGNABLE_ROLES } from "@/lib/permissions";
+import { useT } from "@/i18n/provider";
 
 export default function SystemConfigPage() {
-    const [activeTab, setActiveTab] = useState("users");
+    
+    const t = useT();const [activeTab, setActiveTab] = useState("users");
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-4">
-                <h1 className="text-3xl font-black tracking-tight text-foreground">System Configuration</h1>
-                <p className="text-muted-foreground">Manage global system settings, users, and product configurations.</p>
+                <h1 className="text-3xl font-semibold tracking-tight text-foreground">{t("System Configuration")}</h1>
+                <p className="text-muted-foreground">{t("Manage global system settings, users, and product configurations.")}</p>
             </div>
 
             <Tabs defaultValue="users" value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 lg:w-[720px] h-auto p-1 bg-muted/50 border shadow-sm">
-                    <TabsTrigger value="business" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Business</TabsTrigger>
-                    <TabsTrigger value="users" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Users</TabsTrigger>
-                    <TabsTrigger value="promotions" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Promotions</TabsTrigger>
-                    <TabsTrigger value="distributors" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Distributors</TabsTrigger>
-                    <TabsTrigger value="shops" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Shops</TabsTrigger>
-                    <TabsTrigger value="audit" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Audit Logs</TabsTrigger>
+                    <TabsTrigger value="business" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("Business")}</TabsTrigger>
+                    <TabsTrigger value="users" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("Users")}</TabsTrigger>
+                    <TabsTrigger value="promotions" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("Promotions")}</TabsTrigger>
+                    <TabsTrigger value="distributors" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("Distributors")}</TabsTrigger>
+                    <TabsTrigger value="shops" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("Shops")}</TabsTrigger>
+                    <TabsTrigger value="audit" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("Audit Logs")}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="business" className="mt-6">
@@ -108,10 +112,11 @@ export function PaginationControls({
     endIndex,
     totalItems
 }: any) {
-    return (
+    
+    const t = useT();return (
         <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4">
             <div className="flex items-center space-x-2">
-                <p className="text-sm font-medium">Rows per page</p>
+                <p className="text-sm font-medium">{t("Rows per page")}</p>
                 <Select
                     value={`${rowsPerPage}`}
                     onValueChange={(value) => {
@@ -133,7 +138,7 @@ export function PaginationControls({
             </div>
             <div className="flex items-center gap-4">
                 <div className="text-sm font-medium">
-                    Page {currentPage} of {totalPages || 1}
+                    {t("Page")} {currentPage} of {totalPages || 1}
                 </div>
                 <div className="flex items-center space-x-2">
                     <Button
@@ -142,7 +147,7 @@ export function PaginationControls({
                         onClick={() => setCurrentPage(1)}
                         disabled={currentPage === 1}
                     >
-                        <span className="sr-only">Go to first page</span>
+                        <span className="sr-only">{t("Go to first page")}</span>
                         <ChevronsLeft className="h-4 w-4" />
                     </Button>
                     <Button
@@ -151,7 +156,7 @@ export function PaginationControls({
                         onClick={() => setCurrentPage((p: number) => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
                     >
-                        <span className="sr-only">Go to previous page</span>
+                        <span className="sr-only">{t("Go to previous page")}</span>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <Button
@@ -160,7 +165,7 @@ export function PaginationControls({
                         onClick={() => setCurrentPage((p: number) => Math.min(totalPages, p + 1))}
                         disabled={currentPage === totalPages || totalPages === 0}
                     >
-                        <span className="sr-only">Go to next page</span>
+                        <span className="sr-only">{t("Go to next page")}</span>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                     <Button
@@ -169,7 +174,7 @@ export function PaginationControls({
                         onClick={() => setCurrentPage(totalPages)}
                         disabled={currentPage === totalPages || totalPages === 0}
                     >
-                        <span className="sr-only">Go to last page</span>
+                        <span className="sr-only">{t("Go to last page")}</span>
                         <ChevronsRight className="h-4 w-4" />
                     </Button>
                 </div>
@@ -179,7 +184,8 @@ export function PaginationControls({
 }
 
 function BusinessProfileManager() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const currentProfile = useQuery(api.businesses.getActive, {});
     const myBusinesses = useQuery(api.businesses.listMine, {});
     const createBusiness = useMutation(api.businesses.createForCurrentUser);
@@ -199,20 +205,13 @@ function BusinessProfileManager() {
         "reports",
     ]);
 
-    const moduleOptions = [
-        "sales",
-        "inventory",
-        "customers",
-        "reports",
-        "payments",
-        "loans",
-        "promotions",
-        "bookings",
-        "appointments",
-        "projects",
-        "inventory-tracking",
-        "crm",
-    ];
+    // The modules are the ones the app actually has. The list comes from
+    // the same registry the sidebar reads, so a business can only be
+    // offered a screen that exists.
+    const moduleOptions = useMemo(
+        () => MODULE_OPTIONS.map((option) => option.id),
+        []
+    );
 
     const businessTypeOptions = [
         "Retail",
@@ -309,22 +308,22 @@ function BusinessProfileManager() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Business Profile Configuration</CardTitle>
-                <CardDescription>Configure the system for the business type and modules you need.</CardDescription>
+                <CardTitle>{t("Business Profile Configuration")}</CardTitle>
+                <CardDescription>{t("Configure the system for the business type and modules you need.")}</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
                     <form onSubmit={handleSubmit} className="space-y-5">
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label>Business Name</Label>
-                                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="SMART_BUZ" required />
+                                <Label>{t("Business Name")}</Label>
+                                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder={t("SMART_BUZ")} required />
                             </div>
                             <div className="space-y-2">
-                                <Label>Business Type</Label>
+                                <Label>{t("Business Type")}</Label>
                                 <Select value={businessType} onValueChange={setBusinessType}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select business type" />
+                                        <SelectValue placeholder={t("Select business type")} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {businessTypeOptions.map((type) => (
@@ -334,10 +333,10 @@ function BusinessProfileManager() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>Industry</Label>
+                                <Label>{t("Industry")}</Label>
                                 <Select value={industry} onValueChange={setIndustry}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select industry" />
+                                        <SelectValue placeholder={t("Select industry")} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {industryOptions.map((option) => (
@@ -347,10 +346,10 @@ function BusinessProfileManager() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>Currency</Label>
+                                <Label>{t("Currency")}</Label>
                                 <Select value={currency} onValueChange={setCurrency}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Currency" />
+                                        <SelectValue placeholder={t("Currency")} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {SUPPORTED_CURRENCIES.map((code) => (
@@ -360,42 +359,44 @@ function BusinessProfileManager() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>Country</Label>
+                                <Label>{t("Country")}</Label>
                                 <Select value={country} onValueChange={setCountry}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Country" />
+                                        <SelectValue placeholder={t("Country")} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="Uganda">Uganda</SelectItem>
-                                        <SelectItem value="Kenya">Kenya</SelectItem>
-                                        <SelectItem value="Tanzania">Tanzania</SelectItem>
-                                        <SelectItem value="Rwanda">Rwanda</SelectItem>
-                                        <SelectItem value="Global">Global</SelectItem>
+                                        <SelectItem value="Uganda">{t("Uganda")}</SelectItem>
+                                        <SelectItem value="Kenya">{t("Kenya")}</SelectItem>
+                                        <SelectItem value="Tanzania">{t("Tanzania")}</SelectItem>
+                                        <SelectItem value="Rwanda">{t("Rwanda")}</SelectItem>
+                                        <SelectItem value="Global">{t("Global")}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2 flex items-center justify-start pt-8">
                                 <div className="flex items-center space-x-2">
                                     <Switch checked={taxEnabled} onCheckedChange={setTaxEnabled} />
-                                    <Label>Tax enabled</Label>
+                                    <Label>{t("Tax enabled")}</Label>
                                 </div>
                             </div>
                         </div>
 
                         <div className="space-y-3">
-                            <Label className="text-sm font-semibold">Enabled Modules</Label>
+                            <Label className="text-sm font-semibold">{t("Enabled Modules")}</Label>
                             <div className="flex flex-wrap gap-2">
-                                {moduleOptions.map((moduleName) => {
-                                    const selected = selectedModules.includes(moduleName);
+                                {MODULE_OPTIONS.map((option) => {
+                                    const selected = selectedModules.includes(
+                                        option.id
+                                    );
                                     return (
                                         <Button
                                             type="button"
-                                            key={moduleName}
+                                            key={option.id}
                                             variant={selected ? "default" : "outline"}
-                                            className="rounded-full capitalize"
-                                            onClick={() => toggleModule(moduleName)}
+                                            className="rounded-full"
+                                            onClick={() => toggleModule(option.id)}
                                         >
-                                            {moduleName}
+                                            {t(option.label)}
                                         </Button>
                                     );
                                 })}
@@ -405,33 +406,33 @@ function BusinessProfileManager() {
                         <div className="flex gap-3">
                             <Button type="submit">{currentProfile ? "Save profile" : "Create profile"}</Button>
                             {currentProfile && (
-                                <Button type="button" variant="outline" onClick={() => loadProfile(currentProfile)}>Reset</Button>
+                                <Button type="button" variant="outline" onClick={() => loadProfile(currentProfile)}>{t("Reset")}</Button>
                             )}
                         </div>
                     </form>
 
                     <Card className="bg-muted/20">
                         <CardHeader>
-                            <CardTitle className="text-base">Current profile</CardTitle>
+                            <CardTitle className="text-base">{t("Current profile")}</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3 text-sm">
                             {currentProfile ? (
                                 <>
-                                    <div><strong>Name:</strong> {currentProfile.name}</div>
-                                    <div><strong>Type:</strong> {currentProfile.businessType}</div>
-                                    <div><strong>Industry:</strong> {currentProfile.industry || "General"}</div>
-                                    <div><strong>Currency:</strong> {currentProfile.currency}</div>
-                                    <div><strong>Country:</strong> {currentProfile.country}</div>
-                                    <div><strong>Timezone:</strong> {currentProfile.timezone}</div>
-                                    <div><strong>Modules:</strong> {currentProfile.modules?.join(", ") || "No modules selected"}</div>
+                                    <div><strong>{t("Name:")}</strong> {currentProfile.name}</div>
+                                    <div><strong>{t("Type:")}</strong> {currentProfile.businessType}</div>
+                                    <div><strong>{t("Industry:")}</strong> {currentProfile.industry || "General"}</div>
+                                    <div><strong>{t("Currency:")}</strong> {currentProfile.currency}</div>
+                                    <div><strong>{t("Country:")}</strong> {currentProfile.country}</div>
+                                    <div><strong>{t("Timezone:")}</strong> {currentProfile.timezone}</div>
+                                    <div><strong>{t("Modules:")}</strong> {currentProfile.modules?.join(", ") || "No modules selected"}</div>
                                 </>
                             ) : (
-                                <div className="text-muted-foreground">No active business profile configured yet.</div>
+                                <div className="text-muted-foreground">{t("No active business profile configured yet.")}</div>
                             )}
 
                             {myBusinesses && myBusinesses.length > 0 && (
                                 <div className="pt-3 border-t">
-                                    <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Your businesses</div>
+                                    <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">{t("Your businesses")}</div>
                                     <div className="space-y-2">
                                         {myBusinesses.map((entry: any) => (
                                             <button
@@ -457,7 +458,8 @@ function BusinessProfileManager() {
 
 // --- USER MANAGER ---
 function UserManager() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Omit<Doc<"users">, "password"> | null>(null);
@@ -532,19 +534,19 @@ function UserManager() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>User Management</CardTitle>
-                <CardDescription>Manage system users and their access.</CardDescription>
+                <CardTitle>{t("User Management")}</CardTitle>
+                <CardDescription>{t("Manage system users and their access.")}</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex flex-col gap-4 space-y-4">
-                    <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete User?" />
+                    <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title={t("Delete User?")} />
 
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full sm:max-w-sm">
                             <Search className="h-4 w-4 text-muted-foreground ml-2" />
-                            <Input placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
+                            <Input placeholder={t("Search users...")} value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
                         </div>
-                        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add User</Button>
+                        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> {t("Add User")}</Button>
                     </div>
 
                     <div className="rounded-md border overflow-x-auto">
@@ -552,10 +554,10 @@ function UserManager() {
                             <Table>
                                 <TableHeader className="bg-muted/50">
                                     <TableRow>
-                                        <TableHead>User</TableHead>
-                                        <TableHead>Email</TableHead>
-                                        <TableHead>Roles</TableHead>
-                                        <TableHead className="text-right">Actions</TableHead>
+                                        <TableHead>{t("User")}</TableHead>
+                                        <TableHead>{t("Email")}</TableHead>
+                                        <TableHead>{t("Roles")}</TableHead>
+                                        <TableHead className="text-right">{t("Actions")}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -579,7 +581,7 @@ function UserManager() {
                                                             key={r}
                                                             variant={r === "admin" ? "default" : "secondary"}
                                                             className={cn(
-                                                                "text-[10px] uppercase tracking-wider font-bold px-2 py-0.5",
+                                                                "px-2 py-0.5 text-eyebrow uppercase tracking-eyebrow",
                                                                 r === "admin" ? "bg-primary" : "bg-orange-400 text-white"
                                                             )}
                                                         >
@@ -592,8 +594,8 @@ function UserManager() {
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem onClick={() => setEditingItem(user)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(user._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => setEditingItem(user)}><Edit className="mr-2 h-4 w-4" /> {t("Edit")}</DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(user._id)}><Trash2 className="mr-2 h-4 w-4" /> {t("Delete")}</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -610,56 +612,56 @@ function UserManager() {
             {/* User Dialogs */}
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Add User</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Add User")}</DialogTitle></DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2"><Label>First Name</Label><Input name="first_name" required /></div>
-                            <div className="space-y-2"><Label>Last Name</Label><Input name="last_name" required /></div>
+                            <div className="space-y-2"><Label>{t("First Name")}</Label><Input name="first_name" required /></div>
+                            <div className="space-y-2"><Label>{t("Last Name")}</Label><Input name="last_name" required /></div>
                         </div>
-                        <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" required /></div>
+                        <div className="space-y-2"><Label>{t("Email")}</Label><Input name="email" type="email" required /></div>
                         <div className="space-y-2">
-                            <Label>Business Role</Label>
+                            <Label>{t("Business Role")}</Label>
                             <Select name="role" defaultValue="salesperson" required>
-                                <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder={t("Select role")} /></SelectTrigger>
                                 <SelectContent>
                                     {ASSIGNABLE_ROLES.map((role) => (
                                         <SelectItem key={role.id} value={role.id}>
-                                            {role.label}
+                                            {t(role.label)}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
-                        <DialogFooter><Button type="submit">Create User</Button></DialogFooter>
+                        <DialogFooter><Button type="submit">{t("Create User")}</Button></DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
 
             <Dialog open={!!editingItem} onOpenChange={(o) => !o && setEditingItem(null)}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Edit User</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Edit User")}</DialogTitle></DialogHeader>
                     {editingItem && (
                         <form onSubmit={handleUpdate} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2"><Label>First Name</Label><Input name="first_name" defaultValue={editingItem.first_name} required /></div>
-                                <div className="space-y-2"><Label>Last Name</Label><Input name="last_name" defaultValue={editingItem.last_name} required /></div>
+                                <div className="space-y-2"><Label>{t("First Name")}</Label><Input name="first_name" defaultValue={editingItem.first_name} required /></div>
+                                <div className="space-y-2"><Label>{t("Last Name")}</Label><Input name="last_name" defaultValue={editingItem.last_name} required /></div>
                             </div>
-                            <div className="space-y-2"><Label>Email</Label><Input name="email" defaultValue={editingItem.email} required /></div>
-                            <div className="space-y-2"><Label>Phone</Label><Input name="phone_number" defaultValue={editingItem.phone_number} /></div>
+                            <div className="space-y-2"><Label>{t("Email")}</Label><Input name="email" defaultValue={editingItem.email} required /></div>
+                            <div className="space-y-2"><Label>{t("Phone")}</Label><Input name="phone_number" defaultValue={editingItem.phone_number} /></div>
                             <div className="space-y-2">
-                                <Label>Business Role</Label>
+                                <Label>{t("Business Role")}</Label>
                                 <Select name="role" defaultValue={editingItem.roles[0] || "salesperson"} required>
-                                    <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                                    <SelectTrigger><SelectValue placeholder={t("Select role")} /></SelectTrigger>
                                     <SelectContent>
                                         {ASSIGNABLE_ROLES.map((role) => (
                                             <SelectItem key={role.id} value={role.id}>
-                                                {role.label}
+                                                {t(role.label)}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <DialogFooter><Button type="submit">Save Changes</Button></DialogFooter>
+                            <DialogFooter><Button type="submit">{t("Save Changes")}</Button></DialogFooter>
                         </form>
                     )}
                 </DialogContent>
@@ -670,7 +672,8 @@ function UserManager() {
 
 // --- PROMOTION MANAGER ---
 function PromotionManager() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const { currency } = useCurrency();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
@@ -750,19 +753,19 @@ function PromotionManager() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Promotion Management</CardTitle>
-                <CardDescription>Setup promotional offers and prize triggers.</CardDescription>
+                <CardTitle>{t("Promotion Management")}</CardTitle>
+                <CardDescription>{t("Setup promotional offers and prize triggers.")}</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex flex-col gap-4 space-y-4">
-                    <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete Promotion?" />
+                    <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title={t("Delete Promotion?")} />
 
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full sm:max-w-sm">
                             <Search className="h-4 w-4 text-muted-foreground ml-2" />
-                            <Input placeholder="Search promotions..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
+                            <Input placeholder={t("Search promotions...")} value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
                         </div>
-                        <Button onClick={() => { setIsAddOpen(true); setAddTriggerType("Product"); }} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add Promotion</Button>
+                        <Button onClick={() => { setIsAddOpen(true); setAddTriggerType("Product"); }} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> {t("Add Promotion")}</Button>
                     </div>
 
                     <div className="rounded-md border overflow-x-auto">
@@ -770,11 +773,11 @@ function PromotionManager() {
                             <Table>
                                 <TableHeader className="bg-muted/50">
                                     <TableRow>
-                                        <TableHead>Promotion Name</TableHead>
-                                        <TableHead>Type</TableHead>
-                                        <TableHead>Prize (What you win)</TableHead>
-                                        <TableHead className="text-center">Status</TableHead>
-                                        <TableHead className="text-right">Actions</TableHead>
+                                        <TableHead>{t("Promotion Name")}</TableHead>
+                                        <TableHead>{t("Type")}</TableHead>
+                                        <TableHead>{t("Prize (What you win)")}</TableHead>
+                                        <TableHead className="text-center">{t("Status")}</TableHead>
+                                        <TableHead className="text-right">{t("Actions")}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -784,30 +787,30 @@ function PromotionManager() {
                                                 <div className="flex flex-col">
                                                     <span>{promo.name}</span>
                                                     {(promo.triggerType === "TotalPV" || promo.triggerType === "TotalBV") && (
-                                                        <span className="text-[10px] text-muted-foreground font-mono">
-                                                            Target: {promo.threshold} {promo.triggerType.replace("Total", "")}
+                                                        <span className="text-xs text-muted-foreground font-mono">
+                                                            {t("Target:")} {promo.threshold} {promo.triggerType.replace("Total", "")}
                                                         </span>
                                                     )}
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+                                                <Badge variant="outline" className="text-eyebrow uppercase tracking-eyebrow">
                                                     {promo.triggerType || "Product"}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="font-bold text-primary">{promo.prize}</TableCell>
                                             <TableCell className="text-center">
-                                                {promo.isActive ? <Badge className="bg-green-100 text-green-800 hover:bg-green-200">Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                                                {promo.isActive ? <Badge className="bg-green-100 text-green-800 hover:bg-green-200">{t("Active")}</Badge> : <Badge variant="outline">{t("Inactive")}</Badge>}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
                                                         {(promo.triggerType === "Product" || !promo.triggerType) && (
-                                                            <DropdownMenuItem onClick={() => setManagingProductsId(promo._id)}><Plus className="mr-2 h-4 w-4" /> Manage Products</DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => setManagingProductsId(promo._id)}><Plus className="mr-2 h-4 w-4" /> {t("Manage Products")}</DropdownMenuItem>
                                                         )}
-                                                        <DropdownMenuItem onClick={() => { setEditingItem(promo); setEditTriggerType(promo.triggerType || "Product"); }}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(promo._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => { setEditingItem(promo); setEditTriggerType(promo.triggerType || "Product"); }}><Edit className="mr-2 h-4 w-4" /> {t("Edit")}</DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(promo._id)}><Trash2 className="mr-2 h-4 w-4" /> {t("Delete")}</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -823,62 +826,64 @@ function PromotionManager() {
 
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Add Promotion</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Add Promotion")}</DialogTitle></DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4">
-                        <div className="space-y-2"><Label>Promotion Name</Label><Input name="name" required /></div>
-                        <div className="space-y-2"><Label>Prize (What you win)</Label><Input name="prize" required placeholder={`e.g. Free T-Shirt, ${currency} 10,000`} /></div>
+                        <div className="space-y-2"><Label>{t("Promotion Name")}</Label><Input name="name" required /></div>
+                        <div className="space-y-2"><Label>{t("Prize (What you win)")}</Label><Input name="prize" required placeholder={t("e.g. Free T-Shirt, {0} 10,000", {
+            0: currency,
+        })} /></div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Trigger Type</Label>
+                                <Label>{t("Trigger Type")}</Label>
                                 <Select name="triggerType" value={addTriggerType} onValueChange={setAddTriggerType}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="Product">Product Specific</SelectItem>
-                                        <SelectItem value="TotalPV">Total PV Sum</SelectItem>
-                                        <SelectItem value="TotalBV">Total BV Sum</SelectItem>
+                                        <SelectItem value="Product">{t("Product Specific")}</SelectItem>
+                                        <SelectItem value="TotalPV">{t("Total PV Sum")}</SelectItem>
+                                        <SelectItem value="TotalBV">{t("Total BV Sum")}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             {addTriggerType !== "Product" && (
                                 <div className="space-y-2">
-                                    <Label>Threshold ({addTriggerType.replace("Total", "")})</Label>
-                                    <Input name="threshold" type="number" required placeholder="e.g. 50" />
+                                    <Label>{t("Threshold (")}{addTriggerType.replace("Total", "")})</Label>
+                                    <Input name="threshold" type="number" required placeholder={t("e.g. 50")} />
                                 </div>
                             )}
                         </div>
-                        <DialogFooter><Button type="submit">Create</Button></DialogFooter>
+                        <DialogFooter><Button type="submit">{t("Create")}</Button></DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
 
             <Dialog open={!!editingItem} onOpenChange={(o) => !o && setEditingItem(null)}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Edit Promotion</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Edit Promotion")}</DialogTitle></DialogHeader>
                     {editingItem && (
                         <form onSubmit={handleUpdate} className="space-y-4">
-                            <div className="space-y-2"><Label>Promotion Name</Label><Input name="name" defaultValue={editingItem.name} required /></div>
-                            <div className="space-y-2"><Label>Prize (What you win)</Label><Input name="prize" defaultValue={editingItem.prize} required /></div>
+                            <div className="space-y-2"><Label>{t("Promotion Name")}</Label><Input name="name" defaultValue={editingItem.name} required /></div>
+                            <div className="space-y-2"><Label>{t("Prize (What you win)")}</Label><Input name="prize" defaultValue={editingItem.prize} required /></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Trigger Type</Label>
+                                    <Label>{t("Trigger Type")}</Label>
                                     <Select name="triggerType" value={editTriggerType} onValueChange={setEditTriggerType}>
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="Product">Product Specific</SelectItem>
-                                            <SelectItem value="TotalPV">Total PV Sum</SelectItem>
-                                            <SelectItem value="TotalBV">Total BV Sum</SelectItem>
+                                            <SelectItem value="Product">{t("Product Specific")}</SelectItem>
+                                            <SelectItem value="TotalPV">{t("Total PV Sum")}</SelectItem>
+                                            <SelectItem value="TotalBV">{t("Total BV Sum")}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 {editTriggerType !== "Product" && (
                                     <div className="space-y-2">
-                                        <Label>Threshold ({editTriggerType.replace("Total", "")})</Label>
-                                        <Input name="threshold" type="number" defaultValue={editingItem.threshold} required placeholder="e.g. 50" />
+                                        <Label>{t("Threshold (")}{editTriggerType.replace("Total", "")})</Label>
+                                        <Input name="threshold" type="number" defaultValue={editingItem.threshold} required placeholder={t("e.g. 50")} />
                                     </div>
                                 )}
                             </div>
-                            <div className="flex items-center space-x-2"><Switch name="isActive" defaultChecked={editingItem.isActive} /><Label>Active</Label></div>
-                            <DialogFooter><Button type="submit">Update</Button></DialogFooter>
+                            <div className="flex items-center space-x-2"><Switch name="isActive" defaultChecked={editingItem.isActive} /><Label>{t("Active")}</Label></div>
+                            <DialogFooter><Button type="submit">{t("Update")}</Button></DialogFooter>
                         </form>
                     )}
                 </DialogContent>
@@ -886,7 +891,7 @@ function PromotionManager() {
 
             <Dialog open={!!managingProductsId} onOpenChange={(o) => !o && setManagingProductsId(null)}>
                 <DialogContent className="max-w-full w-[95vw]">
-                    <DialogHeader><DialogTitle>Manage Trigger Products</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Manage Trigger Products")}</DialogTitle></DialogHeader>
                     {managingProductsId && <PromotionProductManager promotionId={managingProductsId} />}
                 </DialogContent>
             </Dialog>
@@ -895,7 +900,8 @@ function PromotionManager() {
 }
 
 function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"> }) {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const promotionProducts = useQuery(api.promotions.getPromotionProducts, { promotionId });
     const stocks = useQuery(api.stocks.listAll, {});
     const addProduct = useMutation(api.promotions.addProduct);
@@ -963,11 +969,11 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
         <div className="space-y-6">
             <form onSubmit={handleAdd} className="bg-muted/20 p-2 rounded-lg border grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                 <div className="col-span-1 md:col-span-7 space-y-2 min-w-0">
-                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-auto flex">Product</Label>
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-auto flex">{t("Product")}</Label>
                     <Select name="stockId" required>
                         <SelectTrigger className="bg-background w-full">
                             <span className="truncate block w-full text-left">
-                                <SelectValue placeholder="Select product" />
+                                <SelectValue placeholder={t("Select product")} />
                             </span>
                         </SelectTrigger>
                         <SelectContent>
@@ -982,7 +988,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                     </Select>
                 </div>
                 <div className="col-span-1 md:col-span-2 space-y-2">
-                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-auto flex">Qty to Trigger</Label>
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-auto flex">{t("Qty to Trigger")}</Label>
                     <Input
                         name="quantity"
                         type="number"
@@ -999,31 +1005,31 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                         className="w-full font-bold bg-green-600 hover:bg-green-700 text-white"
                     >
                         {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="mr-2 h-4 w-4" />}
-                        Add
+                        {t("Add")}
                     </Button>
                 </div>
             </form>
 
             <div className="rounded-xl border border-muted-foreground/10 overflow-hidden shadow-sm">
                 <Table>
-                    <TableHeader className="bg-muted/50 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+                    <TableHeader className="bg-muted/50 text-muted-foreground text-eyebrow uppercase tracking-eyebrow">
                         <TableRow className="hover:bg-transparent">
-                            <TableHead className="pl-6">Product Details</TableHead>
-                            <TableHead className="text-center">Required Qty</TableHead>
-                            <TableHead className="text-right pr-6">Action</TableHead>
+                            <TableHead className="pl-6">{t("Product Details")}</TableHead>
+                            <TableHead className="text-center">{t("Required Qty")}</TableHead>
+                            <TableHead className="text-right pr-6">{t("Action")}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {!promotionProducts ? (
                             <TableRow><TableCell colSpan={3} className="text-center py-12"><Loader2 className="animate-spin mx-auto h-6 w-6 text-primary" /></TableCell></TableRow>
                         ) : promotionProducts.length === 0 ? (
-                            <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic text-sm">No products connected yet.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic text-sm">{t("No products connected yet.")}</TableCell></TableRow>
                         ) : promotionProducts.map((pp) => (
                             <TableRow key={pp._id} className="hover:bg-muted/20 transition-colors">
                                 <TableCell className="pl-6 py-4">
                                     <div className="flex flex-col">
                                         <span className="font-bold text-sm text-foreground">{pp.stockName}</span>
-                                        <span className="text-[10px] font-mono text-muted-foreground">{pp.productCode}</span>
+                                        <span className="text-xs font-mono text-muted-foreground">{pp.productCode}</span>
                                     </div>
                                 </TableCell>
                                 <TableCell className="text-center">
@@ -1037,7 +1043,7 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
                                         >
                                             <Minus className="h-3 w-3" />
                                         </Button>
-                                        <span className="font-black text-lg text-primary w-8 text-center">{pp.requiredQuantity}</span>
+                                        <span className="font-semibold text-lg text-primary w-8 text-center">{pp.requiredQuantity}</span>
                                         <Button
                                             variant="outline"
                                             size="icon"
@@ -1069,7 +1075,8 @@ function PromotionProductManager({ promotionId }: { promotionId: Id<"promotions"
 
 // --- DISTRIBUTOR MANAGER ---
 function DistributorManager() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Doc<"customers"> | null>(null);
@@ -1144,19 +1151,19 @@ function DistributorManager() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Distributor Management</CardTitle>
-                <CardDescription>Manage your customer and distributor base.</CardDescription>
+                <CardTitle>{t("Distributor Management")}</CardTitle>
+                <CardDescription>{t("Manage your customer and distributor base.")}</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex flex-col gap-4 space-y-4">
-                    <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete Distributor?" />
+                    <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title={t("Delete Distributor?")} />
 
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full sm:max-w-sm">
                             <Search className="h-4 w-4 text-muted-foreground ml-2" />
-                            <Input placeholder="Search name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
+                            <Input placeholder={t("Search name or phone...")} value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0 w-full" />
                         </div>
-                        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add Distributor</Button>
+                        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> {t("Add Distributor")}</Button>
                     </div>
 
                     <div className="rounded-md border overflow-x-auto">
@@ -1164,10 +1171,10 @@ function DistributorManager() {
                             <Table>
                                 <TableHeader className="bg-muted/50">
                                     <TableRow>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>ID NO</TableHead>
-                                        <TableHead>Contact</TableHead>
-                                        <TableHead className="text-right">Actions</TableHead>
+                                        <TableHead>{t("Name")}</TableHead>
+                                        <TableHead>{t("ID NO")}</TableHead>
+                                        <TableHead>{t("Contact")}</TableHead>
+                                        <TableHead className="text-right">{t("Actions")}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -1185,8 +1192,8 @@ function DistributorManager() {
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem onClick={() => setEditingItem(dist)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(dist._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => setEditingItem(dist)}><Edit className="mr-2 h-4 w-4" /> {t("Edit")}</DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(dist._id)}><Trash2 className="mr-2 h-4 w-4" /> {t("Delete")}</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -1202,33 +1209,33 @@ function DistributorManager() {
 
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Add Distributor</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Add Distributor")}</DialogTitle></DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4">
-                        <div className="space-y-2"><Label>Name</Label><Input name="name" required /></div>
-                        <div className="space-y-2"><Label>Distributor ID</Label><Input name="distributorId" placeholder="Optional" /></div>
+                        <div className="space-y-2"><Label>{t("Name")}</Label><Input name="name" required /></div>
+                        <div className="space-y-2"><Label>{t("Distributor ID")}</Label><Input name="distributorId" placeholder={t("Optional")} /></div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2"><Label>Phone</Label><Input name="phone" required /></div>
-                            <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" /></div>
+                            <div className="space-y-2"><Label>{t("Phone")}</Label><Input name="phone" required /></div>
+                            <div className="space-y-2"><Label>{t("Email")}</Label><Input name="email" type="email" /></div>
                         </div>
-                        <div className="space-y-2"><Label>Address</Label><Input name="address" /></div>
-                        <DialogFooter><Button type="submit">Create</Button></DialogFooter>
+                        <div className="space-y-2"><Label>{t("Address")}</Label><Input name="address" /></div>
+                        <DialogFooter><Button type="submit">{t("Create")}</Button></DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
 
             <Dialog open={!!editingItem} onOpenChange={(o) => !o && setEditingItem(null)}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Edit Distributor</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Edit Distributor")}</DialogTitle></DialogHeader>
                     {editingItem && (
                         <form onSubmit={handleUpdate} className="space-y-4">
-                            <div className="space-y-2"><Label>Name</Label><Input name="name" defaultValue={editingItem.name} required /></div>
-                            <div className="space-y-2"><Label>Distributor ID</Label><Input name="distributorId" defaultValue={editingItem.distributorId} /></div>
+                            <div className="space-y-2"><Label>{t("Name")}</Label><Input name="name" defaultValue={editingItem.name} required /></div>
+                            <div className="space-y-2"><Label>{t("Distributor ID")}</Label><Input name="distributorId" defaultValue={editingItem.distributorId} /></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2"><Label>Phone</Label><Input name="phone" defaultValue={editingItem.phone} required /></div>
-                                <div className="space-y-2"><Label>Email</Label><Input name="email" defaultValue={editingItem.email} type="email" /></div>
+                                <div className="space-y-2"><Label>{t("Phone")}</Label><Input name="phone" defaultValue={editingItem.phone} required /></div>
+                                <div className="space-y-2"><Label>{t("Email")}</Label><Input name="email" defaultValue={editingItem.email} type="email" /></div>
                             </div>
-                            <div className="space-y-2"><Label>Address</Label><Input name="address" defaultValue={editingItem.address} /></div>
-                            <DialogFooter><Button type="submit">Update</Button></DialogFooter>
+                            <div className="space-y-2"><Label>{t("Address")}</Label><Input name="address" defaultValue={editingItem.address} /></div>
+                            <DialogFooter><Button type="submit">{t("Update")}</Button></DialogFooter>
                         </form>
                     )}
                 </DialogContent>
@@ -1239,7 +1246,8 @@ function DistributorManager() {
 
 // --- SHOP MANAGER ---
 function ShopManager() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Doc<"shops"> | null>(null);
@@ -1312,29 +1320,29 @@ function ShopManager() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Shops & Branches</CardTitle>
-                <CardDescription>Manage shop locations and managers.</CardDescription>
+                <CardTitle>{t("Shops & Branches")}</CardTitle>
+                <CardDescription>{t("Manage shop locations and managers.")}</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex flex-col gap-4 space-y-4">
-                    <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete Shop?" />
+                    <ConfirmDeleteModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title={t("Delete Shop?")} />
 
                     <div className="flex justify-between items-center gap-4">
                         <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border w-full max-w-sm">
                             <Search className="h-4 w-4 text-muted-foreground ml-2" />
-                            <Input placeholder="Search shops..." value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0" />
+                            <Input placeholder={t("Search shops...")} value={search} onChange={(e) => setSearch(e.target.value)} className="border-0 bg-transparent h-8 focus-visible:ring-0" />
                         </div>
-                        <Button onClick={() => setIsAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Shop</Button>
+                        <Button onClick={() => setIsAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> {t("Add Shop")}</Button>
                     </div>
 
                     <div className="rounded-md border">
                         <Table>
                             <TableHeader className="bg-muted/50">
                                 <TableRow>
-                                    <TableHead>Shop Name</TableHead>
-                                    <TableHead>Location</TableHead>
-                                    <TableHead>Manager</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead>{t("Shop Name")}</TableHead>
+                                    <TableHead>{t("Location")}</TableHead>
+                                    <TableHead>{t("Manager")}</TableHead>
+                                    <TableHead className="text-right">{t("Actions")}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -1354,8 +1362,8 @@ function ShopManager() {
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => setEditingItem(shop)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                                    <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(shop._id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => setEditingItem(shop)}><Edit className="mr-2 h-4 w-4" /> {t("Edit")}</DropdownMenuItem>
+                                                    <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(shop._id)}><Trash2 className="mr-2 h-4 w-4" /> {t("Delete")}</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>
@@ -1370,49 +1378,49 @@ function ShopManager() {
 
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Add Shop</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Add Shop")}</DialogTitle></DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4">
-                        <div className="space-y-2"><Label>Shop Name</Label><Input name="name" required /></div>
+                        <div className="space-y-2"><Label>{t("Shop Name")}</Label><Input name="name" required /></div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2"><Label>Serial Number</Label><Input name="serialNumber" required /></div>
-                            <div className="space-y-2"><Label>Contact</Label><Input name="contact" required /></div>
+                            <div className="space-y-2"><Label>{t("Serial Number")}</Label><Input name="serialNumber" required /></div>
+                            <div className="space-y-2"><Label>{t("Contact")}</Label><Input name="contact" required /></div>
                         </div>
-                        <div className="space-y-2"><Label>Location</Label><Input name="location" required /></div>
+                        <div className="space-y-2"><Label>{t("Location")}</Label><Input name="location" required /></div>
                         <div className="space-y-2">
-                            <Label>Manager (User)</Label>
+                            <Label>{t("Manager (User)")}</Label>
                             <Select name="userId" required>
-                                <SelectTrigger><SelectValue placeholder="Select manager" /></SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder={t("Select manager")} /></SelectTrigger>
                                 <SelectContent>
                                     {userList?.map((u: any) => <SelectItem key={u._id} value={u._id}>{u.first_name} {u.last_name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
-                        <DialogFooter><Button type="submit">Create</Button></DialogFooter>
+                        <DialogFooter><Button type="submit">{t("Create")}</Button></DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
 
             <Dialog open={!!editingItem} onOpenChange={(o) => !o && setEditingItem(null)}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Edit Shop</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t("Edit Shop")}</DialogTitle></DialogHeader>
                     {editingItem && (
                         <form onSubmit={handleUpdate} className="space-y-4">
-                            <div className="space-y-2"><Label>Shop Name</Label><Input name="name" defaultValue={editingItem.name} required /></div>
+                            <div className="space-y-2"><Label>{t("Shop Name")}</Label><Input name="name" defaultValue={editingItem.name} required /></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2"><Label>Serial Number</Label><Input name="serialNumber" defaultValue={editingItem.serialNumber} required /></div>
-                                <div className="space-y-2"><Label>Contact</Label><Input name="contact" defaultValue={editingItem.contact} required /></div>
+                                <div className="space-y-2"><Label>{t("Serial Number")}</Label><Input name="serialNumber" defaultValue={editingItem.serialNumber} required /></div>
+                                <div className="space-y-2"><Label>{t("Contact")}</Label><Input name="contact" defaultValue={editingItem.contact} required /></div>
                             </div>
-                            <div className="space-y-2"><Label>Location</Label><Input name="location" defaultValue={editingItem.location} required /></div>
+                            <div className="space-y-2"><Label>{t("Location")}</Label><Input name="location" defaultValue={editingItem.location} required /></div>
                             <div className="space-y-2">
-                                <Label>Manager (User)</Label>
+                                <Label>{t("Manager (User)")}</Label>
                                 <Select name="userId" defaultValue={editingItem.userId} required>
-                                    <SelectTrigger><SelectValue placeholder="Select manager" /></SelectTrigger>
+                                    <SelectTrigger><SelectValue placeholder={t("Select manager")} /></SelectTrigger>
                                     <SelectContent>
                                         {userList?.map((u: any) => <SelectItem key={u._id} value={u._id}>{u.first_name} {u.last_name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <DialogFooter><Button type="submit">Update</Button></DialogFooter>
+                            <DialogFooter><Button type="submit">{t("Update")}</Button></DialogFooter>
                         </form>
                     )}
                 </DialogContent>

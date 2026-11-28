@@ -2,9 +2,10 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { AlertTriangle, Home, LogIn, RefreshCw, ServerCrash } from "lucide-react";
+import { AlertTriangle, Home, LogIn, RefreshCw, ServerCrash, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { isSessionExpired } from "@/components/error-feedback";
+import { isSessionExpired, isPlanLimit, planLimitMessage } from "@/components/error-feedback";
+import { useT } from "@/i18n/provider";
 import {
     connectionFailure,
     connectionFailureMessage,
@@ -33,7 +34,16 @@ export function RouteError({
     // The server refuses a call it thinks came from a stale session. That is
     // not a crash, and telling the operator to "try again" would only send
     // them round in circles — they have to sign in again.
-    const sessionExpired = isSessionExpired(error);
+    
+    const t = useT();const sessionExpired = isSessionExpired(error);
+
+    /**
+     * The business's plan does not carry this part of the product. That is
+     * not a fault, and the only thing the owner can do about it is change
+     * the plan — so the screen says so, and offers that.
+     */
+    const planLimited = isPlanLimit(error);
+    const planReason = planLimitMessage(error);
 
     // The server cannot issue an access token at all — the deployment is
     // missing its signing key. The person is signed in; the server cannot
@@ -52,15 +62,22 @@ export function RouteError({
 
     const title = serverMisconfigured
         ? "The server is not configured yet"
-        : sessionExpired
-          ? "Your session has expired"
-          : "This screen could not be loaded";
+        : planLimited
+          ? "This feature is not in your plan"
+          : sessionExpired
+            ? "Your session has expired"
+            : "This screen could not be loaded";
 
     const explanation = serverMisconfigured
         ? connectionFailureMessage(failure)
-        : sessionExpired
-          ? "The server refused the request because the session is no longer valid. Sign in again and you will pick up where you left off."
-          : "Something went wrong on our side. Nothing you entered has been lost — you can try again, or go back and start from a different screen.";
+        : planLimited
+          ? `${
+                planReason ??
+                "Your current plan does not include this part of SMART_BUZ."
+            } Change the plan to switch it on — nothing you have already set up is affected.`
+          : sessionExpired
+            ? "The server refused the request because the session is no longer valid. Sign in again and you will pick up where you left off."
+            : "Something went wrong on our side. Nothing you entered has been lost — you can try again, or go back and start from a different screen.";
 
     return (
         <div
@@ -69,14 +86,16 @@ export function RouteError({
         >
             <div className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-sm">
                 <div
-                    className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${
-                        serverMisconfigured
+                    className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${serverMisconfigured
                             ? "bg-amber-500/15 text-amber-600"
-                            : "bg-destructive/10 text-destructive"
-                    }`}
+                            : planLimited
+                              ? "bg-primary/10 text-primary"
+                              : "bg-destructive/10 text-destructive"}`}
                 >
                     {serverMisconfigured ? (
                         <ServerCrash className="h-6 w-6" />
+                    ) : planLimited ? (
+                        <Sparkles className="h-6 w-6" />
                     ) : (
                         <AlertTriangle className="h-6 w-6" />
                     )}
@@ -90,19 +109,26 @@ export function RouteError({
                     {serverMisconfigured ? (
                         <Button onClick={reset}>
                             <RefreshCw className="mr-2 h-4 w-4" />
-                            Try again
+                            {t("Try again")}
+                        </Button>
+                    ) : planLimited ? (
+                        <Button asChild>
+                            <Link href="/subscription">
+                                <Sparkles className="mr-2 h-4 w-4" />
+                                {t("See the plans")}
+                            </Link>
                         </Button>
                     ) : sessionExpired ? (
                         <Button asChild>
                             <Link href="/auth/login">
                                 <LogIn className="mr-2 h-4 w-4" />
-                                Sign in again
+                                {t("Sign in again")}
                             </Link>
                         </Button>
                     ) : (
                         <Button onClick={reset}>
                             <RefreshCw className="mr-2 h-4 w-4" />
-                            Try again
+                            {t("Try again")}
                         </Button>
                     )}
 

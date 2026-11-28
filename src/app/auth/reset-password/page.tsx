@@ -9,17 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { useT } from "@/i18n/provider";
 
 // Form component is defined below ResetPasswordPage
 
 export default function ResetPasswordPage() {
-    return (
+    
+    const t = useT();return (
         <main className="flex min-h-screen w-full lg:grid lg:grid-cols-2 bg-muted/30">
             {/* Left side: Hero Section (Desktop only) */}
             <div className="hidden bg-muted lg:block relative">
                 <Image
                     src="/images/pos-hero.jpg"
-                    alt="Reset Password Background"
+                    alt={t("Reset Password Background")}
                     fill
                     className="object-cover"
                     priority
@@ -30,13 +32,13 @@ export default function ResetPasswordPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                         </svg>
                     </div>
-                    <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">Secure Your <br />Account</h2>
+                    <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">{t("Secure Your")} <br />{t("Account")}</h2>
                     <p className="text-xl text-center max-w-md opacity-90 font-medium">
-                        Create a strong password to protect your sales data, inventory, and records.
+                        {t("Create a strong password to protect your sales data, inventory, and records.")}
                     </p>
                 </div>
                 <div className="absolute bottom-8 left-0 right-0 text-center text-white/60 text-sm">
-                    Enterprise Grade Security • Powered by SMARTBUZ
+                    {t("Enterprise Grade Security • Powered by SMARTBUZ")}
                 </div>
             </div>
 
@@ -50,7 +52,7 @@ export default function ResetPasswordPage() {
                     <Suspense fallback={
                         <div className="flex flex-col items-center justify-center space-y-4">
                             <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                            <p className="text-muted-foreground font-medium animate-pulse">Initializing security...</p>
+                            <p className="text-muted-foreground font-medium animate-pulse">{t("Initializing security...")}</p>
                         </div>
                     }>
                         <ResetPasswordFormLayout />
@@ -58,7 +60,7 @@ export default function ResetPasswordPage() {
 
                     <div className="pt-4 text-center">
                         <p className="text-sm font-medium text-muted-foreground/60">
-                            Questions? Contact SMARTBUZ IT Support
+                            {t("Questions? Contact SMARTBUZ IT Support")}
                         </p>
                     </div>
                 </div>
@@ -73,7 +75,8 @@ function ResetPasswordFormLayout() {
 
 // Update the inner ResetPasswordForm component as well
 function ResetPasswordForm() {
-    const searchParams = useSearchParams();
+    
+    const t = useT();const searchParams = useSearchParams();
     const router = useRouter();
     const email = searchParams.get("email") || "";
 
@@ -126,15 +129,15 @@ function ResetPasswordForm() {
                     </div>
                 </div>
                 <div className="space-y-2">
-                    <h1 className="text-3xl font-black text-foreground">Success!</h1>
+                    <h1 className="text-3xl font-semibold text-foreground">{t("Success!")}</h1>
                     <p className="text-muted-foreground font-medium px-4">
-                        Your password has been successfully reset. You can now access your dashboard.
+                        {t("Your password has been successfully reset. You can now access your dashboard.")}
                     </p>
                 </div>
                 <div className="pt-2">
                     <Link href="/auth/login" className="block w-full">
                         <Button className="w-full h-14 text-lg font-bold shadow-xl shadow-primary/25 hover:scale-[1.02] transition-transform rounded-xl">
-                            Sign In Now
+                            {t("Sign In Now")}
                         </Button>
                     </Link>
                 </div>
@@ -149,15 +152,15 @@ function ResetPasswordForm() {
                 <div className="w-full text-left mb-6">
                     <Link href="/auth/forgot-password" className="inline-flex items-center text-sm font-bold text-muted-foreground hover:text-primary transition-colors group">
                         <ArrowLeft className="mr-2 h-4 w-4 transform group-hover:-translate-x-1 transition-transform" />
-                        Back to Code Request
+                        {t("Back to Code Request")}
                     </Link>
                 </div>
 
 
                 <div className="space-y-3">
-                    <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl lg:text-5xl">Set New Password</h1>
+                    <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl lg:text-5xl">{t("Set New Password")}</h1>
                     <p className="text-sm sm:text-base text-muted-foreground font-medium max-w-xs mx-auto">
-                        Verifying for <span className="text-foreground font-bold">{email}</span>
+                        {t("Verifying for")} <span className="text-foreground font-bold">{email}</span>
                     </p>
                 </div>
             </div>
@@ -166,19 +169,19 @@ function ResetPasswordForm() {
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-5">
                         <div className="space-y-2.5">
-                            <Label htmlFor="code" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">Verification Code</Label>
+                            <Label htmlFor="code" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">{t("Verification Code")}</Label>
                             <Input
                                 id="code"
                                 required
                                 placeholder="123456"
-                                className="h-14 text-center text-3xl tracking-[0.6em] font-black border-muted-foreground/20 focus:border-primary focus:ring-primary/20 transition-all rounded-xl"
+                                className="h-14 text-center text-3xl tracking-[0.6em] font-semibold border-muted-foreground/20 focus:border-primary focus:ring-primary/20 transition-all rounded-xl"
                                 maxLength={6}
                                 value={code}
                                 onChange={(e) => setCode(e.target.value)}
                             />
                         </div>
                         <div className="space-y-2.5">
-                            <Label htmlFor="password" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">New Password</Label>
+                            <Label htmlFor="password" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">{t("New Password")}</Label>
                             <Input
                                 id="password"
                                 type="password"
@@ -190,7 +193,7 @@ function ResetPasswordForm() {
                             />
                         </div>
                         <div className="space-y-2.5">
-                            <Label htmlFor="confirmPassword" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">Confirm Password</Label>
+                            <Label htmlFor="confirmPassword" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">{t("Confirm Password")}</Label>
                             <Input
                                 id="confirmPassword"
                                 type="password"

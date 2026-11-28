@@ -61,3 +61,32 @@ scripts/fixtures/*.zip
 # are not part of the application and are not worth keeping once the work
 # they did is committed.
 .scratch/
+
+# The scratch scripts and the notes they wrote while a piece of work was in
+# progress. They are one-offs, they are full of absolute paths to this
+# machine, and they must never reach the repository.
+scripts/_tmp-*
+
+# What a local run leaves behind: fetched pages, recovered dictionary dumps,
+# the dev server log, and the scratch Chrome profile used to look at the app.
+.page-*.html
+.recover-*
+.restore-report.json
+.gap-report.txt
+.en-before*.ts
+.en-run*.ts
+.en-idem-*.ts
+.groups.txt
+.cookies.txt
+.dev-run.log
+.build.log
+.lint.log
+.tmp-chrome*
+.tmp-shots*/
+.tmp-sweep*.log
+
+# The per-language copies of the recovered words. The combined file,
+# 00-recovered.json, is the one the merge reads; these three are empty
+# placeholders left behind when the merge was given a single combined batch.
+scripts/i18n-batches/*-recovered.json
+!scripts/i18n-batches/00-recovered.json

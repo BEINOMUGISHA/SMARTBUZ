@@ -1068,6 +1068,8 @@ export default defineSchema({
         capacity: v.optional(v.number()),
         status: v.string(), // available, occupied, reserved, cleaning
         rate: v.optional(v.number()), // per night / per session
+        /** `clean` | `dirty` | `inspected` | `out_of_service` — the housekeeping board. */
+        housekeepingStatus: v.optional(v.string()),
         currentBookingId: v.optional(v.id("appointments")),
         shopId: v.optional(v.id("shops")),
         notes: v.optional(v.string()),
@@ -1912,6 +1914,14 @@ export default defineSchema({
         userId: v.id("users"),
         /** A snapshot of the name, so the record still reads after a rename. */
         userName: v.string(),
+        /**
+         * The reference the operator quotes when they talk about a shift —
+         * "the shift on the 12th that was SH-241112-03".
+         *
+         * It is numbered per business per day, so it reads in order and is
+         * short enough to write on a note.
+         */
+        sessionNumber: v.optional(v.string()),
         /** open | closed */
         status: v.string(),
         openedAt: v.string(),
@@ -2788,4 +2798,494 @@ stockConflicts: defineTable({
     .index("by_businessId", ["businessId"])
     .index("by_priceListId", ["priceListId"])
     .index("by_stockId", ["stockId"]),
+
+  /* ────────────────────────────────────────────────────────────────────────
+   * THE TRADES THAT SELL BY MEASURE, BY INSTALMENT OR BY NIGHT
+   *
+   * The tables above describe what a shop sells. These describe the four
+   * ways the trades sell it differently: by weight and volume instead of
+   * by the piece, in instalments instead of in one payment, by the night
+   * instead of by the visit, and against an invoice that is paid later.
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * A conversion between two units of measure.
+   *
+   * A hardware shop buys cement by the bag and sells it by the kilo; an
+   * agro-dealer buys in sacks and quotes per kilogram; a builder buys
+   * timber by the foot and sells by the metre. The factor is the bridge,
+   * and it is held here rather than in the product, because the same
+   * conversion serves every product in the trade.
+   */
+  unitConversions: defineTable({
+    businessId: v.id("businesses"),
+    /** The unit being converted from, e.g. `bag`. */
+    fromUnit: v.string(),
+    /** The unit being converted to, e.g. `kg`. */
+    toUnit: v.string(),
+    /** How many of the `toUnit` one `fromUnit` holds. */
+    factor: v.number(),
+    createdAt: v.string(),
+    createdBy: v.optional(v.id("users")),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_fromUnit", ["businessId", "fromUnit"]),
+
+  /**
+   * A stay — one room, one guest, a number of nights.
+   *
+   * A hotel sells nights, not visits, so the record is the stay rather
+   * than the room: the nights owed, the rate they were sold at, and what
+   * has been paid.
+   */
+  roomBookings: defineTable({
+    businessId: v.id("businesses"),
+    /** The room — a `serviceOutlets` row of type `room`. */
+    outletId: v.optional(v.id("serviceOutlets")),
+    roomName: v.string(),
+    guestName: v.string(),
+    guestPhone: v.optional(v.string()),
+    guestEmail: v.optional(v.string()),
+    /** `YYYY-MM-DD`. */
+    checkIn: v.string(),
+    /** `YYYY-MM-DD`. */
+    checkOut: v.string(),
+    /** How many nights this stay covers. */
+    nights: v.number(),
+    /** The rate each night was sold at. */
+    nightlyRate: v.number(),
+    /** What the stay owes, computed on the server. */
+    total: v.number(),
+    /** What has been paid against it. */
+    amountPaid: v.number(),
+    /** `reserved` | `in_house` | `checked_out` | `cancelled` */
+    status: v.string(),
+    /** `clean` | `dirty` | `servicing` | `inspected` */
+    housekeepingStatus: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    checkedInBy: v.optional(v.id("users")),
+    checkedOutBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_businessId_checkIn", ["businessId", "checkIn"])
+    .index("by_outletId", ["outletId"]),
+
+  /**
+   * A line on a guest's folio — the hotel's version of an account.
+   *
+   * The folio is the running record of what a guest owes: the room they
+   * were given, and everything put on their account while they were here.
+   * A charge (minibar, laundry, room service, damage) and a payment
+   * against the account are both entries here, kept apart by `kind`, so
+   * that what is owed is always the difference between the two and never
+   * something that has to be remembered by hand.
+   */
+  folioEntries: defineTable({
+    businessId: v.id("businesses"),
+    /** The stay this entry belongs to. */
+    bookingId: v.id("roomBookings"),
+    /** `charge` — put on the account. `payment` — taken off the account. */
+    kind: v.string(),
+    /** What the entry was for. */
+    description: v.string(),
+    /** Always a positive number; the `kind` says which way it goes. */
+    amount: v.number(),
+    /** `minibar` | `laundry` | `room_service` | `damage` | `other` — charges. */
+    category: v.optional(v.string()),
+    /** cash | mobile_money | bank | card | cheque — payments. */
+    method: v.optional(v.string()),
+    /** The receipt or transaction reference of a payment. */
+    reference: v.optional(v.string()),
+    /** `YYYY-MM-DD` — the day the entry was put on the account. */
+    date: v.string(),
+    createdBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_bookingId", ["bookingId"])
+    .index("by_businessId_date", ["businessId", "date"]),
+
+  /**
+   * The record of a night's trading — the hotel's day closed.
+   *
+   * A night audit is a statement: this is how many rooms were sold, this
+   * is what they came to, this is what was still owed when the day ended.
+   * It is kept because a hotel is asked about last Tuesday's night long
+   * after the people who worked it have gone home.
+   */
+  nightAudits: defineTable({
+    businessId: v.id("businesses"),
+    /** `YYYY-MM-DD` — the night this audit closes. */
+    date: v.string(),
+    /** Rooms sold on this night. */
+    roomsSold: v.number(),
+    /** Rooms available on this night. */
+    roomsAvailable: v.number(),
+    /** What the rooms came to. */
+    roomRevenue: v.number(),
+    /** What the folios came to, charges and payments alike. */
+    folioRevenue: v.number(),
+    /** What was still owed when the night closed. */
+    outstanding: v.number(),
+    /** The note the night manager left. */
+    notes: v.optional(v.string()),
+    createdBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_date", ["businessId", "date"]),
+
+  /**
+   * An invoice for money owed — a term's fees, a school's bill.
+   *
+   * The invoice carries its own lines so that what was charged for stays
+   * readable even after the fee structure changes.
+   */
+  feeInvoices: defineTable({
+    businessId: v.id("businesses"),
+    /** The student or member the invoice is for. */
+    memberId: v.optional(v.id("members")),
+    customerId: v.optional(v.id("customers")),
+    payerName: v.string(),
+    payerPhone: v.optional(v.string()),
+    /** The term the invoice covers, e.g. `Term 1 2026`. */
+    term: v.string(),
+    /** What is being charged for. */
+    lines: v.array(
+      v.object({
+        description: v.string(),
+        amount: v.number(),
+        quantity: v.optional(v.number()),
+      })
+    ),
+    /** What the invoice comes to, computed on the server. */
+    total: v.number(),
+    /** What has been paid against it. */
+    amountPaid: v.number(),
+    /** What is still owed. */
+    balance: v.number(),
+    /** `YYYY-MM-DD`. */
+    dueDate: v.string(),
+    /** `unpaid` | `partial` | `paid` | `overdue` | `void` */
+    status: v.string(),
+    notes: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_businessId_term", ["businessId", "term"])
+    .index("by_memberId", ["memberId"]),
+
+  /**
+   * An instalment plan — a hire purchase, a layaway, a school fee plan.
+   *
+   * The plan is the contract: what it costs, what was paid up front, how
+   * many payments are left and how much each one is. The money that has
+   * been taken is tracked here and not inferred from sales, so what the
+   * customer still owes is never a guess.
+   */
+  installmentPlans: defineTable({
+    businessId: v.id("businesses"),
+    customerId: v.optional(v.id("customers")),
+    customerName: v.string(),
+    customerPhone: v.optional(v.string()),
+    /** What is being bought. */
+    stockId: v.optional(v.id("stocks")),
+    description: v.string(),
+    /** What it costs in full. */
+    total: v.number(),
+    /** What was paid up front. */
+    deposit: v.number(),
+    /** How many payments there are. */
+    instalmentCount: v.number(),
+    /** How often a payment falls due — `weekly`, `fortnightly`, `monthly`. */
+    frequency: v.optional(v.string()),
+    /** What each payment is. */
+    instalmentAmount: v.number(),
+    /** What has been paid so far. */
+    amountPaid: v.number(),
+    /** What is still owed. */
+    balance: v.number(),
+    /** `YYYY-MM-DD`. */
+    startDate: v.string(),
+    /** `YYYY-MM-DD` — the next payment that falls due. */
+    nextDueDate: v.string(),
+    /** `active` | `completed` | `defaulted` | `cancelled` */
+    status: v.string(),
+    notes: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_customerId", ["customerId"]),
+
+  /**
+   * A payment taken against an instalment plan.
+   */
+  installmentPayments: defineTable({
+    businessId: v.id("businesses"),
+    planId: v.id("installmentPlans"),
+    amount: v.number(),
+    /** The balance left after this payment. */
+    balanceAfter: v.number(),
+    /** `YYYY-MM-DD`. */
+    date: v.string(),
+    method: v.optional(v.string()),
+    reference: v.optional(v.string()),
+    takenBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_planId", ["planId"]),
+
+  /**
+   * A payroll run — one period of pay for one business.
+   *
+   * The run is what is approved and paid; the items are the lines under
+   * it. Splitting the two is what lets a supervisor review the numbers
+   * before anybody is paid.
+   */
+  payrollRuns: defineTable({
+    businessId: v.id("businesses"),
+    /** The first day of the period, `YYYY-MM-DD`. */
+    periodStart: v.string(),
+    /** The last day of the period, `YYYY-MM-DD`. */
+    periodEnd: v.string(),
+    /** `draft` | `approved` | `paid` | `cancelled` */
+    status: v.string(),
+    /** What the run comes to, computed on the server. */
+    total: v.number(),
+    /** How many people are on it. */
+    headcount: v.number(),
+    notes: v.optional(v.string()),
+    approvedBy: v.optional(v.id("users")),
+    approvedAt: v.optional(v.string()),
+    paidAt: v.optional(v.string()),
+    createdBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"]),
+
+  /**
+   * One person's pay inside a run.
+   */
+  payrollItems: defineTable({
+    businessId: v.id("businesses"),
+    runId: v.id("payrollRuns"),
+    employeeId: v.optional(v.id("employees")),
+    employeeName: v.string(),
+    /** What they are paid on commission from. */
+    commission: v.number(),
+    /** Anything else they are paid for the period. */
+    allowance: v.number(),
+    /** What they take home before deductions. */
+    gross: v.number(),
+    /** What is taken off. */
+    deductions: v.number(),
+    /** What they take home. */
+    net: v.number(),
+    /** `pending` | `approved` | `paid` */
+    status: v.string(),
+    notes: v.optional(v.string()),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_runId", ["runId"])
+    .index("by_employeeId", ["employeeId"]),
+
+  /**
+   * A quotation — what was offered, before it was a sale.
+   *
+   * A quote is the thing a business sends to win work it has not started.
+   * It carries its own lines so that the offer the customer accepted is
+   * still readable after the price list has moved on.
+   */
+  quotations: defineTable({
+    businessId: v.id("businesses"),
+    customerId: v.optional(v.id("customers")),
+    customerName: v.string(),
+    customerPhone: v.optional(v.string()),
+    /** The reference the customer was given, e.g. `Q-0007`. */
+    reference: v.string(),
+    lines: v.array(
+      v.object({
+        description: v.string(),
+        quantity: v.number(),
+        unitPrice: v.number(),
+        total: v.number(),
+        stockId: v.optional(v.id("stocks")),
+      })
+    ),
+    subtotal: v.number(),
+    discount: v.number(),
+    /** What the quote comes to, computed on the server. */
+    total: v.number(),
+    /** `draft` | `sent` | `accepted` | `declined` | `expired` | `converted` */
+    status: v.string(),
+    /** `YYYY-MM-DD` — the last day the quote holds. */
+    validUntil: v.string(),
+    notes: v.optional(v.string()),
+    /** The sale the quote became. */
+    convertedSaleId: v.optional(v.id("sales")),
+    createdBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_customerId", ["customerId"]),
+
+  /**
+   * A lead — somebody who might buy, before they are a customer.
+   *
+   * A shop knows it has a good week when it stopped waiting for people to
+   * walk in. A lead is that somebody, with a stage, so the pipeline can be
+   * seen before the money arrives.
+   */
+  leads: defineTable({
+    businessId: v.id("businesses"),
+    name: v.string(),
+    contact: v.optional(v.string()),
+    email: v.optional(v.string()),
+    /** Where the lead came from — `walk-in`, `referral`, `campaign`, `social`. */
+    source: v.optional(v.string()),
+    /** `new` | `contacted` | `quoted` | `won` | `lost` */
+    stage: v.string(),
+    /** What the deal is worth, if it is known. */
+    value: v.optional(v.number()),
+    /** What they want. */
+    requirement: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    /** The customer record this lead became. */
+    customerId: v.optional(v.id("customers")),
+    ownerId: v.optional(v.id("users")),
+    /** When the lead was lost, and why. */
+    lostReason: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_stage", ["businessId", "stage"]),
+
+  /**
+   * A controlled-drug register entry.
+   *
+   * A controlled substance has to be accounted for by weight, not just by
+   * sale: what came in, what went out, and what the register says should
+   * be left. The balance is computed on the server from the entries, so it
+   * cannot drift from the paper.
+   */
+  controlledDrugEntries: defineTable({
+    businessId: v.id("businesses"),
+    /** The drug, and the form it is in. */
+    drugName: v.string(),
+    /** The strength, e.g. `30mg`. */
+    strength: v.optional(v.string()),
+    /** The form, e.g. `tablet`, `ampoule`, `ml`. */
+    unit: v.string(),
+    /** `receipt` | `dispense` | `adjustment` | `write_off` */
+    entryType: v.string(),
+    /** How much moved. Always positive; the type says which way. */
+    quantity: v.number(),
+    /** What the register should read after this entry. */
+    balanceAfter: v.number(),
+    /** The prescription this went out against. */
+    prescriptionId: v.optional(v.id("prescriptions")),
+    /** Who received it. */
+    patientName: v.string(),
+    patientId: v.optional(v.id("customers")),
+    /** The prescriber, for a dispense. */
+    prescriberName: v.optional(v.string()),
+    prescriberNumber: v.optional(v.string()),
+    /** The reason, for a write-off or an adjustment. */
+    reason: v.optional(v.string()),
+    /** `YYYY-MM-DD`. */
+    date: v.string(),
+    recordedBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_drugName", ["businessId", "drugName"])
+    .index("by_prescriptionId", ["prescriptionId"]),
+
+  /**
+   * A vaccination — an animal, a person, or a batch of them.
+   *
+   * A veterinary or agro-clinic does not treat one animal at a time: it
+   * runs campaigns, where a herd is brought in and the whole batch is
+   * treated and recorded on the day.
+   */
+  vaccinations: defineTable({
+    businessId: v.id("businesses"),
+    /** The campaign this belongs to. */
+    campaignName: v.string(),
+    /** The animal or patient. */
+    subjectName: v.string(),
+    /** `livestock` | `pet` | `human` */
+    subjectType: v.string(),
+    /** The owner's name, for a herd. */
+    ownerName: v.optional(v.string()),
+    ownerId: v.optional(v.id("customers")),
+    /** The vaccine given. */
+    vaccineName: v.string(),
+    /** The dose. */
+    dose: v.optional(v.string()),
+    /** `YYYY-MM-DD`. */
+    date: v.string(),
+    /** When the next one is due. */
+    nextDueDate: v.optional(v.string()),
+    /** `done` | `booked` | `missed` */
+    status: v.string(),
+    /** The fee charged, where the business charges one. */
+    amount: v.optional(v.number()),
+    /** Whether the stock for it was taken out. */
+    stockIssued: v.optional(v.boolean()),
+    notes: v.optional(v.string()),
+    recordedBy: v.optional(v.id("users")),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_businessId_status", ["businessId", "status"])
+    .index("by_businessId_nextDueDate", ["businessId", "nextDueDate"]),
+
+  /**
+   * A notification for one person.
+   *
+   * A notification is addressed to a person, not to a business: the owner
+   * has their own copy of the same event, and it is theirs to read. The
+   * row records what happened, where to go and what to do about it, and it
+   * is kept after it is read so that somebody who missed it can find it
+   * again.
+   */
+  notifications: defineTable({
+    businessId: v.id("businesses"),
+    /** The person this is for. */
+    userId: v.id("users"),
+    /** `sale` | `payment` | `stock` | `finance` | `task` | `system` */
+    kind: v.string(),
+    /** The heading. */
+    title: v.string(),
+    /** The sentence under the heading. */
+    body: v.optional(v.string()),
+    /** Where to go to deal with it. */
+    link: v.optional(v.string()),
+    /** How urgent it is — `info`, `warning`, `critical`. */
+    severity: v.optional(v.string()),
+    /** What caused it, so it can be found again. */
+    sourceType: v.optional(v.string()),
+    sourceId: v.optional(v.string()),
+    /** When the person read it. */
+    readAt: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_businessId", ["businessId"])
+    .index("by_userId", ["userId"])
+    .index("by_userId_readAt", ["userId", "readAt"])
+    .index("by_businessId_createdAt", ["businessId", "createdAt"]),
 });

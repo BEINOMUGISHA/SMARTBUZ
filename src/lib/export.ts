@@ -45,6 +45,110 @@ function fileName(title: string, extension: string): string {
     return `${slugify(title) || "report"}-${stamp}.${extension}`;
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * What an exported report looks like
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** A figure shown above an exported table. */
+export interface ExportStat {
+    label: string;
+    value: string;
+    /** A short line under the figure. */
+    hint?: string;
+}
+
+/** The business the report belongs to, printed on the document. */
+export interface ExportBranding {
+    name?: string;
+    address?: string;
+    phone?: string;
+    /** A logo as a data URL, so the PDF carries the business's own mark. */
+    logoDataUrl?: string;
+}
+
+/** Everything an exported report can carry beyond its rows and columns. */
+export interface ExportOptions {
+    /** A line under the title. */
+    subtitle?: string;
+    /** Figures shown above the table. */
+    stats?: ExportStat[];
+    /** The business the report belongs to. */
+    business?: ExportBranding;
+}
+
+/**
+ * Read the plain text out of a React element.
+ *
+ * A column that renders a badge or a bold figure has no plain value to put in
+ * a spreadsheet, and guessing one would put `<span>` markup in the file. This
+ * pulls the text back out of the element tree.
+ */
+export function extractTextFromReact(element: unknown): string {
+    if (typeof element === "string" || typeof element === "number") {
+        return String(element);
+    }
+    if (!element || typeof element !== "object") return "";
+
+    const props = (element as { props?: { children?: unknown } }).props;
+    if (!props) return "";
+
+    const children = props.children;
+    if (Array.isArray(children)) {
+        return children
+            .map((child) => extractTextFromReact(child))
+            .filter((text) => text.length > 0)
+            .join("\n");
+    }
+    return extractTextFromReact(children);
+}
+
+/**
+ * Turn a screen column into an export column.
+ *
+ * Screen tables describe a column by how to *draw* it — a React node, or a
+ * key on the record. An export needs a plain value instead. This is the one
+ * place that translation happens, so every exported file agrees with the
+ * screen it came from.
+ */
+export function toExportColumn<T>(
+    column: {
+        header: string;
+        /** A key on the record, or a function that draws the cell. */
+        accessor?: unknown;
+        exportValue?: (item: T) => string | number;
+    },
+    index: number
+): ExportColumn {
+    const accessor = column.accessor;
+    const key = typeof accessor === "string" ? accessor : `column_${index}`;
+
+    return {
+        header: column.header,
+        key,
+        numeric: false,
+        format: (_value, row) => {
+            const item = row as unknown as T;
+            if (column.exportValue) return column.exportValue(item);
+            if (typeof accessor === "function") {
+                const draw = accessor as (item: T) => unknown;
+                return extractTextFromReact(draw(item));
+            }
+            return (item as Record<string, unknown>)[key] as string | number;
+        },
+    };
+}
+
+/** Turn a list of screen columns into export columns. */
+export function toExportColumns<T>(
+    columns: Array<{
+        header: string;
+        accessor?: unknown;
+        exportValue?: (item: T) => string | number;
+    }>
+): ExportColumn[] {
+    return columns.map((column, index) => toExportColumn(column, index));
+}
+
 /** Download a blob as a file. */
 function download(blob: Blob, name: string): void {
     const url = URL.createObjectURL(blob);
@@ -109,13 +213,14 @@ export function exportCsv(
 export async function exportExcel(
     title: string,
     rows: Record<string, unknown>[],
-    columns: ExportColumn[]
+    columns: ExportColumn[],
+    options?: ExportOptions
 ): Promise<void> {
     const ExcelJS = (await import("exceljs")).default;
     const { saveAs } = await import("file-saver");
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "SMARTBUZ";
+    workbook.creator = options?.business?.name || "SMARTBUZ";
     workbook.created = new Date();
 
     const sheet = workbook.addWorksheet(title.slice(0, 30) || "Report");
@@ -143,7 +248,7 @@ export async function exportExcel(
 
     sheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return;
-        row.eachCell((cell, columnNumber) => {
+        row.eachCell((cell) => {
             if (typeof cell.value === "number") {
                 cell.numFmt = "#,##0";
                 cell.alignment = { horizontal: "right" };
@@ -164,34 +269,119 @@ export async function exportExcel(
  * Export rows as a PDF.
  *
  * The document is landscape when there are many columns, so the table is
- * not squeezed into an unreadable strip.
+ * not squeezed into an unreadable strip. It carries the business's own name,
+ * address and mark at the top, because a statement that leaves the building
+ * has to say whose it is.
  */
 export async function exportPdf(
     title: string,
     rows: Record<string, unknown>[],
     columns: ExportColumn[],
-    subtitle?: string
+    options?: ExportOptions | string
 ): Promise<void> {
     const { jsPDF } = await import("jspdf");
     const autoTable = (await import("jspdf-autotable")).default;
 
+    // An older caller may pass the subtitle straight in.
+    const opts: ExportOptions =
+        typeof options === "string" ? { subtitle: options } : options ?? {};
+
+    const landscape = columns.length > 5;
     const doc = new jsPDF({
-        orientation: columns.length > 5 ? "landscape" : "portrait",
+        orientation: landscape ? "landscape" : "portrait",
         unit: "pt",
         format: "a4",
     });
 
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 40;
+    const business = opts.business ?? {};
     const stamp = new Date().toISOString().slice(0, 10);
-    doc.setFontSize(15);
-    doc.text(title, 40, 40);
+
+    let y = 40;
+
+    // The business's own mark, printed on the document.
+    if (business.logoDataUrl) {
+        try {
+            doc.addImage(business.logoDataUrl, "PNG", pageWidth - margin - 28, 30, 28, 28);
+        } catch {
+            // A logo that cannot be read is not worth failing the export for.
+        }
+    }
+
+    // The business, then the report.
+    if (business.name) {
+        doc.setFontSize(15);
+        doc.setTextColor(15, 118, 110);
+        doc.text(business.name.toUpperCase(), margin, y);
+        y += 14;
+    }
+    if (business.address) {
+        doc.setFontSize(8);
+        doc.setTextColor(110);
+        doc.text(business.address, margin, y);
+        y += 11;
+    }
+    if (business.phone) {
+        doc.setFontSize(8);
+        doc.setTextColor(110);
+        doc.text(`Tel: ${business.phone}`, margin, y);
+        y += 11;
+    }
+
+    y += 6;
+    doc.setDrawColor(15, 118, 110);
+    doc.setLineWidth(1);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 18;
+
+    doc.setFontSize(13);
+    doc.setTextColor(0);
+    doc.text(title, margin, y);
+    y += 14;
 
     doc.setFontSize(9);
     doc.setTextColor(110);
-    doc.text(subtitle ?? `Generated ${stamp} by SMARTBUZ`, 40, 56);
+    doc.text(
+        opts.subtitle ?? `Generated ${stamp} by SMARTBUZ`,
+        margin,
+        y
+    );
+    y += 16;
+
+    // The figures that sit above the table.
+    if (opts.stats && opts.stats.length > 0) {
+        const columnsCount = opts.stats.length;
+        const cellWidth = Math.min(180, (pageWidth - margin * 2) / columnsCount);
+        const startX = margin;
+
+        opts.stats.forEach((stat, index) => {
+            const x = startX + index * cellWidth;
+            if (index > 0) {
+                doc.setDrawColor(224, 224, 224);
+                doc.setLineWidth(0.5);
+                doc.line(x - 8, y - 10, x - 8, y + 24);
+            }
+            doc.setFontSize(7);
+            doc.setTextColor(0, 133, 66);
+            doc.text(String(stat.label).toUpperCase(), x, y);
+            doc.setFontSize(11);
+            doc.setTextColor(0);
+            doc.text(String(stat.value), x, y + 13);
+            if (stat.hint) {
+                doc.setFontSize(7);
+                doc.setTextColor(150);
+                doc.text(String(stat.hint), x, y + 24);
+            }
+        });
+
+        y += 38;
+    }
+
     doc.setTextColor(0);
 
     autoTable(doc, {
-        startY: 70,
+        startY: y,
         head: [columns.map((c) => c.header)],
         body: rows.map((row) =>
             columns.map((c) => {
@@ -202,7 +392,7 @@ export async function exportPdf(
         styles: { fontSize: 8, cellPadding: 4 },
         headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [248, 250, 252] },
-        margin: { left: 40, right: 40 },
+        margin: { left: margin, right: margin },
     });
 
     doc.save(fileName(title, "pdf"));

@@ -30,7 +30,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Edit, Trash2, MoreHorizontal, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PackagePlus } from "lucide-react";
+import { Plus, Search, Edit, Trash2, MoreHorizontal, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Package, PackagePlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -44,23 +44,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/app/page-shell";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export default function StockPage() {
-    const [activeTab, setActiveTab] = useState("regular");
+    
+    const t = useT();const [activeTab, setActiveTab] = useState("regular");
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-4">
-                <h1 className="text-3xl font-black tracking-tight text-foreground">Stock Management</h1>
-                <p className="text-muted-foreground">Manage your inventory, prices, and product categories.</p>
-            </div>
+            <PageHeader
+                icon={Package}
+                title={t("Stock Management")}
+                description={t("Manage your inventory, prices, and product categories.")}
+            />
 
             <Tabs defaultValue="regular" value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
-                    <TabsTrigger value="regular">Regular Stock</TabsTrigger>
-                    <TabsTrigger value="hp">HP Stock</TabsTrigger>
-                    <TabsTrigger value="categories">Categories</TabsTrigger>
+                    <TabsTrigger value="regular">{t("Regular Stock")}</TabsTrigger>
+                    <TabsTrigger value="hp">{t("HP Stock")}</TabsTrigger>
+                    <TabsTrigger value="categories">{t("Categories")}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="regular" className="mt-6">
@@ -78,7 +83,8 @@ export default function StockPage() {
 }
 
 function StockManager({ halfPrice }: { halfPrice: boolean }) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [search, setSearch] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingStock, setEditingStock] = useState<Doc<"stocks"> | null>(null);
@@ -126,6 +132,118 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
             setCurrentPage(p => p + 1);
         }
     };
+
+    const stockColumns: DataTableColumn<any>[] = [
+        {
+            id: "code",
+            header: "Code",
+            accessor: (row: any) => row.productCode ?? "",
+            cell: (row: any) => (
+                <span className="font-mono text-xs">{row.productCode}</span>
+            ),
+        },
+        {
+            id: "name",
+            header: "Product Name",
+            accessor: (row: any) => row.name,
+            cell: (row: any) => (
+                <span className="font-medium">{row.name}</span>
+            ),
+        },
+        {
+            id: "category",
+            header: "Category",
+            accessor: (row: any) => categoryMap.get(row.categoryId) ?? "",
+            cell: (row: any) => (
+                <Badge variant="neutral" className="font-normal">
+                    {categoryMap.get(row.categoryId) || "Unknown"}
+                </Badge>
+            ),
+            hideBelow: "md",
+        },
+        {
+            id: "price",
+            header: "Price",
+            accessor: (row: any) => row.price ?? 0,
+            align: "right",
+            cell: (row: any) => (
+                <span className="font-semibold tabular-nums">
+                    {row.price.toLocaleString()}
+                </span>
+            ),
+        },
+        {
+            id: "qty",
+            header: "Qty",
+            accessor: (row: any) => row.qty ?? 0,
+            align: "center",
+            cell: (row: any) => (
+                <Badge variant={row.qty < 10 ? "danger" : "neutral"}>
+                    {row.qty}
+                </Badge>
+            ),
+        },
+        {
+            id: "pv",
+            header: "PV",
+            accessor: (row: any) => row.pv ?? 0,
+            align: "center",
+            hideBelow: "lg",
+            cell: (row: any) => (
+                <span className="text-xs tabular-nums">{row.pv}</span>
+            ),
+        },
+        {
+            id: "bv",
+            header: "BV",
+            accessor: (row: any) => row.bv ?? 0,
+            align: "center",
+            hideBelow: "lg",
+            cell: (row: any) => (
+                <span className="text-xs tabular-nums">{row.bv}</span>
+            ),
+        },
+        {
+            id: "actions",
+            header: "Actions",
+            align: "right",
+            width: "4rem",
+            cell: (row: any) => (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-muted-foreground hover:text-foreground"
+                        >
+                            <MoreHorizontal className="size-4" />
+                            <span className="sr-only">
+                                {t("Actions for")} {row.name}
+                            </span>
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                            onClick={() => setRestockingStock(row)}
+                        >
+                            <PackagePlus className="mr-2 size-4" /> {t("Restock")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            onClick={() => setEditingStock(row)}
+                        >
+                            <Edit className="mr-2 size-4" /> {t("Edit")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => setDeletingId(row._id)}
+                        >
+                            <Trash2 className="mr-2 size-4" /> {t("Delete")}
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            ),
+        },
+    ];
 
     const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -219,23 +337,23 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 isOpen={!!deletingId}
                 onClose={() => setDeletingId(null)}
                 onConfirm={handleDelete}
-                title="Delete Stock Item?"
-                description="This will permanently delete this stock item and remove it from all shops. This action cannot be undone."
+                title={t("Delete Stock Item?")}
+                description={t("This will permanently delete this stock item and remove it from all shops. This action cannot be undone.")}
             />
 
             <Dialog open={!!restockingStock} onOpenChange={(open) => !open && setRestockingStock(null)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Restock Product</DialogTitle>
+                        <DialogTitle>{t("Restock Product")}</DialogTitle>
                     </DialogHeader>
                     {restockingStock && (
                         <form onSubmit={handleRestock} className="space-y-4">
                             <div className="grid gap-2">
-                                <Label>Product</Label>
+                                <Label>{t("Product")}</Label>
                                 <div className="font-medium">{restockingStock.name} ({restockingStock.productCode})</div>
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="quantityToAdd">Quantity to Add</Label>
+                                <Label htmlFor="quantityToAdd">{t("Quantity to Add")}</Label>
                                 <Input
                                     id="quantityToAdd"
                                     name="quantityToAdd"
@@ -247,18 +365,18 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="supplier_restock">Supplier (Optional)</Label>
+                                <Label htmlFor="supplier_restock">{t("Supplier (Optional)")}</Label>
                                 <Input
                                     id="supplier_restock"
                                     name="supplier"
-                                    placeholder="e.g. Acme Corp"
+                                    placeholder={t("e.g. Acme Corp")}
                                 />
                             </div>
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => setRestockingStock(null)}>
-                                    Cancel
+                                    {t("Cancel")}
                                 </Button>
-                                <Button type="submit">Confirm Restock</Button>
+                                <Button type="submit">{t("Confirm Restock")}</Button>
                             </DialogFooter>
                         </form>
                     )}
@@ -269,7 +387,7 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 <div className="flex items-center gap-2 bg-card p-2 rounded-lg border shadow-sm w-full sm:max-w-sm">
                     <Search className="h-4 w-4 text-muted-foreground ml-2" />
                     <Input
-                        placeholder="Search by code or name..."
+                        placeholder={t("Search by code or name...")}
                         value={search}
                         onChange={(e) => {
                             setSearch(e.target.value);
@@ -279,215 +397,86 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                     />
                 </div>
                 <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto">
-                    <Plus className="mr-2 h-4 w-4" /> Add {halfPrice ? "HP" : "Regular"} Product
+                    <Plus className="mr-2 h-4 w-4" /> {t("Add")} {halfPrice ? "HP" : "Regular"} {t("Product")}
                 </Button>
             </div>
 
-            <div className="rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col">
-                <div className="flex-1 overflow-x-auto">
-                    <div className="min-w-[1000px] lg:min-w-0">
-                        <Table>
-                            <TableHeader className="bg-muted/50">
-                                <TableRow>
-                                    <TableHead>Code</TableHead>
-                                    <TableHead>Product Name</TableHead>
-                                    <TableHead>Category</TableHead>
-                                    <TableHead className="text-right">Price ({currency})</TableHead>
-                                    <TableHead className="text-center">Qty</TableHead>
-                                    <TableHead className="text-center">PV</TableHead>
-                                    <TableHead className="text-center">BV</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {paginatedResult === undefined ? (
-                                    <TableRow>
-                                        <TableCell colSpan={8} className="h-24 text-center">
-                                            <Loader2 className="h-4 w-4 animate-spin mx-auto" />
-                                        </TableCell>
-                                    </TableRow>
-                                ) : currentView.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                                            No items found.
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    currentView.map((stock) => (
-                                        <TableRow key={stock._id} className="hover:bg-muted/50">
-                                            <TableCell className="font-mono text-xs">{stock.productCode}</TableCell>
-                                            <TableCell className="font-medium">{stock.name}</TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline" className="font-normal">
-                                                    {categoryMap.get(stock.categoryId) || "Unknown"}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-right font-bold">{stock.price.toLocaleString()}</TableCell>
-                                            <TableCell className="text-center">
-                                                <Badge variant={stock.qty < 10 ? "destructive" : "secondary"}>{stock.qty}</Badge>
-                                            </TableCell>
-                                            <TableCell className="text-center text-xs">{stock.pv}</TableCell>
-                                            <TableCell className="text-center text-xs">{stock.bv}</TableCell>
-                                            <TableCell className="text-right">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem onClick={() => setRestockingStock(stock)}>
-                                                            <PackagePlus className="mr-2 h-4 w-4" /> Restock
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => setEditingStock(stock)}>
-                                                            <Edit className="mr-2 h-4 w-4" /> Edit
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem className="text-destructive" onClick={() => setDeletingId(stock._id)}>
-                                                            <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-
-                    {/* Full Pagination Footer */}
-                    <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-6 lg:space-x-8">
-                        <div className="flex items-center space-x-2">
-                            <p className="text-sm font-medium">Rows per page</p>
-                            <Select
-                                value={`${rowsPerPage}`}
-                                onValueChange={(value) => {
-                                    const newSize = Number(value);
-                                    setRowsPerPage(newSize);
-                                    localStorage.setItem("pos_stock_rows_per_page", String(newSize));
-                                    setCurrentPage(1);
-                                }}
-                            >
-                                <SelectTrigger className="h-8 w-[70px]">
-                                    <SelectValue placeholder={rowsPerPage} />
-                                </SelectTrigger>
-                                <SelectContent side="top">
-                                    {[5, 10, 20, 30, 50, 100].map((pageSize) => (
-                                        <SelectItem key={pageSize} value={`${pageSize}`}>
-                                            {pageSize}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="flex w-[100px] items-center justify-center text-sm font-medium">
-                            Page {currentPage} of {totalPages || 1}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground hidden md:inline-block mr-4">
-                                Showing {Math.min(startIndex + 1, totalItems)}-{Math.min(endIndex, totalItems)} of {totalItems} items
-                            </span>
-                            <Button
-                                variant="outline"
-                                className="hidden h-8 w-8 p-0 lg:flex"
-                                onClick={() => setCurrentPage(1)}
-                                disabled={currentPage === 1}
-                            >
-                                <span className="sr-only">Go to first page</span>
-                                <ChevronsLeft className="h-4 w-4" />
-                            </Button>
-                            <Button
-                                variant="outline"
-                                className="h-8 w-8 p-0"
-                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                disabled={currentPage === 1}
-                            >
-                                <span className="sr-only">Go to previous page</span>
-                                <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <Button
-                                variant="outline"
-                                className="h-8 w-8 p-0"
-                                onClick={handleNextPage}
-                                disabled={currentPage >= totalPages}
-                            >
-                                <span className="sr-only">Go to next page</span>
-                                <ChevronRight className="h-4 w-4" />
-                            </Button>
-                            <Button
-                                variant="outline"
-                                className="hidden h-8 w-8 p-0 lg:flex"
-                                onClick={() => setCurrentPage(totalPages)}
-                                disabled={currentPage >= totalPages}
-                            >
-                                <span className="sr-only">Go to last page</span>
-                                <ChevronsRight className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
-                </div>
+            <DataTable
+                data={currentView}
+                columns={stockColumns}
+                getRowId={(row: any) => row._id}
+                isLoading={paginatedResult === undefined}
+                manual
+                manualPage={currentPage}
+                manualPageCount={Math.max(1, totalPages)}
+                manualTotal={totalItems}
+                onManualPageChange={(p) => setCurrentPage(p)}
+                pageSize={rowsPerPage}
+                ariaLabel="Stock items"
+                emptyTitle={t("No products found")}
+                emptyHint={t("Adjust your search, or add the first product.")}
+            />
 
                 {/* Add/Edit Dialogs Reuse */}
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                     <DialogContent className="max-w-2xl">
                         <DialogHeader>
-                            <DialogTitle>Add {halfPrice ? "HP" : "Regular"} Stock</DialogTitle>
+                            <DialogTitle>{t("Add")} {halfPrice ? "HP" : "Regular"} {t("Stock")}</DialogTitle>
                         </DialogHeader>
                         <form onSubmit={handleCreate} className="space-y-4 py-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Product Name</Label>
+                                    <Label>{t("Product Name")}</Label>
                                     <Input name="name" required />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Product Code</Label>
+                                    <Label>{t("Product Code")}</Label>
                                     <Input name="productCode" required />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Barcode</Label>
-                                    <Input name="barcode" placeholder="Scanned or typed" />
-                                    <p className="text-[10px] text-muted-foreground">
-                                        Leave it empty if the product has none. A barcode belongs to
-                                        one product.
+                                    <Label>{t("Barcode")}</Label>
+                                    <Input name="barcode" placeholder={t("Scanned or typed")} />
+                                    <p className="text-xs text-muted-foreground">
+                                        {t("Leave it empty if the product has none. A barcode belongs to one product.")}
                                     </p>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Category</Label>
+                                    <Label>{t("Category")}</Label>
                                     <Select name="categoryId" required>
-                                        <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                                        <SelectTrigger><SelectValue placeholder={t("Select")} /></SelectTrigger>
                                         <SelectContent>
                                             {categories?.map((c) => <SelectItem key={c._id} value={c._id}>{c.type}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Selling Price</Label>
+                                    <Label>{t("Selling Price")}</Label>
                                     <Input name="price" type="number" required />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Purchase Price</Label>
+                                    <Label>{t("Purchase Price")}</Label>
                                     <Input name="purchasePrice" type="number" required />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Quantity</Label>
+                                    <Label>{t("Quantity")}</Label>
                                     <Input name="qty" type="number" required />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>PV</Label>
+                                    <Label>{t("PV")}</Label>
                                     <Input name="pv" type="number" required step="0.1" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>BV</Label>
+                                    <Label>{t("BV")}</Label>
                                     <Input name="bv" type="number" required step="0.1" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Supplier (Optional)</Label>
-                                    <Input name="supplier" placeholder="e.g. Acme Corp" />
+                                    <Label>{t("Supplier (Optional)")}</Label>
+                                    <Input name="supplier" placeholder={t("e.g. Acme Corp")} />
                                 </div>
                             </div>
-                            <Input name="description" placeholder="Description (Optional)" className="mt-4" />
+                            <Input name="description" placeholder={t("Description (Optional)")} className="mt-4" />
                             <DialogFooter className="mt-4">
-                                <Button type="submit">Create</Button>
+                                <Button type="submit">{t("Create")}</Button>
                             </DialogFooter>
                         </form>
                     </DialogContent>
@@ -496,76 +485,75 @@ function StockManager({ halfPrice }: { halfPrice: boolean }) {
                 <Dialog open={!!editingStock} onOpenChange={(o) => !o && setEditingStock(null)}>
                     <DialogContent className="max-w-2xl">
                         <DialogHeader>
-                            <DialogTitle>Edit Stock</DialogTitle>
+                            <DialogTitle>{t("Edit Stock")}</DialogTitle>
                         </DialogHeader>
                         {editingStock && (
                             <form onSubmit={handleUpdate} className="space-y-4 py-4">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label>Product Name</Label>
+                                        <Label>{t("Product Name")}</Label>
                                         <Input name="name" defaultValue={editingStock.name} required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Product Code</Label>
+                                        <Label>{t("Product Code")}</Label>
                                         <Input name="productCode" defaultValue={editingStock.productCode} required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Barcode</Label>
-                                        <Input name="barcode" defaultValue={editingStock.barcode ?? ""} placeholder="Scanned or typed" />
-                                        <p className="text-[10px] text-muted-foreground">
-                                            Leave it empty to clear the barcode. A barcode belongs to
-                                            one product.
+                                        <Label>{t("Barcode")}</Label>
+                                        <Input name="barcode" defaultValue={editingStock.barcode ?? ""} placeholder={t("Scanned or typed")} />
+                                        <p className="text-xs text-muted-foreground">
+                                            {t("Leave it empty to clear the barcode. A barcode belongs to one product.")}
                                         </p>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Category</Label>
+                                        <Label>{t("Category")}</Label>
                                         <Select name="categoryId" defaultValue={editingStock.categoryId} required>
-                                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                                            <SelectTrigger><SelectValue placeholder={t("Select")} /></SelectTrigger>
                                             <SelectContent>
                                                 {categories?.map((c) => <SelectItem key={c._id} value={c._id}>{c.type}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Selling Price</Label>
+                                        <Label>{t("Selling Price")}</Label>
                                         <Input name="price" type="number" defaultValue={editingStock.price} required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Purchase Price</Label>
+                                        <Label>{t("Purchase Price")}</Label>
                                         <Input name="purchasePrice" type="number" defaultValue={editingStock.purchasePrice} required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Quantity</Label>
+                                        <Label>{t("Quantity")}</Label>
                                         <Input name="qty" type="number" defaultValue={editingStock.qty} required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>PV</Label>
+                                        <Label>{t("PV")}</Label>
                                         <Input name="pv" type="number" defaultValue={editingStock.pv} required step="0.1" />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>BV</Label>
+                                        <Label>{t("BV")}</Label>
                                         <Input name="bv" type="number" defaultValue={editingStock.bv} required step="0.1" />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Supplier (Optional)</Label>
-                                        <Input name="supplier" defaultValue={editingStock.supplier} placeholder="e.g. Acme Corp" />
+                                        <Label>{t("Supplier (Optional)")}</Label>
+                                        <Input name="supplier" defaultValue={editingStock.supplier} placeholder={t("e.g. Acme Corp")} />
                                     </div>
                                 </div>
-                                <Input name="description" defaultValue={editingStock.description} placeholder="Description" className="mt-4" />
+                                <Input name="description" defaultValue={t(editingStock.description)} placeholder={t("Description")} className="mt-4" />
                                 <DialogFooter className="mt-4">
-                                    <Button type="submit">Update</Button>
+                                    <Button type="submit">{t("Update")}</Button>
                                 </DialogFooter>
                             </form>
                         )}
                     </DialogContent>
                 </Dialog>
-            </div>
         </div>
     );
 }
 
 function CategoryManager() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const categories = useQuery(api.categories.get, {});
     const addCategory = useMutation(api.categories.add);
     const deleteCategory = useMutation(api.categories.remove);
@@ -601,20 +589,20 @@ function CategoryManager() {
                 isOpen={!!deletingId}
                 onClose={() => setDeletingId(null)}
                 onConfirm={handleDelete}
-                title="Delete Category?"
-                description="This will permanently delete this category. Products using this category will still exist but point to a missing category."
+                title={t("Delete Category?")}
+                description={t("This will permanently delete this category. Products using this category will still exist but point to a missing category.")}
             />
             <div className="space-y-4">
                 <div className="p-4 rounded-xl border bg-card shadow-sm">
-                    <h3 className="font-semibold mb-4">Add New Category</h3>
+                    <h3 className="font-semibold mb-4">{t("Add New Category")}</h3>
                     <form onSubmit={handleAdd} className="flex gap-2">
                         <Input
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="Category Name"
+                            placeholder={t("Category Name")}
                             required
                         />
-                        <Button type="submit">Add</Button>
+                        <Button type="submit">{t("Add")}</Button>
                     </form>
                 </div>
             </div>
@@ -622,8 +610,8 @@ function CategoryManager() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Category Name</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
+                            <TableHead>{t("Category Name")}</TableHead>
+                            <TableHead className="text-right">{t("Actions")}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -639,7 +627,7 @@ function CategoryManager() {
                         ))}
                         {categories?.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={2} className="text-center text-muted-foreground py-8">No categories found.</TableCell>
+                                <TableCell colSpan={2} className="text-center text-muted-foreground py-8">{t("No categories found.")}</TableCell>
                             </TableRow>
                         )}
                     </TableBody>

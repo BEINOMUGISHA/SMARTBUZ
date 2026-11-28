@@ -5,6 +5,7 @@ import { Gift, Sparkles, ArrowRight, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { UnlockedReward, PromoNudge } from "@/lib/promo-evaluator";
+import { useT } from "@/i18n/provider";
 
 interface PromoCartBannerProps {
     unlockedRewards: UnlockedReward[];
@@ -12,7 +13,8 @@ interface PromoCartBannerProps {
 }
 
 export function PromoCartBanner({ unlockedRewards, nudges }: PromoCartBannerProps) {
-    if (unlockedRewards.length === 0 && nudges.length === 0) {
+    
+    const t = useT();if (unlockedRewards.length === 0 && nudges.length === 0) {
         return null;
     }
 
@@ -29,20 +31,21 @@ export function PromoCartBanner({ unlockedRewards, nudges }: PromoCartBannerProp
                         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-emerald-500/30 bg-emerald-500/20 shadow-sm">
                             <Image
                                 src="/images/promo-rewards.jpg"
-                                alt="Reward Prize"
+                                alt={t("Reward Prize")}
                                 fill
+                                sizes="40px"
                                 className="object-cover"
                             />
                         </div>
                         <div>
                             <div className="font-bold flex items-center gap-1.5">
                                 <span>{reward.promotionName}</span>
-                                <Badge variant="outline" className="text-[9px] font-black border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0">
-                                    Unlocked x{reward.count}
+                                <Badge variant="outline" className="text-xs font-semibold border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0">
+                                    {t("Unlocked x")}{reward.count}
                                 </Badge>
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                                Prize: <span className="font-semibold text-foreground">{reward.prize}</span>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                {t("Prize:")} <span className="font-semibold text-foreground">{reward.prize}</span>
                             </p>
                         </div>
                     </div>
@@ -62,12 +65,12 @@ export function PromoCartBanner({ unlockedRewards, nudges }: PromoCartBannerProp
                             <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                             <span className="font-bold text-foreground">{nudge.promotionName}</span>
                         </div>
-                        <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                            {nudge.neededAmount} {nudge.unit} away!
+                        <span className="text-amber-600 dark:text-amber-400 text-eyebrow uppercase tracking-eyebrow">
+                            {nudge.neededAmount} {nudge.unit} {t("away!")}
                         </span>
                     </div>
 
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                         {nudge.productName
                             ? `Add ${nudge.neededAmount} more unit(s) of ${nudge.productName} to win `
                             : `Add ${nudge.neededAmount} more ${nudge.unit} to your cart to win `}
@@ -76,7 +79,7 @@ export function PromoCartBanner({ unlockedRewards, nudges }: PromoCartBannerProp
 
                     <div className="flex items-center gap-2 pt-0.5">
                         <Progress value={nudge.progressPercentage} className="h-1.5 flex-1 bg-muted" />
-                        <span className="text-[10px] font-bold text-muted-foreground">{nudge.progressPercentage}%</span>
+                        <span className="text-xs font-bold text-muted-foreground">{nudge.progressPercentage}%</span>
                     </div>
                 </div>
             ))}

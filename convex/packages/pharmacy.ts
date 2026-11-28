@@ -42,6 +42,7 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requirePermission, requireTenant } from "../tenancy";
+import { assertScreenAvailable } from "./manage";
 
 /* ────────────────────────────────────────────────────────────────────────
  * Batch allocation
@@ -306,6 +307,7 @@ export const createPrescription = mutation({
             throw new ConvexError(
                 "A prescription needs the name of the person who prescribed it."
             );
+        await assertScreenAvailable(ctx, businessId, ["prescriptions"]);
         }
 
         if (args.items.length === 0) {
@@ -368,6 +370,7 @@ export const dispensePrescription = mutation({
             throw new ConvexError(
                 "Forbidden: that prescription belongs to another business."
             );
+        await assertScreenAvailable(ctx, businessId, ["prescriptions"]);
         }
 
         if (prescription.status === "dispensed") {

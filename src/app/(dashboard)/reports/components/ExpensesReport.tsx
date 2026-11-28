@@ -21,9 +21,11 @@ import {
     SheetDescription,
 } from "@/components/ui/sheet";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function ExpensesReport() {
-    const { currency } = useCurrency();
+    
+    const tr = useT();const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -121,7 +123,7 @@ export function ExpensesReport() {
                     ]}
                     value={selectedType}
                     onValueChange={setSelectedType}
-                    placeholder="Category"
+                    placeholder={tr("Category")}
                     width="160px"
                 />
 
@@ -132,14 +134,14 @@ export function ExpensesReport() {
                     ]}
                     value={selectedUser}
                     onValueChange={setSelectedUser}
-                    placeholder="User"
+                    placeholder={tr("User")}
                     width="180px"
                 />
 
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search expense, category, or user..."
+                        placeholder={tr("Search expense, category, or user...")}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -150,8 +152,8 @@ export function ExpensesReport() {
             <ReportSummary customStats={customStats} isLoading={summary === undefined} />
 
             <ReportTable
-                title="Expenses Report"
-                subtitle="Detailed tracking of all expenses with category breakdown."
+                title={tr("Expenses Report")}
+                subtitle={tr("Detailed tracking of all expenses with category breakdown.")}
                 data={expenses?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
                 isLoading={expenses === undefined}
                 onViewDetails={handleViewDetails}
@@ -176,7 +178,7 @@ export function ExpensesReport() {
                         header: "Date",
                         accessor: (e: any) => (
                             <div className="font-mono leading-tight">
-                                <div className="font-black">{format(new Date(e.date), "dd MMM yyyy")}</div>
+                                <div className="font-semibold">{format(new Date(e.date), "dd MMM yyyy")}</div>
                             </div>
                         )
                     },
@@ -184,8 +186,8 @@ export function ExpensesReport() {
                         header: "Expense",
                         accessor: (e: any) => (
                             <div className="flex flex-col gap-0.5 min-w-[140px]">
-                                <span className="font-black text-primary leading-none">{e.expense}</span>
-                                <Badge variant="outline" className="text-[8px] uppercase font-black tracking-tighter px-1 h-3.5 w-fit mt-0.5">
+                                <span className="font-semibold text-primary leading-none">{e.expense}</span>
+                                <Badge variant="outline" className="tracking-tighter px-1 h-3.5 w-fit mt-0.5 text-eyebrow uppercase tracking-eyebrow">
                                     {e.type}
                                 </Badge>
                             </div>
@@ -195,7 +197,7 @@ export function ExpensesReport() {
                     {
                         header: "Amount",
                         accessor: (e: any) => (
-                            <span className="font-black text-red-600 text-sm">{currency} {e.amount.toLocaleString()}</span>
+                            <span className="font-semibold text-red-600 text-sm">{currency} {e.amount.toLocaleString()}</span>
                         ),
                         exportValue: (e: any) => e.amount.toLocaleString(),
                         className: "text-right",
@@ -204,8 +206,8 @@ export function ExpensesReport() {
                         header: "Recorded By",
                         accessor: (e: any) => (
                             <div className="flex flex-col gap-0.5">
-                                <span className="text-[10px] font-bold capitalize text-muted-foreground">{e.userName}</span>
-                                <span className="text-[9px] text-muted-foreground italic">{e.receivedBy}</span>
+                                <span className="text-xs font-bold capitalize text-muted-foreground">{e.userName}</span>
+                                <span className="text-xs text-muted-foreground italic">{e.receivedBy}</span>
                             </div>
                         ),
                         exportValue: (e: any) => e.userName,
@@ -217,54 +219,54 @@ export function ExpensesReport() {
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Expense Details</SheetTitle>
+                        <SheetTitle>{tr("Expense Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete information about this expense record.
+                            {tr("Complete information about this expense record.")}
                         </SheetDescription>
                     </SheetHeader>
                     {viewingExpense ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Date</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{tr("Date")}</span>
                                     <span className="font-semibold">{format(new Date(viewingExpense.date), "dd MMM yyyy")}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Amount</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{tr("Amount")}</span>
                                     <span className="font-bold text-lg text-red-600">{currency} {viewingExpense.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Category</span>
-                                    <Badge variant="outline" className="text-xs uppercase font-black tracking-tighter">
+                                    <span className="text-sm font-medium text-muted-foreground">{tr("Category")}</span>
+                                    <Badge variant="outline" className="text-xs uppercase font-semibold tracking-tighter">
                                         {viewingExpense.type}
                                     </Badge>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Expense Information</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{tr("Expense Information")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Description</span>
+                                        <span className="text-sm text-muted-foreground">{tr("Description")}</span>
                                         <span className="font-semibold text-sm text-right max-w-[200px]">{viewingExpense.expense}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Received By</span>
+                                        <span className="text-sm text-muted-foreground">{tr("Received By")}</span>
                                         <span className="font-semibold">{viewingExpense.receivedBy}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Recorded By</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{tr("Recorded By")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="text-sm text-muted-foreground">{tr("Name")}</span>
                                         <span className="font-semibold capitalize">{viewingExpense.userName}</span>
                                     </div>
                                     {viewingExpense.userEmail && viewingExpense.userEmail !== "-" && (
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm text-muted-foreground">Email</span>
+                                            <span className="text-sm text-muted-foreground">{tr("Email")}</span>
                                             <span className="font-semibold text-sm">{viewingExpense.userEmail}</span>
                                         </div>
                                     )}

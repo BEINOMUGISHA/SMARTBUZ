@@ -8,6 +8,7 @@ import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { useT } from "@/i18n/provider";
 import {
     Popover,
     PopoverContent,
@@ -23,7 +24,8 @@ export function DatePickerWithRange({
     date: DateRange | undefined;
     setDate: (date: DateRange | undefined) => void;
 }) {
-    return (
+    
+    const t = useT();return (
         <div className={cn("grid gap-2", className)}>
             <Popover>
                 <PopoverTrigger asChild>
@@ -46,7 +48,7 @@ export function DatePickerWithRange({
                                 format(date.from, "LLL dd, y")
                             )
                         ) : (
-                            <span>Pick a date range</span>
+                            <span>{t("Pick a date range")}</span>
                         )}
                     </Button>
                 </PopoverTrigger>

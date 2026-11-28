@@ -57,6 +57,23 @@ export const ALLOWED_MODULES = [
   "fuel",
   "rentals",
   "prescriptions",
+  // The industry verticals and the screens the packages bring.
+  "fuelPump",
+  "maintenance",
+  "grn",
+  "finance",
+  "banking",
+  "businessIntelligence",
+  "pricing",
+  "frontDesk",
+  "fees",
+  "quotes",
+  "leads",
+  "plans",
+  "notifications",
+  "imports",
+  "payroll",
+  "measurements",
 ] as const;
 
 /**

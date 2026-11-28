@@ -77,6 +77,25 @@ export interface FakeCtxOptions {
   subscriptionPayments?: FakeRow[];
   licenseKeys?: FakeRow[];
   devices?: FakeRow[];
+  unitConversions?: FakeRow[];
+  priceLists?: FakeRow[];
+  priceListEntries?: FakeRow[];
+  notifications?: FakeRow[];
+  serviceOutlets?: FakeRow[];
+  roomBookings?: FakeRow[];
+  folioEntries?: FakeRow[];
+  nightAudits?: FakeRow[];
+  installmentPlans?: FakeRow[];
+  installmentPayments?: FakeRow[];
+  feeInvoices?: FakeRow[];
+  quotations?: FakeRow[];
+  leads?: FakeRow[];
+  payrollRuns?: FakeRow[];
+  payrollItems?: FakeRow[];
+  customerMeasurements?: FakeRow[];
+  controlledDrugEntries?: FakeRow[];
+  vaccinations?: FakeRow[];
+  industryPackages?: FakeRow[];
 }
 
 const TABLES = [
@@ -147,6 +166,31 @@ const TABLES = [
   // shares the limit and a deploy does not reset it.
   "loginAttempts",
   "emailThrottle",
+  // The industry verticals.
+  "unitConversions",
+  "priceLists",
+  "priceListEntries",
+  "notifications",
+  "serviceOutlets",
+  "roomBookings",
+  "folioEntries",
+  "nightAudits",
+  "installmentPlans",
+  "installmentPayments",
+  "feeInvoices",
+  "quotations",
+  "leads",
+  "payrollRuns",
+  "payrollItems",
+  "customerMeasurements",
+  "controlledDrugEntries",
+  "vaccinations",
+  "industryPackages",
+  // The members module — accounts, wallets, commissions and donations.
+  "members",
+  "memberTransactions",
+  "customerWallets",
+  "donations",
 ] as const;
 
 type TableName = (typeof TABLES)[number];

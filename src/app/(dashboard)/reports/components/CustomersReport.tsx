@@ -21,9 +21,11 @@ import {
     SheetDescription,
 } from "@/components/ui/sheet";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function CustomersReport() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -119,7 +121,7 @@ export function CustomersReport() {
                     ]}
                     value={selectedShop}
                     onValueChange={setSelectedShop}
-                    placeholder="Select Shop"
+                    placeholder={t("Select Shop")}
                     width="160px"
                 />
 
@@ -131,14 +133,14 @@ export function CustomersReport() {
                     ]}
                     value={clientType}
                     onValueChange={setClientType}
-                    placeholder="Client Type"
+                    placeholder={t("Client Type")}
                     width="150px"
                 />
 
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search customer name or phone..."
+                        placeholder={t("Search customer name or phone...")}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -149,8 +151,8 @@ export function CustomersReport() {
             <ReportSummary customStats={customStats} isLoading={summary === undefined} />
 
             <ReportTable
-                title="Customer Analytics Report"
-                subtitle="Analysis of customer behavior, lifetime value, and purchase patterns."
+                title={t("Customer Analytics Report")}
+                subtitle={t("Analysis of customer behavior, lifetime value, and purchase patterns.")}
                 data={customers?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
                 isLoading={customers === undefined}
                 onViewDetails={handleViewDetails}
@@ -175,8 +177,8 @@ export function CustomersReport() {
                         header: "Customer",
                         accessor: (c: any) => (
                             <div className="flex flex-col gap-0.5 min-w-[160px]">
-                                <span className="font-black text-primary leading-none">{c.customerName}</span>
-                                <span className="text-[9px] font-bold text-muted-foreground">{c.customerPhone}</span>
+                                <span className="font-semibold text-primary leading-none">{c.customerName}</span>
+                                <span className="text-xs font-bold text-muted-foreground">{c.customerPhone}</span>
                             </div>
                         ),
                         exportValue: (c: any) => c.customerName,
@@ -184,7 +186,7 @@ export function CustomersReport() {
                     {
                         header: "Type",
                         accessor: (c: any) => (
-                            <Badge variant={c.clientType === "HP Client" ? "secondary" : "outline"} className="text-[9px] h-4">
+                            <Badge variant={c.clientType === "HP Client" ? "secondary" : "outline"} className="text-xs h-4">
                                 {c.clientType}
                             </Badge>
                         ),
@@ -194,7 +196,7 @@ export function CustomersReport() {
                     {
                         header: "Total Spent",
                         accessor: (c: any) => (
-                            <span className="font-black text-emerald-700 text-sm">{currency} {c.totalSpent.toLocaleString()}</span>
+                            <span className="font-semibold text-emerald-700 text-sm">{currency} {c.totalSpent.toLocaleString()}</span>
                         ),
                         exportValue: (c: any) => c.totalSpent.toLocaleString(),
                         className: "text-right",
@@ -202,8 +204,8 @@ export function CustomersReport() {
                     {
                         header: "Purchases",
                         accessor: (c: any) => (
-                            <Badge variant="outline" className="text-[9px] uppercase font-black tracking-tighter">
-                                {c.purchaseCount} SALES
+                            <Badge variant="outline" className="tracking-tighter text-eyebrow uppercase tracking-eyebrow">
+                                {c.purchaseCount} {t("SALES")}
                             </Badge>
                         ),
                         exportValue: (c: any) => c.purchaseCount,
@@ -221,8 +223,8 @@ export function CustomersReport() {
                         header: "PV / BV",
                         accessor: (c: any) => (
                             <div className="text-right">
-                                <div className="font-black text-purple-700 text-xs">{c.totalPV.toLocaleString()} PV</div>
-                                <div className="font-black text-indigo-700 text-xs">{c.totalBV.toLocaleString()} BV</div>
+                                <div className="font-semibold text-purple-700 text-xs">{c.totalPV.toLocaleString()} {t("PV")}</div>
+                                <div className="font-semibold text-indigo-700 text-xs">{c.totalBV.toLocaleString()} {t("BV")}</div>
                             </div>
                         ),
                         exportValue: (c: any) => `${c.totalPV.toLocaleString()} PV / ${c.totalBV.toLocaleString()} BV`,
@@ -231,7 +233,7 @@ export function CustomersReport() {
                     {
                         header: "Last Purchase",
                         accessor: (c: any) => (
-                            <span className="text-[9px] font-bold text-muted-foreground">{format(new Date(c.lastPurchaseDate), "dd MMM yyyy")}</span>
+                            <span className="text-xs font-bold text-muted-foreground">{format(new Date(c.lastPurchaseDate), "dd MMM yyyy")}</span>
                         ),
                         exportValue: (c: any) => format(new Date(c.lastPurchaseDate), "dd MMM yyyy"),
                         className: "text-center",
@@ -243,24 +245,24 @@ export function CustomersReport() {
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Customer Details</SheetTitle>
+                        <SheetTitle>{t("Customer Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete customer analytics and purchase history.
+                            {t("Complete customer analytics and purchase history.")}
                         </SheetDescription>
                     </SheetHeader>
                     {viewingCustomer ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Customer Name</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Customer Name")}</span>
                                     <span className="font-semibold">{viewingCustomer.customerName}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Phone</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Phone")}</span>
                                     <span className="font-semibold">{viewingCustomer.customerPhone}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Client Type</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Client Type")}</span>
                                     <Badge variant={viewingCustomer.clientType === "HP Client" ? "secondary" : "outline"} className="text-xs">
                                         {viewingCustomer.clientType}
                                     </Badge>
@@ -268,52 +270,52 @@ export function CustomersReport() {
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Purchase Metrics</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Purchase Metrics")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Total Spent</span>
+                                        <span className="text-sm text-muted-foreground">{t("Total Spent")}</span>
                                         <span className="font-bold text-lg text-emerald-600">{currency} {viewingCustomer.totalSpent.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Number of Purchases</span>
-                                        <Badge variant="outline" className="text-xs uppercase font-black tracking-tighter">
-                                            {viewingCustomer.purchaseCount} SALES
+                                        <span className="text-sm text-muted-foreground">{t("Number of Purchases")}</span>
+                                        <Badge variant="outline" className="text-xs uppercase font-semibold tracking-tighter">
+                                            {viewingCustomer.purchaseCount} {t("SALES")}
                                         </Badge>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Avg per Purchase</span>
+                                        <span className="text-sm text-muted-foreground">{t("Avg per Purchase")}</span>
                                         <span className="font-semibold">{currency} {Math.round(viewingCustomer.totalSpent / viewingCustomer.purchaseCount).toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">PV / BV Contribution</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("PV / BV Contribution")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Total PV</span>
+                                        <span className="text-sm text-muted-foreground">{t("Total PV")}</span>
                                         <span className="font-bold text-purple-700">{viewingCustomer.totalPV.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Total BV</span>
+                                        <span className="text-sm text-muted-foreground">{t("Total BV")}</span>
                                         <span className="font-bold text-indigo-700">{viewingCustomer.totalBV.toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Purchase History</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Purchase History")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">First Purchase</span>
+                                        <span className="text-sm text-muted-foreground">{t("First Purchase")}</span>
                                         <span className="font-semibold">{format(new Date(viewingCustomer.firstPurchaseDate), "dd MMM yyyy")}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm font-medium text-muted-foreground">Last Purchase</span>
+                                        <span className="text-sm font-medium text-muted-foreground">{t("Last Purchase")}</span>
                                         <span className="font-semibold">{format(new Date(viewingCustomer.lastPurchaseDate), "dd MMM yyyy")}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Days Since Last</span>
+                                        <span className="text-sm text-muted-foreground">{t("Days Since Last")}</span>
                                         <span className={cn("font-semibold", differenceInDays(new Date(), new Date(viewingCustomer.lastPurchaseDate)) > 30 ? "text-destructive" : "text-emerald-600")}>
                                             {differenceInDays(new Date(), new Date(viewingCustomer.lastPurchaseDate))} days
                                         </span>

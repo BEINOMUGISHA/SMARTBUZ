@@ -4,6 +4,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { AlertTriangle, RefreshCw, ServerCrash } from "lucide-react";
 
 import "./globals.css";
+import { useT } from "@/i18n/provider";
 import {
     connectionFailure,
     connectionFailureMessage,
@@ -40,7 +41,8 @@ export default function GlobalError({
     error: Error & { digest?: string };
     reset: () => void;
 }) {
-    const failure = useSyncExternalStore(
+    
+    const t = useT();const failure = useSyncExternalStore(
         subscribeToConnectionFailure,
         connectionFailure,
         () => null
@@ -63,11 +65,9 @@ export default function GlobalError({
                 >
                     <div className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-sm">
                         <div
-                            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${
-                                misconfigured
+                            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${misconfigured
                                     ? "bg-amber-500/15 text-amber-600"
-                                    : "bg-destructive/10 text-destructive"
-                            }`}
+                                    : "bg-destructive/10 text-destructive"}`}
                         >
                             {misconfigured ? (
                                 <ServerCrash className="h-6 w-6" />
@@ -90,9 +90,7 @@ export default function GlobalError({
 
                         {misconfigured ? (
                             <p className="mt-3 text-sm text-muted-foreground">
-                                You are signed in. The problem is on the server: it
-                                cannot issue an access token, so it cannot confirm
-                                which account you are.
+                                {t("You are signed in. The problem is on the server: it cannot issue an access token, so it cannot confirm which account you are.")}
                             </p>
                         ) : null}
 
@@ -103,7 +101,7 @@ export default function GlobalError({
                                 className="inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
                             >
                                 <RefreshCw className="mr-2 h-4 w-4" />
-                                Try again
+                                {t("Try again")}
                             </button>
                         </div>
                     </div>

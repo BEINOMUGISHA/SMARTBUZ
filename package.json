@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-tests.mjs",
     "test:acceptance": "node scripts/run-tests.mjs acceptance",
-    "test:permissions": "node scripts/run-tests.mjs permissions"
+    "test:permissions": "node scripts/run-tests.mjs permissions",
+    "i18n:codemod": "node scripts/i18n-codemod.mjs",
+    "i18n:check": "node scripts/i18n-check.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

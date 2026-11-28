@@ -21,9 +21,11 @@ import {
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function GlobalStockReport() {
-    const [subTab, setSubTab] = useState("regular");
+    
+    const t = useT();const [subTab, setSubTab] = useState("regular");
     const [search, setSearch] = useState("");
     const [searchType, setSearchType] = useState("name");
     const summaryData = useQuery(api.reports.getReportsSummary, {
@@ -36,17 +38,17 @@ export function GlobalStockReport() {
             <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
                 <div className="bg-white p-2 rounded-2xl border shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <TabsList className="bg-muted/50 p-1 rounded-xl h-11">
-                        <TabsTrigger value="regular" className="rounded-lg px-6 h-9 font-black uppercase text-[10px] tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white">
-                            <Package className="h-3.5 w-3.5 mr-2" /> Regular Stock
+                        <TabsTrigger value="regular" className="rounded-lg px-6 h-9 data-[state=active]:bg-primary data-[state=active]:text-white text-eyebrow uppercase tracking-eyebrow">
+                            <Package className="h-3.5 w-3.5 mr-2" /> {t("Regular Stock")}
                         </TabsTrigger>
-                        <TabsTrigger value="hp" className="rounded-lg px-6 h-9 font-black uppercase text-[10px] tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white">
-                            <Zap className="h-3.5 w-3.5 mr-2" /> HP Stock
+                        <TabsTrigger value="hp" className="rounded-lg px-6 h-9 data-[state=active]:bg-primary data-[state=active]:text-white text-eyebrow uppercase tracking-eyebrow">
+                            <Zap className="h-3.5 w-3.5 mr-2" /> {t("HP Stock")}
                         </TabsTrigger>
-                        <TabsTrigger value="log" className="rounded-lg px-6 h-9 font-black uppercase text-[10px] tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white">
-                            <History className="h-3.5 w-3.5 mr-2" /> Entry Log
+                        <TabsTrigger value="log" className="rounded-lg px-6 h-9 data-[state=active]:bg-primary data-[state=active]:text-white text-eyebrow uppercase tracking-eyebrow">
+                            <History className="h-3.5 w-3.5 mr-2" /> {t("Entry Log")}
                         </TabsTrigger>
-                        <TabsTrigger value="issued" className="rounded-lg px-6 h-9 font-black uppercase text-[10px] tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-                            <Store className="h-3.5 w-3.5 mr-2" /> Issued to Branches
+                        <TabsTrigger value="issued" className="rounded-lg px-6 h-9 data-[state=active]:bg-emerald-600 data-[state=active]:text-white text-eyebrow uppercase tracking-eyebrow">
+                            <Store className="h-3.5 w-3.5 mr-2" /> {t("Issued to Branches")}
                         </TabsTrigger>
                     </TabsList>
 
@@ -62,14 +64,16 @@ export function GlobalStockReport() {
                                     ]}
                                     value={searchType}
                                     onValueChange={setSearchType}
-                                    placeholder="Search by"
+                                    placeholder={t("Search by")}
                                     width="100%"
                                 />
                             </div>
                             <div className="relative flex-1 md:w-64">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-40" />
                                 <Input
-                                    placeholder={`Search by ${searchType}...`}
+                                    placeholder={t("Search by {0}...", {
+            0: searchType,
+        })}
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
                                     className="pl-10 h-10 text-xs border-input bg-background focus:bg-white rounded-xl transition-all shadow-sm"
@@ -105,7 +109,8 @@ export function GlobalStockReport() {
 }
 
 function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice: boolean; search: string; searchType: string; summaryData: any }) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
@@ -175,8 +180,12 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
     return (
         <>
             <ReportTable
-                title={`${halfPrice ? "HP" : "Regular"} Inventory Status`}
-                subtitle={`Combined view of HQ and all shop holdings (${halfPrice ? "Half Price" : "Regular"})`}
+                title={t("{0} Inventory Status", {
+            0: halfPrice ? "HP" : "Regular",
+        })}
+                subtitle={t("Combined view of HQ and all shop holdings ({0})", {
+            0: halfPrice ? "Half Price" : "Regular",
+        })}
                 data={uniqueStockRecords.slice((page - 1) * rowsPerPage, page * rowsPerPage)}
                 summaryData={summaryData}
                 isLoading={stockLoading}
@@ -202,20 +211,20 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
                     {
                         header: "Product", accessor: (item: any) => (
                             <div className="flex flex-col">
-                                <span className="font-black text-primary">{item.name}</span>
-                                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">{item.productCode}</span>
+                                <span className="font-semibold text-primary">{item.name}</span>
+                                <span className="text-muted-foreground tracking-tight text-eyebrow uppercase tracking-eyebrow">{item.productCode}</span>
                             </div>
                         )
                     },
                     {
                         header: "Category",
                         accessor: (item: any) => item.categoryName || "General",
-                        className: "text-[10px] font-bold uppercase text-muted-foreground"
+                        className: "text-muted-foreground text-eyebrow uppercase tracking-eyebrow"
                     },
                     {
                         header: "Supplier",
                         accessor: (item: any) => item.supplier || "-",
-                        className: "text-[10px] font-bold uppercase text-muted-foreground"
+                        className: "text-muted-foreground text-eyebrow uppercase tracking-eyebrow"
                     },
                     {
                         header: "HQ Qty",
@@ -234,14 +243,14 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
                     {
                         header: "Total Qty",
                         accessor: (item: any) => (
-                            <span className="font-black text-primary text-lg">{item.totalQty.toLocaleString()}</span>
+                            <span className="font-semibold text-primary text-lg">{item.totalQty.toLocaleString()}</span>
                         ),
                         className: "text-center"
                     },
                     {
                         header: "Total PV",
                         accessor: (item: any) => (
-                            <span className="font-black text-emerald-700 text-xs">{(item.pv * item.totalQty).toLocaleString()}</span>
+                            <span className="font-semibold text-emerald-700 text-xs">{(item.pv * item.totalQty).toLocaleString()}</span>
                         ),
                         exportValue: (item: any) => (item.pv * item.totalQty).toLocaleString(),
                         className: "text-right"
@@ -249,7 +258,7 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
                     {
                         header: "Total BV",
                         accessor: (item: any) => (
-                            <span className="font-black text-blue-600 text-xs">{(item.bv * item.totalQty).toLocaleString()}</span>
+                            <span className="font-semibold text-blue-600 text-xs">{(item.bv * item.totalQty).toLocaleString()}</span>
                         ),
                         exportValue: (item: any) => (item.bv * item.totalQty).toLocaleString(),
                         className: "text-right"
@@ -257,7 +266,7 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
                     {
                         header: "Total Cost",
                         accessor: (item: any) => (
-                            <span className="font-black text-emerald-700 text-xs">{(item.purchasePrice * item.totalQty).toLocaleString()}</span>
+                            <span className="font-semibold text-emerald-700 text-xs">{(item.purchasePrice * item.totalQty).toLocaleString()}</span>
                         ),
                         exportValue: (item: any) => (item.purchasePrice * item.totalQty).toLocaleString(),
                         className: "text-right"
@@ -265,7 +274,7 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
                     {
                         header: "Total Value",
                         accessor: (item: any) => (
-                            <span className="font-black text-primary text-xs">{(item.price * item.totalQty).toLocaleString()}</span>
+                            <span className="font-semibold text-primary text-xs">{(item.price * item.totalQty).toLocaleString()}</span>
                         ),
                         exportValue: (item: any) => (item.price * item.totalQty).toLocaleString(),
                         className: "text-right"
@@ -277,52 +286,52 @@ function StockTable({ halfPrice, search, searchType, summaryData }: { halfPrice:
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Stock Details</SheetTitle>
+                        <SheetTitle>{t("Stock Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete information about this stock record.
+                            {t("Complete information about this stock record.")}
                         </SheetDescription>
                     </SheetHeader>
                     {stockWithDetails ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Product</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Product")}</span>
                                     <span className="font-semibold">{stockWithDetails.name}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Product Code</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Product Code")}</span>
                                     <span className="font-semibold">{stockWithDetails.productCode}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Category</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Category")}</span>
                                     <span className="font-semibold">{stockWithDetails.category?.type || "General"}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Supplier</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Supplier")}</span>
                                     <span className="font-semibold">{stockWithDetails.supplier || "-"}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Quantity</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Quantity")}</span>
                                     <span className="font-semibold">{stockWithDetails.qty}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Purchase Price</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Purchase Price")}</span>
                                     <span className="font-semibold">{currency} {stockWithDetails.purchasePrice?.toLocaleString() || 0}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Selling Price</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Selling Price")}</span>
                                     <span className="font-semibold">{currency} {stockWithDetails.price?.toLocaleString() || 0}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">PV</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("PV")}</span>
                                     <span className="font-semibold">{stockWithDetails.pv}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">BV</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("BV")}</span>
                                     <span className="font-semibold">{stockWithDetails.bv}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Half Price</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Half Price")}</span>
                                     <Badge variant={stockWithDetails.halfPrice ? "secondary" : "outline"}>
                                         {stockWithDetails.halfPrice ? "Yes" : "No"}
                                     </Badge>

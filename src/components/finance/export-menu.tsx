@@ -13,7 +13,8 @@ import {
 import { Download, FileSpreadsheet, FileText, Loader2, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/auth-context";
-import { exportCsv, exportExcel, exportPdf, type ExportColumn } from "@/lib/export";
+import { exportCsv, exportExcel, exportPdf, type ExportColumn, type ExportOptions } from "@/lib/export";
+import { useT } from "@/i18n/provider";
 
 /**
  * The export menu of a report.
@@ -31,16 +32,25 @@ export function ExportMenu({
     rows,
     columns,
     subtitle,
+    options,
 }: {
     title: string;
     rows: Record<string, unknown>[];
     columns: ExportColumn[];
     subtitle?: string;
+    /** Business mark, figures and other furniture for the exported document. */
+    options?: ExportOptions;
 }) {
-    const { can } = useAuth();
+    
+    const t = useT();const { can } = useAuth();
     const [busy, setBusy] = useState<string | null>(null);
 
     if (!can("finance.reports.export")) return null;
+
+    const resolved: ExportOptions = {
+        ...(options ?? {}),
+        subtitle: options?.subtitle ?? subtitle,
+    };
 
     const run = async (
         kind: "csv" | "excel" | "pdf",
@@ -72,35 +82,35 @@ export function ExportMenu({
                     ) : (
                         <Download className="mr-2 h-3.5 w-3.5" />
                     )}
-                    Export
+                    {t("Export")}
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel className="text-[10px] uppercase tracking-widest">
-                    Export as
+                <DropdownMenuLabel className="text-eyebrow uppercase tracking-eyebrow">
+                    {t("Export as")}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                     onClick={() => run("csv", () => exportCsv(title, rows, columns))}
                 >
                     <Table2 className="mr-2 h-4 w-4" />
-                    CSV file
+                    {t("CSV file")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                     onClick={() =>
-                        run("excel", () => exportExcel(title, rows, columns))
+                        run("excel", () => exportExcel(title, rows, columns, resolved))
                     }
                 >
                     <FileSpreadsheet className="mr-2 h-4 w-4" />
-                    Excel workbook
+                    {t("Excel workbook")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                     onClick={() =>
-                        run("pdf", () => exportPdf(title, rows, columns, subtitle))
+                        run("pdf", () => exportPdf(title, rows, columns, resolved))
                     }
                 >
                     <FileText className="mr-2 h-4 w-4" />
-                    PDF document
+                    {t("PDF document")}
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

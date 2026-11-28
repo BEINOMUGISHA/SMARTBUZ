@@ -25,6 +25,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 // Types
 type TransferItem = {
@@ -36,18 +37,19 @@ type TransferItem = {
 };
 
 export default function ShopsPage() {
-    return (
+    
+    const t = useT();return (
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
             <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-black tracking-tight">Stock Transfer Terminal</h1>
-                <p className="text-muted-foreground">Assign and transfer stock from Main Warehouse to Shops/Branches.</p>
+                <h1 className="text-3xl font-semibold tracking-tight">{t("Stock Transfer Terminal")}</h1>
+                <p className="text-muted-foreground">{t("Assign and transfer stock from Main Warehouse to Shops/Branches.")}</p>
             </div>
 
             <Tabs defaultValue="regular" className="flex-1 flex flex-col">
                 <TabsList className="grid w-full grid-cols-3 lg:w-[600px] h-auto p-1 bg-muted/50 border shadow-sm">
-                    <TabsTrigger value="regular" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">Regular Stock</TabsTrigger>
-                    <TabsTrigger value="hp" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">HP Stock</TabsTrigger>
-                    <TabsTrigger value="view" className="py-2.5 font-bold uppercase text-[10px] tracking-widest">View Stock</TabsTrigger>
+                    <TabsTrigger value="regular" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("Regular Stock")}</TabsTrigger>
+                    <TabsTrigger value="hp" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("HP Stock")}</TabsTrigger>
+                    <TabsTrigger value="view" className="py-2.5 text-eyebrow uppercase tracking-eyebrow">{t("View Stock")}</TabsTrigger>
                 </TabsList>
 
                 <div className="flex-1 mt-4 overflow-hidden">
@@ -68,7 +70,8 @@ export default function ShopsPage() {
 
 
 function ShopStockViewer() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const { user } = useAuth();
     const shops = useQuery(api.shops.listAll, {});
     const [selectedShopId, setSelectedShopId] = useState<Id<"shops"> | "">("");
@@ -187,7 +190,7 @@ function ShopStockViewer() {
 
     const handleDelete = async (stockId: Id<"stocks">) => {
         if (!selectedShopId) return;
-        if (!confirm("Are you sure? This will return ALL items to the warehouse.")) return;
+        if (!confirm(t("Are you sure? This will return ALL items to the warehouse."))) return;
 
         try {
             await returnStock({
@@ -207,10 +210,10 @@ function ShopStockViewer() {
             <div className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-card p-4 rounded-xl border shadow-sm">
                     <div className="w-full sm:w-[300px]">
-                        <Label className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1.5 block">Select Shop</Label>
+                        <Label className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1.5 block">{t("Select Shop")}</Label>
                         <Select value={selectedShopId} onValueChange={(v) => setSelectedShopId(v as Id<"shops">)}>
                             <SelectTrigger className="h-10">
-                                <SelectValue placeholder="Choose a shop to view..." />
+                                <SelectValue placeholder={t("Choose a shop to view...")} />
                             </SelectTrigger>
                             <SelectContent>
                                 {shops?.map(shop => (
@@ -225,8 +228,8 @@ function ShopStockViewer() {
                     {selectedShopId && (
                         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
                             <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="inventory">Current Inventory</TabsTrigger>
-                                <TabsTrigger value="history">Stock History</TabsTrigger>
+                                <TabsTrigger value="inventory">{t("Current Inventory")}</TabsTrigger>
+                                <TabsTrigger value="history">{t("Stock History")}</TabsTrigger>
                             </TabsList>
                         </Tabs>
                     )}
@@ -235,20 +238,20 @@ function ShopStockViewer() {
                 {selectedShopId && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <Card className="p-4 shadow-sm border-none bg-blue-50/50">
-                            <p className="text-xs text-muted-foreground uppercase font-bold">Total Value</p>
-                            <p className="text-xl font-black text-primary">{currency} {stats.totalValue.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground uppercase font-bold">{t("Total Value")}</p>
+                            <p className="text-xl font-semibold text-primary">{currency} {stats.totalValue.toLocaleString()}</p>
                         </Card>
                         <Card className="p-4 shadow-sm border-none bg-green-50/50">
-                            <p className="text-xs uppercase font-bold text-green-700">Total Items</p>
-                            <p className="text-xl font-black text-green-900">{stats.totalItems.toLocaleString()}</p>
+                            <p className="text-xs uppercase font-bold text-green-700">{t("Total Items")}</p>
+                            <p className="text-xl font-semibold text-green-900">{stats.totalItems.toLocaleString()}</p>
                         </Card>
                         <Card className="p-4 shadow-sm border-none bg-orange-50/50">
-                            <p className="text-xs uppercase font-bold text-orange-700">Total PV</p>
-                            <p className="text-xl font-black text-orange-900">{stats.totalPV}</p>
+                            <p className="text-xs uppercase font-bold text-orange-700">{t("Total PV")}</p>
+                            <p className="text-xl font-semibold text-orange-900">{stats.totalPV}</p>
                         </Card>
                         <Card className="p-4 shadow-sm border-none bg-purple-50/50">
-                            <p className="text-xs uppercase font-bold text-purple-700">Total BV</p>
-                            <p className="text-xl font-black text-purple-900">{stats.totalBV}</p>
+                            <p className="text-xs uppercase font-bold text-purple-700">{t("Total BV")}</p>
+                            <p className="text-xl font-semibold text-purple-900">{stats.totalBV}</p>
                         </Card>
                     </div>
                 )}
@@ -258,8 +261,8 @@ function ShopStockViewer() {
                 {!selectedShopId ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground min-h-[300px]">
                         <Store className="h-16 w-16 mb-4 opacity-10" />
-                        <p className="text-lg font-medium">No Shop Selected</p>
-                        <p className="text-sm">Please select a shop to view details.</p>
+                        <p className="text-lg font-medium">{t("No Shop Selected")}</p>
+                        <p className="text-sm">{t("Please select a shop to view details.")}</p>
                     </div>
                 ) : activeTab === "inventory" ? (
                     /* INVENTORY VIEW */
@@ -270,25 +273,27 @@ function ShopStockViewer() {
                                 <div className="relative w-full sm:w-[300px]">
                                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input
-                                        placeholder={`Search ${viewType} stock...`}
+                                        placeholder={t("Search {0} stock...", {
+            0: viewType,
+        })}
                                         className="pl-9 h-9"
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
                                     />
                                 </div>
                                 <div className="flex items-center border rounded-md bg-background p-1 h-9">
-                                    <Button variant={viewType === "regular" ? "secondary" : "ghost"} size="sm" onClick={() => setViewType("regular")} className="h-7 text-xs px-2">Regular</Button>
-                                    <Button variant={viewType === "hp" ? "secondary" : "ghost"} size="sm" onClick={() => setViewType("hp")} className="h-7 text-xs px-2">HP</Button>
+                                    <Button variant={viewType === "regular" ? "secondary" : "ghost"} size="sm" onClick={() => setViewType("regular")} className="h-7 text-xs px-2">{t("Regular")}</Button>
+                                    <Button variant={viewType === "hp" ? "secondary" : "ghost"} size="sm" onClick={() => setViewType("hp")} className="h-7 text-xs px-2">{t("HP")}</Button>
                                 </div>
                             </div>
                             <Select value={inventoryFilter} onValueChange={(v: any) => setInventoryFilter(v)}>
                                 <SelectTrigger className="w-[180px] h-9">
-                                    <SelectValue placeholder="Filter Stock" />
+                                    <SelectValue placeholder={t("Filter Stock")} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Items</SelectItem>
-                                    <SelectItem value="out">Out of Stock (0)</SelectItem>
-                                    <SelectItem value="negative">Negative Stock (&lt; 0)</SelectItem>
+                                    <SelectItem value="all">{t("All Items")}</SelectItem>
+                                    <SelectItem value="out">{t("Out of Stock (0)")}</SelectItem>
+                                    <SelectItem value="negative">{t("Negative Stock (&lt; 0)")}</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -297,18 +302,18 @@ function ShopStockViewer() {
                         <div className="flex-1 overflow-auto">
                             {stocks.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8">
-                                    <p>No products found matching criteria.</p>
+                                    <p>{t("No products found matching criteria.")}</p>
                                 </div>
                             ) : (
                                 <Table>
                                     <TableHeader className="sticky top-0 bg-background z-10">
                                         <TableRow>
-                                            <TableHead>Product Name</TableHead>
-                                            <TableHead className="text-right">Unit Price</TableHead>
-                                            <TableHead className="text-center">PV / BV</TableHead>
-                                            <TableHead className="text-center">Qty</TableHead>
-                                            <TableHead className="text-right">Total Value</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
+                                            <TableHead>{t("Product Name")}</TableHead>
+                                            <TableHead className="text-right">{t("Unit Price")}</TableHead>
+                                            <TableHead className="text-center">{t("PV / BV")}</TableHead>
+                                            <TableHead className="text-center">{t("Qty")}</TableHead>
+                                            <TableHead className="text-right">{t("Total Value")}</TableHead>
+                                            <TableHead className="text-right">{t("Actions")}</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -317,7 +322,7 @@ function ShopStockViewer() {
                                                 <TableCell>
                                                     <div className={cn("font-medium", stock.qty < 0 ? "text-red-900" : "")}>{stock.name}</div>
                                                     <div className="text-xs text-muted-foreground font-mono">{stock.productCode}</div>
-                                                    {stock.halfPrice && <Badge variant="secondary" className="mt-1 text-[10px]">HP</Badge>}
+                                                    {stock.halfPrice && <Badge variant="secondary" className="mt-1 text-xs">{t("HP")}</Badge>}
                                                 </TableCell>
                                                 <TableCell className="text-right">{stock.price.toLocaleString()}</TableCell>
                                                 <TableCell className="text-center text-xs text-muted-foreground">{stock.pv} / {stock.bv}</TableCell>
@@ -331,7 +336,7 @@ function ShopStockViewer() {
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-2">
-                                                        <Button variant="ghost" size="sm" onClick={() => handleEditClick(stock)}>Edit</Button>
+                                                        <Button variant="ghost" size="sm" onClick={() => handleEditClick(stock)}>{t("Edit")}</Button>
                                                         <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(stock.stockId)}>
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>
@@ -347,7 +352,7 @@ function ShopStockViewer() {
                         {/* Pagination Footer */}
                         <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 mt-auto">
                             <div className="flex items-center space-x-2">
-                                <p className="text-xs font-medium">Rows</p>
+                                <p className="text-xs font-medium">{t("Rows")}</p>
                                 <Select value={`${rowsPerPage}`} onValueChange={(v) => { setRowsPerPage(Number(v)); setPage(1); }}>
                                     <SelectTrigger className="h-8 w-[65px]"><SelectValue /></SelectTrigger>
                                     <SelectContent>
@@ -373,15 +378,15 @@ function ShopStockViewer() {
                         <div className="p-4 border-b bg-background flex flex-col gap-4">
                             <Tabs value={dateFilter} onValueChange={setDateFilter} className="w-[400px]">
                                 <TabsList className="grid w-full grid-cols-2">
-                                    <TabsTrigger value="daily">Daily Audit</TabsTrigger>
-                                    <TabsTrigger value="range">Date Range</TabsTrigger>
+                                    <TabsTrigger value="daily">{t("Daily Audit")}</TabsTrigger>
+                                    <TabsTrigger value="range">{t("Date Range")}</TabsTrigger>
                                 </TabsList>
                             </Tabs>
 
                             <div className="flex items-center gap-4">
                                 {dateFilter === "daily" ? (
                                     <div className="flex items-center gap-2">
-                                        <Label>Select Date:</Label>
+                                        <Label>{t("Select Date:")}</Label>
                                         <Input
                                             type="date"
                                             value={date ? date.toISOString().split("T")[0] : ""}
@@ -392,7 +397,7 @@ function ShopStockViewer() {
                                 ) : (
                                     <div className="flex items-center gap-2">
                                         <div className="grid gap-1.5">
-                                            <Label className="text-xs">From</Label>
+                                            <Label className="text-xs">{t("From")}</Label>
                                             <Input
                                                 type="date"
                                                 value={dateRange.from ? dateRange.from.toISOString().split("T")[0] : ""}
@@ -401,7 +406,7 @@ function ShopStockViewer() {
                                             />
                                         </div>
                                         <div className="grid gap-1.5">
-                                            <Label className="text-xs">To</Label>
+                                            <Label className="text-xs">{t("To")}</Label>
                                             <Input
                                                 type="date"
                                                 value={dateRange.to ? dateRange.to.toISOString().split("T")[0] : ""}
@@ -420,17 +425,17 @@ function ShopStockViewer() {
                                 <div className="flex items-center justify-center h-40"><Loader2 className="animate-spin" /></div>
                             ) : stockHistory.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50">
-                                    <p>No restock records found for this period.</p>
+                                    <p>{t("No restock records found for this period.")}</p>
                                 </div>
                             ) : (
                                 <Card>
                                     <Table>
                                         <TableHeader className="bg-muted/50">
                                             <TableRow>
-                                                <TableHead>Date & Time</TableHead>
-                                                <TableHead>Product</TableHead>
-                                                <TableHead className="text-center">Qty Added</TableHead>
-                                                <TableHead className="text-right">Issued By</TableHead>
+                                                <TableHead>{t("Date & Time")}</TableHead>
+                                                <TableHead>{t("Product")}</TableHead>
+                                                <TableHead className="text-center">{t("Qty Added")}</TableHead>
+                                                <TableHead className="text-right">{t("Issued By")}</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -465,17 +470,17 @@ function ShopStockViewer() {
             <Dialog open={!!editingItem} onOpenChange={(o) => !o && setEditingItem(null)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Adjust Shop Stock</DialogTitle>
+                        <DialogTitle>{t("Adjust Shop Stock")}</DialogTitle>
                         <DialogDescription>
-                            Change the quantity for <b>{editingItem?.name}</b>.
+                            {t("Change the quantity for")} <b>{editingItem?.name}</b>.
                             <br />
                             <span className="text-xs text-muted-foreground">
-                                Increasing will deduct from warehouse. Decreasing will return to warehouse.
+                                {t("Increasing will deduct from warehouse. Decreasing will return to warehouse.")}
                             </span>
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">
-                        <Label>Quantity</Label>
+                        <Label>{t("Quantity")}</Label>
                         <Input
                             value={newQty}
                             onChange={(e) => setNewQty(e.target.value)}
@@ -483,10 +488,10 @@ function ShopStockViewer() {
                         />
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingItem(null)}>Cancel</Button>
+                        <Button variant="outline" onClick={() => setEditingItem(null)}>{t("Cancel")}</Button>
                         <Button onClick={handleSaveEdit} disabled={isUpdating}>
                             {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save Changes
+                            {t("Save Changes")}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -496,7 +501,8 @@ function ShopStockViewer() {
 }
 
 function StockTransferInterface({ isHp }: { isHp: boolean }) {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [transferQueue, setTransferQueue] = useState<TransferItem[]>([]);
@@ -643,7 +649,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                         <div className="relative">
                             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Search warehouse stock..."
+                                placeholder={t("Search warehouse stock...")}
                                 className="pl-9 h-11"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
@@ -657,7 +663,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                         ) : currentView.length === 0 ? (
                             <div className="text-center py-10 flex-1 text-muted-foreground flex flex-col items-center justify-center">
                                 {status === "LoadingMore" || status === "LoadingFirstPage" ? (
-                                    <div className="flex items-center gap-2"><Loader2 className="animate-spin h-4 w-4" /> Loading...</div>
+                                    <div className="flex items-center gap-2"><Loader2 className="animate-spin h-4 w-4" /> {t("Loading...")}</div>
                                 ) : "No stocks found matching your criteria"}
                             </div>
                         ) : (
@@ -666,9 +672,9 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                                     <Table>
                                         <TableHeader className="sticky top-0 bg-background z-10">
                                             <TableRow>
-                                                <TableHead>Product</TableHead>
-                                                <TableHead className="text-center">Available</TableHead>
-                                                <TableHead className="text-right">Action</TableHead>
+                                                <TableHead>{t("Product")}</TableHead>
+                                                <TableHead className="text-center">{t("Available")}</TableHead>
+                                                <TableHead className="text-right">{t("Action")}</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -678,7 +684,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                                                         <div className="font-medium text-sm">{stock.name}</div>
                                                         <div className="text-xs text-muted-foreground flex gap-2">
                                                             <span className="font-mono bg-muted px-1 rounded">{stock.productCode}</span>
-                                                            <span>PV: {stock.pv}</span>
+                                                            <span>{t("PV:")} {stock.pv}</span>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="text-center">
@@ -694,7 +700,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                                                             disabled={stock.qty === 0}
                                                             onClick={() => addToQueue(stock)}
                                                         >
-                                                            <MoveRight className="h-4 w-4 mr-1" /> Transfer
+                                                            <MoveRight className="h-4 w-4 mr-1" /> {t("Transfer")}
                                                         </Button>
                                                     </TableCell>
                                                 </TableRow>
@@ -707,7 +713,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
 
                         <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 mt-auto">
                             <div className="flex items-center space-x-2">
-                                <p className="text-xs font-medium">Rows</p>
+                                <p className="text-xs font-medium">{t("Rows")}</p>
                                 <Select
                                     value={`${rowsPerPage}`}
                                     onValueChange={(value) => {
@@ -764,13 +770,13 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                     <CardHeader className="bg-muted/30 pb-4 border-b">
                         <div className="space-y-4">
                             <CardTitle className="flex items-center gap-2 text-lg">
-                                <PackageCheck className="h-5 w-5" /> Transfer Queue
+                                <PackageCheck className="h-5 w-5" /> {t("Transfer Queue")}
                             </CardTitle>
                             <div className="space-y-1.5">
-                                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Destination Shop</Label>
+                                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-wider">{t("Destination Shop")}</Label>
                                 <Select value={selectedShopId} onValueChange={(v) => setSelectedShopId(v as Id<"shops">)}>
                                     <SelectTrigger className="h-10 border-primary/20 focus:ring-primary/20 bg-background">
-                                        <SelectValue placeholder="Select a shop..." />
+                                        <SelectValue placeholder={t("Select a shop...")} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {shops?.map(shop => (
@@ -789,16 +795,16 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                         {transferQueue.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 min-h-[300px]">
                                 <Store className="h-12 w-12 mb-4 opacity-10" />
-                                <p className="font-medium">Queue Empty</p>
-                                <p className="text-xs text-center mt-1">Select items from the warehouse to begin transfer</p>
+                                <p className="font-medium">{t("Queue Empty")}</p>
+                                <p className="text-xs text-center mt-1">{t("Select items from the warehouse to begin transfer")}</p>
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <Table>
                                     <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                                         <TableRow>
-                                            <TableHead className="w-[50%]">Item & Qty</TableHead>
-                                            <TableHead className="w-[30%] text-center">Transfer</TableHead>
+                                            <TableHead className="w-[50%]">{t("Item & Qty")}</TableHead>
+                                            <TableHead className="w-[30%] text-center">{t("Transfer")}</TableHead>
                                             <TableHead className="w-[20%]"></TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -806,8 +812,8 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                                         {transferQueue.map(item => (
                                             <TableRow key={item.stockId} className="bg-background">
                                                 <TableCell className="py-2">
-                                                    <div className="font-medium text-[11px] line-clamp-1">{item.name}</div>
-                                                    <div className="text-[10px] text-muted-foreground">{item.productCode}</div>
+                                                    <div className="font-medium text-xs line-clamp-1">{item.name}</div>
+                                                    <div className="text-xs text-muted-foreground">{item.productCode}</div>
                                                 </TableCell>
                                                 <TableCell className="p-0">
                                                     <div className="flex items-center justify-center gap-1">
@@ -835,7 +841,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
 
                     <div className="p-4 border-t bg-background">
                         <div className="flex justify-between items-center mb-4 text-sm">
-                            <span className="text-muted-foreground">Total Items</span>
+                            <span className="text-muted-foreground">{t("Total Items")}</span>
                             <span className="font-bold text-lg">{transferQueue.reduce((acc, i) => acc + i.qty, 0)}</span>
                         </div>
                         <Button
@@ -845,7 +851,7 @@ function StockTransferInterface({ isHp }: { isHp: boolean }) {
                             onClick={handleTransfer}
                         >
                             {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <MoveRight className="mr-2 h-5 w-5" />}
-                            Confirm Transfer
+                            {t("Confirm Transfer")}
                         </Button>
                     </div>
                 </Card>

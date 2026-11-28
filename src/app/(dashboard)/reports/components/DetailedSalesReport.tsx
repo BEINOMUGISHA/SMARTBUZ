@@ -22,9 +22,11 @@ import {
     SheetDescription,
 } from "@/components/ui/sheet";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function DetailedSalesReport() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -114,7 +116,7 @@ export function DetailedSalesReport() {
                     ]}
                     value={selectedShop}
                     onValueChange={setSelectedShop}
-                    placeholder="All Branches"
+                    placeholder={t("All Branches")}
                     width="140px"
                 />
 
@@ -125,37 +127,37 @@ export function DetailedSalesReport() {
                     ]}
                     value={customerId}
                     onValueChange={setCustomerId}
-                    placeholder="Select Client"
+                    placeholder={t("Select Client")}
                     width="180px"
                 />
 
                 <Select value={clientType} onValueChange={setClientType}>
-                    <SelectTrigger className="w-[120px] h-10 text-[10px] font-bold border-input font-black uppercase tracking-tighter">
-                        <SelectValue placeholder="Client Type" />
+                    <SelectTrigger className="w-[120px] h-10 border-input tracking-tighter text-eyebrow uppercase tracking-eyebrow">
+                        <SelectValue placeholder={t("Client Type")} />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="All">All Types</SelectItem>
-                        <SelectItem value="Member">Regular Member</SelectItem>
-                        <SelectItem value="HP Client">HP Client</SelectItem>
-                        <SelectItem value="Walk-in">Walk-in</SelectItem>
+                        <SelectItem value="All">{t("All Types")}</SelectItem>
+                        <SelectItem value="Member">{t("Regular Member")}</SelectItem>
+                        <SelectItem value="HP Client">{t("HP Client")}</SelectItem>
+                        <SelectItem value="Walk-in">{t("Walk-in")}</SelectItem>
                     </SelectContent>
                 </Select>
 
                 <Select value={transactionType} onValueChange={setTransactionType}>
-                    <SelectTrigger className="w-[120px] h-10 text-[10px] font-bold border-input font-black uppercase tracking-tighter text-blue-700">
-                        <SelectValue placeholder="Transaction" />
+                    <SelectTrigger className="w-[120px] h-10 border-input tracking-tighter text-blue-700 text-eyebrow uppercase tracking-eyebrow">
+                        <SelectValue placeholder={t("Transaction")} />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="All">All Trans</SelectItem>
-                        <SelectItem value="Sale">Sale Only</SelectItem>
-                        <SelectItem value="Swap">Product Swap</SelectItem>
+                        <SelectItem value="All">{t("All Trans")}</SelectItem>
+                        <SelectItem value="Sale">{t("Sale Only")}</SelectItem>
+                        <SelectItem value="Swap">{t("Product Swap")}</SelectItem>
                     </SelectContent>
                 </Select>
 
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search within records (name, transaction ID...)"
+                        placeholder={t("Search within records (name, transaction ID...)")}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -166,8 +168,8 @@ export function DetailedSalesReport() {
             <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} variant="sales" />
 
             <ReportTable
-                title="Comprehensive Sales Report"
-                subtitle="Complete itemized transaction history."
+                title={t("Comprehensive Sales Report")}
+                subtitle={t("Complete itemized transaction history.")}
                 data={salesRecords || []}
                 summaryData={summaryData}
                 isLoading={salesLoading}
@@ -196,16 +198,16 @@ export function DetailedSalesReport() {
                         header: "Date/Time",
                         accessor: (s: any) => (
                             <div className="font-mono leading-tight">
-                                <div className="font-black text-[10px]">{format(new Date(s._creationTime), "dd MMM")}</div>
-                                <div className="font-black text-[10px]">{format(new Date(s._creationTime), "yyyy")}</div>
-                                <div className="text-[9px] text-muted-foreground">{format(new Date(s._creationTime), "HH:mm:ss")}</div>
+                                <div className="font-semibold text-xs">{format(new Date(s._creationTime), "dd MMM")}</div>
+                                <div className="font-semibold text-xs">{format(new Date(s._creationTime), "yyyy")}</div>
+                                <div className="text-xs text-muted-foreground">{format(new Date(s._creationTime), "HH:mm:ss")}</div>
                             </div>
                         )
                     },
                     {
                         header: "Invoice No",
                         accessor: (s: any) => (
-                            <span className="font-mono font-black text-[10px] text-emerald-800">
+                            <span className="font-mono font-semibold text-xs text-emerald-800">
                                 {s.invoiceNumber || "---"}
                             </span>
                         ),
@@ -215,9 +217,9 @@ export function DetailedSalesReport() {
                         header: "Client Name & Info",
                         accessor: (s: any) => (
                             <div className="flex flex-col gap-0.5 min-w-[140px]">
-                                <span className="font-black text-primary leading-none">{s.customerName}</span>
-                                {s.customerPhone && <span className="text-[9px] font-bold text-muted-foreground">{s.customerPhone}</span>}
-                                {s.customerLocation && <span className="text-[9px] italic opacity-70">📍 {s.customerLocation}</span>}
+                                <span className="font-semibold text-primary leading-none">{s.customerName}</span>
+                                {s.customerPhone && <span className="text-xs font-bold text-muted-foreground">{s.customerPhone}</span>}
+                                {s.customerLocation && <span className="text-xs italic opacity-70">📍 {s.customerLocation}</span>}
                             </div>
                         ),
                         exportValue: (s: any) => s.customerName
@@ -226,11 +228,11 @@ export function DetailedSalesReport() {
                         header: "Type",
                         accessor: (s: any) => (
                             <div className="flex flex-col gap-1">
-                                <Badge variant="outline" className="text-[8px] uppercase font-black tracking-tighter px-1 h-3.5 w-fit">
+                                <Badge variant="outline" className="tracking-tighter px-1 h-3.5 w-fit text-eyebrow uppercase tracking-eyebrow">
                                     {s.clientType}
                                 </Badge>
                                 <Badge variant="secondary" className={cn(
-                                    "text-[8px] uppercase font-black px-1 h-3.5 w-fit",
+                                    "px-1 h-3.5 w-fit text-eyebrow uppercase tracking-eyebrow",
                                     s.transactionType === "Swap" ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
                                 )}>
                                     {s.transactionType || "Sale"}
@@ -244,19 +246,19 @@ export function DetailedSalesReport() {
                         accessor: (s: any) => (
                             <div className="flex flex-col gap-1.5 py-1 min-w-[160px]">
                                 <div className="flex flex-col gap-0.5">
-                                    <span className="text-[8px] font-black uppercase text-emerald-700 tracking-tighter">Products Taken:</span>
+                                    <span className="text-emerald-700 tracking-tighter text-eyebrow uppercase tracking-eyebrow">{t("Products Taken:")}</span>
                                     {s.items.map((item: any, idx: number) => (
-                                        <div key={idx} className="text-[9px] leading-tight flex items-center gap-2">
-                                            <span className="font-black text-primary min-w-[15px]">{item.quantity}x</span>
+                                        <div key={idx} className="text-xs leading-tight flex items-center gap-2">
+                                            <span className="font-semibold text-primary min-w-[15px]">{item.quantity}x</span>
                                             <span className="truncate max-w-[120px]">{item.name}</span>
                                         </div>
                                     ))}
                                 </div>
                                 {s.transactionType === "Swap" && s.returnedItems && s.returnedItems.length > 0 && (
                                     <div className="flex flex-col gap-0.5 border-t border-blue-100 pt-1 mt-1 bg-blue-50/50 p-1 rounded-sm">
-                                        <span className="text-[8px] font-black uppercase text-blue-700 tracking-tighter">Items Returned:</span>
+                                        <span className="text-blue-700 tracking-tighter text-eyebrow uppercase tracking-eyebrow">{t("Items Returned:")}</span>
                                         {s.returnedItems.map((item: any, idx: number) => (
-                                            <div key={idx} className="text-[9px] leading-tight flex items-center gap-2 opacity-70">
+                                            <div key={idx} className="text-xs leading-tight flex items-center gap-2 opacity-70">
                                                 <span className="font-bold text-blue-600 min-w-[15px]">{item.quantity}x</span>
                                                 <span className="truncate max-w-[120px] line-through decoration-blue-300">{item.name}</span>
                                             </div>
@@ -271,7 +273,7 @@ export function DetailedSalesReport() {
                         header: "Total PV",
                         accessor: (s: any) => {
                             const total = s.items.reduce((sum: number, i: any) => sum + (i.pv * i.quantity), 0);
-                            return <span className="font-black text-amber-600">{total.toLocaleString()}</span>;
+                            return <span className="font-semibold text-amber-600">{total.toLocaleString()}</span>;
                         },
                         className: "text-center bg-amber-50/20"
                     },
@@ -279,26 +281,26 @@ export function DetailedSalesReport() {
                         header: "Total BV",
                         accessor: (s: any) => {
                             const total = s.items.reduce((sum: number, i: any) => sum + (i.bv * i.quantity), 0);
-                            return <span className="font-black text-blue-600">{total.toLocaleString()}</span>;
+                            return <span className="font-semibold text-blue-600">{total.toLocaleString()}</span>;
                         },
                         className: "text-center bg-blue-50/20"
                     },
                     {
                         header: `Total (${currency})`,
                         accessor: (s: any) => (
-                            <span className="font-black text-gray-900">{s.total.toLocaleString()}</span>
+                            <span className="font-semibold text-gray-900">{s.total.toLocaleString()}</span>
                         ),
                         className: "text-right"
                     },
                     {
                         header: "Branch",
                         accessor: "shopName",
-                        className: "text-[10px] font-bold"
+                        className: "text-xs font-bold"
                     },
                     {
                         header: "Pay Mode",
                         accessor: (s: any) => (
-                            <Badge variant={s.paymentMode === "Loan" ? "destructive" : "outline"} className="text-[9px] h-4 font-black">
+                            <Badge variant={s.paymentMode === "Loan" ? "destructive" : "outline"} className="text-xs h-4 font-semibold">
                                 {s.paymentMode || "Cash"}
                             </Badge>
                         ),
@@ -311,58 +313,58 @@ export function DetailedSalesReport() {
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Sale Details</SheetTitle>
+                        <SheetTitle>{t("Sale Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete information about this sale transaction.
+                            {t("Complete information about this sale transaction.")}
                         </SheetDescription>
                     </SheetHeader>
                     {saleWithDetails ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Date/Time</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Date/Time")}</span>
                                     <span className="font-semibold">{format(new Date(saleWithDetails._creationTime), "dd MMM yyyy HH:mm:ss")}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Invoice No</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Invoice No")}</span>
                                     <span className="font-semibold">{saleWithDetails.invoiceNumber || "---"}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Total Amount")}</span>
                                     <span className="font-bold text-lg text-emerald-600">{currency} {saleWithDetails.total.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Payment Mode</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Payment Mode")}</span>
                                     <Badge variant={saleWithDetails.paymentMode === "Loan" ? "destructive" : "outline"}>
                                         {saleWithDetails.paymentMode || "Cash"}
                                     </Badge>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Client Type</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Client Type")}</span>
                                     <span className="font-semibold">{saleWithDetails.clientType}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Branch</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Branch")}</span>
                                     <span className="font-semibold">{saleWithDetails.shop?.name || "Main Warehouse"}</span>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Customer Information</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Customer Information")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                         <span className="font-semibold">{saleWithDetails.customer?.name || saleWithDetails.manualCustomerName || "Walk-in"}</span>
                                     </div>
                                     {saleWithDetails.customerPhone && (
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm text-muted-foreground">Phone</span>
+                                            <span className="text-sm text-muted-foreground">{t("Phone")}</span>
                                             <span className="font-semibold text-sm">{saleWithDetails.customerPhone}</span>
                                         </div>
                                     )}
                                     {saleWithDetails.customerLocation && (
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm text-muted-foreground">Location</span>
+                                            <span className="text-sm text-muted-foreground">{t("Location")}</span>
                                             <span className="font-semibold text-sm">{saleWithDetails.customerLocation}</span>
                                         </div>
                                     )}
@@ -370,42 +372,42 @@ export function DetailedSalesReport() {
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Sold By</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Sold By")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     {saleWithDetails.user ? (
                                         <>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Name</span>
+                                                <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                                 <span className="font-semibold capitalize">{saleWithDetails.user.first_name} {saleWithDetails.user.last_name}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Email</span>
+                                                <span className="text-sm text-muted-foreground">{t("Email")}</span>
                                                 <span className="font-semibold text-sm">{saleWithDetails.user.email}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Role</span>
+                                                <span className="text-sm text-muted-foreground">{t("Role")}</span>
                                                 <Badge className="capitalize">{saleWithDetails.user.roles?.[0] || "N/A"}</Badge>
                                             </div>
                                         </>
                                     ) : (
-                                        <div className="text-sm text-muted-foreground">User information not available</div>
+                                        <div className="text-sm text-muted-foreground">{t("User information not available")}</div>
                                     )}
                                 </div>
                             </div>
 
                             {saleWithDetails.items && saleWithDetails.items.length > 0 && (
                                 <div className="space-y-3">
-                                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Items ({saleWithDetails.items.length})</h3>
+                                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Items (")}{saleWithDetails.items.length})</h3>
                                     <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                         {saleWithDetails.items.map((item: any, idx: number) => (
                                             <div key={idx} className="flex items-center justify-between py-2 border-b last:border-0">
                                                 <div className="flex-1">
                                                     <div className="font-semibold text-sm">{item.name}</div>
-                                                    <div className="text-[10px] text-muted-foreground">{item.productCode || "N/A"}</div>
+                                                    <div className="text-xs text-muted-foreground">{item.productCode || "N/A"}</div>
                                                 </div>
                                                 <div className="text-right">
                                                     <div className="font-semibold text-sm">{item.quantity} x {item.price.toLocaleString()}</div>
-                                                    <div className="text-[10px] text-muted-foreground">{(item.quantity * item.price).toLocaleString()}</div>
+                                                    <div className="text-xs text-muted-foreground">{(item.quantity * item.price).toLocaleString()}</div>
                                                 </div>
                                             </div>
                                         ))}

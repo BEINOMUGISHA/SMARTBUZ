@@ -31,6 +31,7 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requirePermission, requireTenant } from "../tenancy";
+import { assertScreenAvailable } from "./manage";
 
 /* ────────────────────────────────────────────────────────────────────────
  * Tickets
@@ -131,6 +132,7 @@ export const fireTicket = mutation({
             throw new ConvexError(
                 "Forbidden: that order belongs to another business."
             );
+        await assertScreenAvailable(ctx, businessId, ["tables"]);
         }
 
         if (order.status !== "open") {
@@ -205,6 +207,7 @@ export const updateTicketStatus = mutation({
             throw new ConvexError(
                 "Forbidden: that ticket belongs to another business."
             );
+        await assertScreenAvailable(ctx, businessId, ["tables"]);
         }
 
         if (!TICKET_STATES.includes(args.status as TicketState)) {

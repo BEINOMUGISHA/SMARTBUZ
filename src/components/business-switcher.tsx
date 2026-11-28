@@ -28,9 +28,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 export function BusinessSwitcher({ collapsed = false }: { collapsed?: boolean }) {
-    const { businesses, activeBusiness } = useAuth();
+    
+    const t = useT();const { businesses, activeBusiness } = useAuth();
     const switchBusiness = useMutation(api.businesses.switchBusiness);
     const router = useRouter();
     const [switching, setSwitching] = useState(false);
@@ -59,7 +61,7 @@ export function BusinessSwitcher({ collapsed = false }: { collapsed?: boolean })
                 onClick={() => router.push("/setup")}
             >
                 <Plus className="mr-2 h-4 w-4" />
-                Create a business
+                {t("Create a business")}
             </Button>
         );
     }
@@ -89,7 +91,7 @@ export function BusinessSwitcher({ collapsed = false }: { collapsed?: boolean })
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64">
-                <DropdownMenuLabel>Your businesses</DropdownMenuLabel>
+                <DropdownMenuLabel>{t("Your businesses")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {businesses.map(({ business, role }) => {
                     const isActive = business._id === activeBusiness?._id;
@@ -104,7 +106,7 @@ export function BusinessSwitcher({ collapsed = false }: { collapsed?: boolean })
                                 <span className="truncate">{business.name}</span>
                             </span>
                             <span className="flex shrink-0 items-center gap-2">
-                                <Badge variant="secondary" className="text-[10px]">
+                                <Badge variant="secondary" className="text-xs">
                                     {role}
                                 </Badge>
                                 {isActive && <Check className="h-4 w-4" />}
@@ -115,7 +117,7 @@ export function BusinessSwitcher({ collapsed = false }: { collapsed?: boolean })
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => router.push("/setup")}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Register another business
+                    {t("Register another business")}
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

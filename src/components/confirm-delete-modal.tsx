@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/i18n/provider";
+
 import {
     AlertDialog,
     AlertDialogAction,
@@ -26,7 +28,8 @@ export function ConfirmDeleteModal({
     title = "Are you absolutely sure?",
     description = "This action cannot be undone. This will permanently delete the selected item and remove it from our servers.",
 }: ConfirmDeleteModalProps) {
-    return (
+    
+    const t = useT();return (
         <AlertDialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <AlertDialogContent>
                 <AlertDialogHeader>
@@ -36,7 +39,7 @@ export function ConfirmDeleteModal({
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel onClick={onClose}>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel onClick={onClose}>{t("Cancel")}</AlertDialogCancel>
                     <AlertDialogAction
                         onClick={(e) => {
                             e.preventDefault();
@@ -44,7 +47,7 @@ export function ConfirmDeleteModal({
                         }}
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     >
-                        Delete
+                        {t("Delete")}
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

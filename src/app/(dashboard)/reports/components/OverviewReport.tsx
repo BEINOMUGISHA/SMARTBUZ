@@ -9,9 +9,11 @@ import { format, subMonths } from "date-fns";
 import { ReportFilters } from "./ReportFilters";
 import { ReportSummary } from "./ReportSummary";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function OverviewReport() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -46,8 +48,8 @@ export function OverviewReport() {
                         setReportMode("range");
                     }}
                 />
-                <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-3 bg-muted/20 h-8 flex items-center rounded-lg">
-                    Business Snapshot
+                <div className="text-muted-foreground px-3 bg-muted/20 h-8 flex items-center rounded-lg text-eyebrow uppercase tracking-eyebrow">
+                    {t("Business Snapshot")}
                 </div>
             </div>
 
@@ -56,7 +58,7 @@ export function OverviewReport() {
             <div className="grid gap-6 md:grid-cols-2">
                 <Card className="rounded-xl shadow-sm border-muted/50 overflow-hidden">
                     <CardHeader className="bg-muted/30 border-b">
-                        <CardTitle className="text-lg font-black">Top Performing Shops</CardTitle>
+                        <CardTitle className="text-lg font-semibold">{t("Top Performing Shops")}</CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
                         <div className="divide-y">
@@ -69,7 +71,7 @@ export function OverviewReport() {
                                             <p className="text-xs text-muted-foreground truncate max-w-[150px]">{shop.location}</p>
                                         </div>
                                     </div>
-                                    <div className="text-right font-black text-sm">{formatPrice(shop.totalSales)}</div>
+                                    <div className="text-right font-semibold text-sm">{formatPrice(shop.totalSales)}</div>
                                 </div>
                             ))}
                         </div>

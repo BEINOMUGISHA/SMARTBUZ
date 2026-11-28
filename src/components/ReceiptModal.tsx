@@ -9,6 +9,7 @@ import { ReceiptTemplate, ReceiptData } from "./ReceiptTemplate";
 import { ThermalReceipt } from "./ThermalReceipt";
 import { buildThermalReceipt, printDirectWebSerial } from "@/lib/escpos";
 import { toast } from "sonner";
+import { useT } from "@/i18n/provider";
 
 interface ReceiptProps {
     isOpen: boolean;
@@ -33,7 +34,8 @@ function getLineTotals(item: ReceiptLineItem) {
 }
 
 export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
-    const [mounted, setMounted] = useState(false);
+    
+    const t = useT();const [mounted, setMounted] = useState(false);
     const [receiptFormat, setReceiptFormat] = useState<"thermal" | "a4">("thermal");
     const [isSerialPrinting, setIsSerialPrinting] = useState(false);
 
@@ -130,7 +132,7 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
             {/* MODAL VIEW - For on-screen preview & actions */}
             <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
                 <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto bg-white text-black print:hidden p-0">
-                    <DialogTitle className="sr-only">Receipt Preview</DialogTitle>
+                    <DialogTitle className="sr-only">{t("Receipt Preview")}</DialogTitle>
 
                     {/* Top Switcher Bar */}
                     <div className="flex items-center justify-between p-3 border-b bg-gray-50">
@@ -140,14 +142,14 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                                 onClick={() => setReceiptFormat("thermal")}
                                 className={`px-3 py-1.5 rounded-md transition-all ${receiptFormat === "thermal" ? "bg-white shadow-sm text-black" : "text-gray-600 hover:text-black"}`}
                             >
-                                80mm Thermal Slip
+                                {t("80mm Thermal Slip")}
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setReceiptFormat("a4")}
                                 className={`px-3 py-1.5 rounded-md transition-all ${receiptFormat === "a4" ? "bg-white shadow-sm text-black" : "text-gray-600 hover:text-black"}`}
                             >
-                                A4 Full Invoice
+                                {t("A4 Full Invoice")}
                             </button>
                         </div>
                     </div>
@@ -168,7 +170,7 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                     {/* Action Controls */}
                     <div className="p-4 border-t bg-gray-50 flex items-center justify-between">
                         <Button variant="outline" size="sm" onClick={onClose}>
-                            Close
+                            {t("Close")}
                         </Button>
 
                         <div className="flex items-center gap-2">
@@ -179,10 +181,10 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                                     onClick={handleDirectThermalPrint}
                                     disabled={isSerialPrinting}
                                     className="gap-1.5 text-xs font-bold"
-                                    title="Send raw ESC/POS commands directly to USB/Serial printer without dialog"
+                                    title={t("Send raw ESC/POS commands directly to USB/Serial printer without dialog")}
                                 >
                                     <Zap className="h-3.5 w-3.5 text-amber-500" />
-                                    <span>Direct ESC/POS</span>
+                                    <span>{t("Direct ESC/POS")}</span>
                                 </Button>
                             )}
 
@@ -192,7 +194,7 @@ export function ReceiptModal({ isOpen, onClose, data }: ReceiptProps) {
                                 className="gap-2 font-bold bg-green-600 hover:bg-green-700 text-white"
                             >
                                 <Printer className="h-4 w-4" />
-                                <span>Print Receipt</span>
+                                <span>{t("Print Receipt")}</span>
                             </Button>
                         </div>
                     </div>

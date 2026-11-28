@@ -17,6 +17,7 @@ import { ConvexError } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { logActivity, requirePermission, requireTenant } from "../tenancy";
+import { assertScreenAvailable } from "../packages/manage";
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -159,6 +160,7 @@ export const addBatch = mutation({
             "Add Batch",
             `Batch ${args.batchNumber} for ${stock.name}: ${args.qtyReceived} units${args.expiryDate ? `, expiry ${args.expiryDate}` : ""}`
         );
+        await assertScreenAvailable(ctx, businessId, ["batches"]);
 
         return batchId;
     },
@@ -225,6 +227,7 @@ export const consumeBatch = mutation({
             "Consume Batch",
             `Consumed ${args.quantity} units via batches: ${used.map((u) => `${u.batchNumber}(${u.qty})`).join(", ")}${args.reference ? ` ref ${args.reference}` : ""}`
         );
+        await assertScreenAvailable(ctx, businessId, ["batches"]);
 
         return used;
     },
@@ -358,6 +361,7 @@ export const addSerial = mutation({
             "Register Serial",
             `Registered serial ${args.serialNumber}${args.imei ? ` (IMEI ${args.imei})` : ""}`
         );
+        await assertScreenAvailable(ctx, businessId, ["batches"]);
 
         return id;
     },
@@ -412,6 +416,7 @@ export const markSerialSold = mutation({
             "Serial Sold",
             `Serial ${args.serialNumber} sold`
         );
+        await assertScreenAvailable(ctx, businessId, ["batches"]);
 
         return serial._id;
     },

@@ -36,6 +36,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useSync } from "./sync-provider";
 import type { QueuedTransaction, TransactionStatus } from "@/lib/offline/types";
+import { useT } from "@/i18n/provider";
 
 /** How each state is shown. */
 const PRESENTATION: Record<
@@ -115,7 +116,8 @@ export function OfflineTransactionsDialog({
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
-    const { history, retry, discard, refresh } = useSync();
+    
+    const t = useT();const { history, retry, discard, refresh } = useSync();
     const [busy, setBusy] = useState<string | null>(null);
 
     useEffect(() => {
@@ -150,21 +152,18 @@ export function OfflineTransactionsDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle>This till&apos;s sales</DialogTitle>
+                    <DialogTitle>{t("This till&apos;s sales")}</DialogTitle>
                     <DialogDescription>
-                        Everything this till has sold. Sales waiting to be sent are kept
-                        here until the server has them — closing the application does not
-                        lose them.
+                        {t("Everything this till has sold. Sales waiting to be sent are kept here until the server has them — closing the application does not lose them.")}
                     </DialogDescription>
                 </DialogHeader>
 
                 {history.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 py-10 text-center">
                         <Package className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-sm font-bold">Nothing recorded on this till yet</p>
+                        <p className="text-sm font-bold">{t("Nothing recorded on this till yet")}</p>
                         <p className="text-xs text-muted-foreground">
-                            Sales made here will be listed, whether or not the network is
-                            up.
+                            {t("Sales made here will be listed, whether or not the network is up.")}
                         </p>
                     </div>
                 ) : (
@@ -188,7 +187,7 @@ export function OfflineTransactionsDialog({
                                                 <p className="truncate text-sm font-bold">
                                                     {label}
                                                 </p>
-                                                <p className="text-[11px] text-muted-foreground">
+                                                <p className="text-xs text-muted-foreground">
                                                     {when(transaction.occurredAt)} •{" "}
                                                     {amount.toLocaleString("en-UG")}
                                                     {transaction.result?.invoiceNumber
@@ -198,35 +197,31 @@ export function OfflineTransactionsDialog({
                                             </div>
                                             <Badge
                                                 variant="outline"
-                                                className={`shrink-0 text-[10px] font-bold ${presentation.tone}`}
+                                                className={`shrink-0 text-xs font-bold ${presentation.tone}`}
                                             >
                                                 <Icon
-                                                    className={`mr-1 h-3 w-3 ${
-                                                        transaction.status === "syncing"
+                                                    className={`mr-1 h-3 w-3 ${transaction.status === "syncing"
                                                             ? "animate-spin"
-                                                            : ""
-                                                    }`}
+                                                            : ""}`}
                                                 />
-                                                {presentation.label}
+                                                {t(presentation.label)}
                                             </Badge>
                                         </div>
 
                                         {transaction.lastError && (
-                                            <p className="mt-2 rounded-md bg-red-500/10 px-2 py-1 text-[11px] text-red-700 dark:text-red-400">
+                                            <p className="mt-2 rounded-md bg-red-500/10 px-2 py-1 text-xs text-red-700 dark:text-red-400">
                                                 {transaction.lastError}
                                             </p>
                                         )}
 
                                         {transaction.status === "conflict" && (
-                                            <p className="mt-2 rounded-md bg-orange-500/10 px-2 py-1 text-[11px] text-orange-700 dark:text-orange-400">
-                                                The sale is on the books, but the stock had
-                                                already been sold by another device. The owner
-                                                will see it in the conflicts list.
+                                            <p className="mt-2 rounded-md bg-orange-500/10 px-2 py-1 text-xs text-orange-700 dark:text-orange-400">
+                                                {t("The sale is on the books, but the stock had already been sold by another device. The owner will see it in the conflicts list.")}
                                             </p>
                                         )}
 
                                         {transaction.attempts > 0 && (
-                                            <p className="mt-1 text-[10px] text-muted-foreground">
+                                            <p className="mt-1 text-xs text-muted-foreground">
                                                 {transaction.attempts} attempt
                                                 {transaction.attempts === 1 ? "" : "s"}
                                                 {transaction.nextAttemptAt
@@ -253,7 +248,7 @@ export function OfflineTransactionsDialog({
                                                             }
                                                         >
                                                             <RefreshCw className="mr-1.5 h-3 w-3" />
-                                                            Send again
+                                                            {t("Send again")}
                                                         </Button>
                                                     )}
                                                     <Button
@@ -268,7 +263,7 @@ export function OfflineTransactionsDialog({
                                                         className="text-muted-foreground hover:text-destructive"
                                                     >
                                                         <Trash2 className="mr-1.5 h-3 w-3" />
-                                                        Remove
+                                                        {t("Remove")}
                                                     </Button>
                                                 </div>
                                             </>

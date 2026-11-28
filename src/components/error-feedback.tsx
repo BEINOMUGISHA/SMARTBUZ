@@ -5,6 +5,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { formatError } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { connectionFailure, connectionFailureMessage } from "@/lib/connection-state";
+import { useT } from "@/i18n/provider";
 
 /**
  * The backend refuses a request when the caller's session is no longer good.
@@ -22,6 +23,38 @@ export function isSessionExpired(error: unknown): boolean {
 
     const message = error instanceof Error ? error.message : String(error ?? "");
     return /unauthori[sz]ed/i.test(message) || /must be signed in/i.test(message);
+}
+
+/**
+ * The backend refuses a call because the business's plan does not include
+ * the feature that was asked for.
+ *
+ * This is not a crash and it is not the operator's fault — the screen is
+ * working, the plan simply does not carry that part of the product. Told
+ * "something went wrong", the owner retries and fails again; told the
+ * truth, they can go and change the plan.
+ */
+export function isPlanLimit(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    return (
+        /plan does not include/i.test(message) ||
+        /does not include .*upgrade your plan/i.test(message) ||
+        /upgrade your plan to use it/i.test(message)
+    );
+}
+
+/**
+ * What the server said about the plan, in the server's own words.
+ *
+ * The backend names the plan and the missing feature, so that is more useful
+ * than anything the screen could make up.
+ */
+export function planLimitMessage(error: unknown): string | null {
+    if (!isPlanLimit(error)) return null;
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    const match = message.match(/Your\s+([^.]+?)\s+plan does not include\s+([^.]+?)\./i);
+    if (!match) return null;
+    return `Your ${match[1].trim()} plan does not include ${match[2].trim()}.`;
 }
 
 /**
@@ -92,23 +125,24 @@ export function ErrorBanner({
     onDismiss?: () => void;
     className?: string;
 }) {
-    if (!message) return null;
+    
+    const t = useT();if (!message) return null;
 
     return (
         <Alert variant="destructive" className={className}>
             <AlertTriangle />
-            <AlertTitle>That did not work</AlertTitle>
+            <AlertTitle>{t("That did not work")}</AlertTitle>
             <AlertDescription>
                 <span>{message}</span>
                 {onDismiss && (
                     <button
                         type="button"
                         onClick={onDismiss}
-                        aria-label="Dismiss this message"
+                        aria-label={t("Dismiss this message")}
                         className="ml-2 inline-flex items-center gap-1 rounded-md px-1 text-xs font-medium underline underline-offset-2"
                     >
                         <X className="h-3 w-3" />
-                        Dismiss
+                        {t("Dismiss")}
                     </button>
                 )}
             </AlertDescription>

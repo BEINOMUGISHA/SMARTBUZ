@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import {
     Table,
@@ -10,11 +12,19 @@ import {
 import { getStatsForVariant, SummaryVariant } from "./ReportSummary";
 import { useCurrency } from "@/hooks/use-currency";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Printer, FileSpreadsheet, FileText, Eye } from "lucide-react";
-import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
+import { ChevronLeft, ChevronRight, Printer, FileSpreadsheet, FileText, Eye, Table2 } from "lucide-react";
+import {
+    exportCsv,
+    exportExcel,
+    exportPdf,
+    extractTextFromReact,
+    toExportColumns,
+    type ExportStat,
+} from "@/lib/export";
 import { cn } from "@/lib/utils";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
+import { useT } from "@/i18n/provider";
 import {
     Select,
     SelectContent,
@@ -69,7 +79,8 @@ export function ReportTable<T>({
     variant,
     onViewDetails,
 }: ReportTableProps<T>) {
-    const internalId = React.useId().replace(/:/g, "");
+    
+    const t = useT();const internalId = React.useId().replace(/:/g, "");
     const actualPrintId = printId || `report-print-${internalId}`;
     const { currency } = useCurrency();
 
@@ -103,23 +114,51 @@ export function ReportTable<T>({
         <div className={cn("space-y-4 h-full flex flex-col", compact && "space-y-2")}>
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className={cn("text-sm font-black uppercase tracking-widest text-primary italic leading-none", compact && "text-[11px]")}>{title}</h2>
-                    {subtitle && <p className={cn("text-[10px] text-muted-foreground font-bold mt-1 uppercase tracking-tighter", compact && "text-[9px] mt-0.5")}>{subtitle}</p>}
+                    <h2 className={cn("text-sm font-semibold uppercase tracking-widest text-primary italic leading-none", compact && "text-xs")}>{title}</h2>
+                    {subtitle && <p className={cn("text-muted-foreground mt-1 tracking-tighter text-eyebrow uppercase tracking-eyebrow", compact && "text-xs mt-0.5")}>{subtitle}</p>}
                 </div>
                 <div className="flex items-center gap-2 print:hidden">
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => exportToExcel(data, columns as any, title.replace(/\s+/g, "_").toLowerCase())}
-                        className={cn("h-7 px-3 gap-2 text-[10px] font-black uppercase border-emerald-600/20 text-emerald-700 hover:bg-emerald-50", compact && "h-6 px-2 text-[8px]")}
+                        onClick={() =>
+                            exportCsv(
+                                title,
+                                data as unknown as Record<string, unknown>[],
+                                toExportColumns<T>(columns)
+                            )
+                        }
+                        className={cn("h-7 px-3 gap-2 border-muted-foreground/20 text-eyebrow uppercase tracking-eyebrow", compact && "h-6 px-2 text-xs")}
                     >
-                        <FileSpreadsheet className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> Excel
+                        <Table2 className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> {t("CSV")}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                            exportExcel(
+                                title,
+                                data as unknown as Record<string, unknown>[],
+                                toExportColumns<T>(columns)
+                            )
+                        }
+                        className={cn("h-7 px-3 gap-2 border-emerald-600/20 text-emerald-700 hover:bg-emerald-50 text-eyebrow uppercase tracking-eyebrow", compact && "h-6 px-2 text-xs")}
+                    >
+                        <FileSpreadsheet className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> {t("Excel")}
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={async () => {
-                            const stats = summaryData ? getStatsForVariant(variant || "overview", summaryData, currency) : [];
+                            const stats: ExportStat[] = summaryData
+                                ? getStatsForVariant(variant || "overview", summaryData, currency).map(
+                                      (stat: any) => ({
+                                          label: stat.title,
+                                          value: String(stat.value),
+                                          hint: stat.description,
+                                      })
+                                  )
+                                : [];
 
                             // Fetch logo
                             let logoBase64 = undefined;
@@ -135,26 +174,28 @@ export function ReportTable<T>({
                                 console.error("Failed to load logo for PDF", error);
                             }
 
-                            exportToPDF(
-                                data,
-                                columns as any,
-                                title.replace(/\s+/g, "_").toLowerCase(),
+                            await exportPdf(
                                 title,
-                                stats,
-                                logoBase64,
+                                data as unknown as Record<string, unknown>[],
+                                toExportColumns<T>(columns),
                                 {
-                                    name: businessName,
-                                    address: businessAddress,
-                                    phone: businessPhone,
+                                    subtitle,
+                                    stats,
+                                    business: {
+                                        name: businessName,
+                                        address: businessAddress,
+                                        phone: businessPhone,
+                                        logoDataUrl: logoBase64,
+                                    },
                                 }
                             );
                         }}
-                        className={cn("h-7 px-3 gap-2 text-[10px] font-black uppercase border-red-600/20 text-red-700 hover:bg-red-50", compact && "h-6 px-2 text-[8px]")}
+                        className={cn("h-7 px-3 gap-2 border-red-600/20 text-red-700 hover:bg-red-50 text-eyebrow uppercase tracking-eyebrow", compact && "h-6 px-2 text-xs")}
                     >
-                        <FileText className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> PDF
+                        <FileText className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> {t("PDF")}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handlePrint} className={cn("h-7 px-3 gap-2 text-[10px] font-black uppercase border-muted-foreground/20", compact && "h-6 px-2 text-[8px]")}>
-                        <Printer className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> Print
+                    <Button variant="outline" size="sm" onClick={handlePrint} className={cn("h-7 px-3 gap-2 border-muted-foreground/20 text-eyebrow uppercase tracking-eyebrow", compact && "h-6 px-2 text-xs")}>
+                        <Printer className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} /> {t("Print")}
                     </Button>
                 </div>
             </div>
@@ -165,13 +206,13 @@ export function ReportTable<T>({
                         <TableHeader className="bg-primary/5 sticky top-0 z-10 border-b-2 border-primary/20">
                             <TableRow className="hover:bg-transparent">
                                 {columns.map((col, idx) => (
-                                    <TableHead key={idx} className={cn("font-black text-primary uppercase text-[10px] tracking-wider py-4", compact && "py-2 text-[9px]", col.className)}>
-                                        {col.header}
+                                    <TableHead key={idx} className={cn("text-primary py-4 text-eyebrow uppercase tracking-eyebrow", compact && "py-2 text-xs", col.className)}>
+                                        {t(col.header)}
                                     </TableHead>
                                 ))}
                                 {onViewDetails && (
-                                    <TableHead className={cn("font-black text-primary uppercase text-[10px] tracking-wider py-4 text-center w-[80px]", compact && "py-2 text-[9px]")}>
-                                        Actions
+                                    <TableHead className={cn("text-primary py-4 text-center w-[80px] text-eyebrow uppercase tracking-eyebrow", compact && "py-2 text-xs")}>
+                                        {t("Actions")}
                                     </TableHead>
                                 )}
                             </TableRow>
@@ -195,14 +236,14 @@ export function ReportTable<T>({
                             ) : data.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={columns.length + (onViewDetails ? 1 : 0)} className="h-32 text-center text-muted-foreground">
-                                        No data found.
+                                        {t("No data found.")}
                                     </TableCell>
                                 </TableRow>
                             ) : (
                                 data.map((item, rowIdx) => (
                                     <TableRow key={rowIdx} className="hover:bg-muted/30 transition-colors">
                                         {columns.map((col, colIdx) => (
-                                            <TableCell key={colIdx} className={cn("py-3 text-[11px]", compact && "py-1.5 text-[10px]", col.className)}>
+                                            <TableCell key={colIdx} className={cn("py-3 text-xs", compact && "py-1.5 text-xs", col.className)}>
                                                 {typeof col.accessor === "function"
                                                     ? col.accessor(item)
                                                     : (item[col.accessor] as React.ReactNode)}
@@ -233,7 +274,7 @@ export function ReportTable<T>({
             {pagination && (
                 <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 rounded-b-xl border">
                     <div className="flex items-center space-x-2">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Rows</p>
+                        <p className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">{t("Rows")}</p>
                         <Select
                             value={`${pagination.rowsPerPage}`}
                             onValueChange={(value) => pagination.onRowsPerPageChange(Number(value))}
@@ -252,7 +293,7 @@ export function ReportTable<T>({
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <div className="text-[10px] font-black uppercase tracking-tighter text-primary">
+                        <div className="tracking-tighter text-primary text-eyebrow uppercase tracking-eyebrow">
                             {Math.min(startIndex + 1, pagination.totalItems)}-{Math.min(endIndex, pagination.totalItems)} of {pagination.totalItems}
                         </div>
 
@@ -305,17 +346,17 @@ export function ReportTable<T>({
                 {/* OFFICIAL BUSINESS HEADER */}
                 <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans relative">
                     <div className="text-center px-20">
-                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
-                        {businessAddress && <p className="text-[11px] leading-tight font-bold text-gray-600">{businessAddress}</p>}
-                        {businessPhone && <p className="text-[11px] font-bold text-gray-500">Tel: {businessPhone}</p>}
-                        <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
-                            OFFICIAL {title}
+                        <h2 className="text-3xl font-semibold text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
+                        {businessAddress && <p className="text-xs leading-tight font-bold text-gray-600">{businessAddress}</p>}
+                        {businessPhone && <p className="text-xs font-bold text-gray-500">{t("Tel:")} {businessPhone}</p>}
+                        <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white rounded-full text-eyebrow uppercase tracking-eyebrow">
+                            {t("OFFICIAL")} {title}
                         </div>
                     </div>
 
                     {/* Logo (Right Aligned Absolute) */}
                     <div className="absolute right-0 top-0 h-full flex items-start pt-1">
-                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-black text-2xl text-emerald-800 bg-emerald-50">
+                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-semibold text-2xl text-emerald-800 bg-emerald-50">
                             {businessName.slice(0, 2).toUpperCase()}
                         </div>
                     </div>
@@ -326,27 +367,27 @@ export function ReportTable<T>({
                     <div className="grid grid-cols-4 gap-4 mb-4 border-b border-gray-100 pb-4">
                         {getStatsForVariant(variant || "overview", summaryData, currency).map((stat, idx) => (
                             <div key={idx} className={cn("flex flex-col pl-4 border-l border-gray-100 first:pl-0 first:border-0")}>
-                                <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">{stat.title}</p>
-                                <p className="text-xs font-black text-black">{stat.value}</p>
-                                <p className="text-[7px] font-bold text-gray-400 italic font-mono">{stat.description}</p>
+                                <p className="text-[#008542] tracking-tighter text-eyebrow uppercase tracking-eyebrow">{t(stat.title)}</p>
+                                <p className="text-xs font-semibold text-black">{stat.value}</p>
+                                <p className="text-xs font-bold text-gray-400 italic font-mono">{t(stat.description)}</p>
                             </div>
                         ))}
                     </div>
                 )}
                 <div className="mb-4">
-                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">{title}</h3>
-                    {subtitle && <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5 tracking-wide">{subtitle}</p>}
+                    <h3 className="text-lg font-semibold text-gray-900 uppercase tracking-tight">{title}</h3>
+                    {subtitle && <p className="text-gray-500 mt-0.5 tracking-wide text-eyebrow uppercase tracking-eyebrow">{subtitle}</p>}
                 </div>
 
-                <table className="w-full border-collapse border border-gray-300 print:text-[10px]">
+                <table className="w-full border-collapse border border-gray-300 print:text-xs">
                     <thead>
                         <tr className="!bg-[#008542] !print:bg-[#008542] border-b-2 border-emerald-800">
-                            <th className="px-1 py-3 text-center font-black uppercase text-[10px] border-r border-emerald-700 w-8 text-white !print:text-white">#</th>
+                            <th className="px-1 py-3 text-center border-r border-emerald-700 w-8 text-white !print:text-white text-eyebrow uppercase tracking-eyebrow">#</th>
                             {columns.map((col, idx) => (
                                 <th
                                     key={idx}
                                     className={cn(
-                                        "px-3 py-2 text-[10px] border-r border-gray-300 last:border-0 !text-white !print:text-white",
+                                        "px-3 py-2 text-xs border-r border-gray-300 last:border-0 !text-white !print:text-white",
                                         // Filter alignment: only keep text-center, text-right, text-left
                                         // This ensures it stays white even if col.className has text-primary
                                         col.className?.split(" ").filter(c =>
@@ -356,7 +397,7 @@ export function ReportTable<T>({
                                         (col.className?.includes("text-center") || col.className?.includes("text-right")) ? "" : "text-left"
                                     )}
                                 >
-                                    {col.header}
+                                    {t(col.header)}
                                 </th>
                             ))}
                         </tr>
@@ -364,12 +405,12 @@ export function ReportTable<T>({
                     <tbody>
                         {data.map((item, rowIdx) => (
                             <tr key={rowIdx} className={cn("border-b border-gray-200", rowIdx % 2 === 1 ? "bg-gray-50" : "bg-white")}>
-                                <td className="px-1 py-2 text-[10px] border-r border-gray-300 text-center font-bold text-gray-500 w-8">{(startIndex || 0) + rowIdx + 1}</td>
+                                <td className="px-1 py-2 text-xs border-r border-gray-300 text-center font-bold text-gray-500 w-8">{(startIndex || 0) + rowIdx + 1}</td>
                                 {columns.map((col, colIdx) => (
                                     <td
                                         key={colIdx}
                                         className={cn(
-                                            "px-3 py-2 text-[10px] border-r border-gray-300 last:border-0 !text-black font-medium whitespace-pre-line",
+                                            "px-3 py-2 text-xs border-r border-gray-300 last:border-0 !text-black font-medium whitespace-pre-line",
                                             // Strip background and non-alignment text colors
                                             col.className?.split(" ").filter(c =>
                                                 c === "text-center" || c === "text-right" || c === "text-left" || (!c.startsWith("text-") && !c.startsWith("bg-"))
@@ -390,21 +431,21 @@ export function ReportTable<T>({
                     </tbody>
                 </table>
 
-                <div className="mt-8 flex justify-between text-[10px] font-bold text-gray-400 italic">
-                    <span>Generated by System on {new Date().toLocaleString()}</span>
-                    <span>Verified Official Document</span>
+                <div className="mt-8 flex justify-between text-xs font-bold text-gray-400 italic">
+                    <span>{t("Generated by System on")} {new Date().toLocaleString()}</span>
+                    <span>{t("Verified Official Document")}</span>
                 </div>
 
-                <div className="mt-12 grid grid-cols-2 gap-12 text-[10px] print-break-inside-avoid">
+                <div className="mt-12 grid grid-cols-2 gap-12 text-xs print-break-inside-avoid">
                     <div className="border-t-2 border-gray-200 pt-4">
-                        <p className="font-black uppercase tracking-widest text-gray-800 border-b border-dashed border-gray-300 pb-1 mb-4">Authorized Signature</p>
-                        <div className="h-10 text-gray-300">Space for signature</div>
-                        <p className="mt-2 text-gray-500 font-bold">DATE: ________________________</p>
+                        <p className="font-semibold uppercase tracking-widest text-gray-800 border-b border-dashed border-gray-300 pb-1 mb-4">{t("Authorized Signature")}</p>
+                        <div className="h-10 text-gray-300">{t("Space for signature")}</div>
+                        <p className="mt-2 text-gray-500 font-bold">{t("DATE: ________________________")}</p>
                     </div>
                     <div className="border-t-2 border-gray-200 pt-4 text-right">
-                        <p className="font-black uppercase tracking-widest text-gray-800 border-b border-dashed border-gray-300 pb-1 mb-4">Official Stamp</p>
-                        <div className="h-10 invisible">Stamp Space</div>
-                        <p className="mt-2 text-gray-500 font-bold tracking-tight uppercase">{businessName} MANAGEMENT</p>
+                        <p className="font-semibold uppercase tracking-widest text-gray-800 border-b border-dashed border-gray-300 pb-1 mb-4">{t("Official Stamp")}</p>
+                        <div className="h-10 invisible">{t("Stamp Space")}</div>
+                        <p className="mt-2 text-gray-500 font-bold tracking-tight uppercase">{businessName} {t("MANAGEMENT")}</p>
                     </div>
                 </div>
             </div>

@@ -6,6 +6,8 @@ import { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { logActivity, requirePermission, requireTenant } from "./tenancy";
 import { assertPaymentMethod, resolvePaymentDates } from "./paymentRules";
+import { writeAudit } from "./audit";
+import { outstandingBalance } from "./customers";
 
 /**
  * SMART_BUZ — credit sales (loans) and loan payments.
@@ -422,14 +424,31 @@ export const getLoansCount = query({
     },
 });
 
+/**
+ * Open credit on a sale.
+ *
+ * The figures are not the browser's. The amount is the sale's own total, the
+ * balance is that total less the deposit, and the credit limit is checked
+ * against what the customer already owes — all worked out here, on the
+ * server, so a tampered client cannot open a million of credit on a tin of
+ * milk, and cannot open credit on a sale that has already been paid.
+ */
 export const add = mutation({
     args: {
         customerId: v.id("customers"),
         salesId: v.id("sales"),
-        amount: v.number(),
-        balance: v.number(),
-        date: v.string(),
-        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        /** A deposit taken at the counter when the credit was opened. */
+        deposit: v.optional(v.number()),
+        /** The day the credit falls due. Stored on the sale it belongs to. */
+        dueDate: v.optional(v.string()),
+        /** @deprecated — the amount is derived from the sale, not from the browser. */
+        amount: v.optional(v.number()),
+        /** @deprecated — the balance is derived from the sale, not from the browser. */
+        balance: v.optional(v.number()),
+        /** @deprecated — the server stamps the date itself. */
+        date: v.optional(v.string()),
+        /** @deprecated — the caller is derived from the session. */
+        userId: v.optional(v.id("users")),
         businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
@@ -444,12 +463,91 @@ export const add = mutation({
         if (!sale || sale.businessId !== tenant.businessId) {
             throw new ConvexError("Forbidden: that sale belongs to another business.");
         }
+        if (!sale.customerId || sale.customerId !== customer._id) {
+            throw new ConvexError("That sale was not rung up for this customer.");
+        }
 
-        const { userId, businessId, ...loanArgs } = args;
-        const loanId = await ctx.db.insert("loans", {
-            ...loanArgs,
-            businessId: tenant.businessId,
+        // One sale, one credit.
+        const already = await ctx.db
+            .query("loans")
+            .withIndex("by_salesId", (q) => q.eq("salesId", sale._id))
+            .first();
+        if (already) {
+            throw new ConvexError("That sale is already on credit.");
+        }
+
+        // A sale that was rung up as paid cannot be put on credit afterwards:
+        // the money is already in the till, and opening a credit as well
+        // would count the same goods twice.
+        const mode = (sale.paymentMode ?? "").trim().toLowerCase();
+        const creditable = mode === "" || mode === "none" || mode === "loan" || mode === "credit";
+        if (!creditable) {
+            throw new ConvexError(
+                `That sale was rung up as ${sale.paymentMode}, so it has already been paid. Credit can only be opened on a sale that has not been paid.`
+            );
+        }
+
+        // The amount is the sale's own total. The browser never decides it.
+        const amount = sale.total;
+        // A deposit already taken at the till when the sale was rung up is
+        // money already collected, so it is not owed.
+        const taken = Math.max(0, sale.initialDeposit ?? 0);
+        const deposit = Math.max(0, args.deposit ?? 0);
+        if (taken + deposit > amount) {
+            throw new ConvexError(
+                "The deposit cannot be more than the sale it is paid against."
+            );
+        }
+        const balance = Math.max(0, amount - taken - deposit);
+
+        // The credit limit. A limit of zero means "no limit" — the same
+        // convention the till uses when it sells on credit.
+        const limit = customer.creditLimit ?? 0;
+        if (limit > 0) {
+            const outstanding = await outstandingBalance(ctx, customer._id);
+            if (outstanding + balance > limit) {
+                throw new ConvexError(
+                    `${customer.name} is over their credit limit. They owe ${outstanding}, this credit adds ${balance}, and their limit is ${limit}.`
+                );
+            }
+        }
+
+        const now = new Date().toISOString();
+        const dueDate = args.dueDate ?? sale.paymentDueDate;
+
+        // The sale becomes a credit sale, so it shows in the credit book and
+        // in the till's own loan view.
+        await ctx.db.patch(sale._id, {
+            isLoan: true,
+            paymentDueDate: dueDate,
+            ...(mode === "" || mode === "none" ? { paymentMode: "Loan" } : {}),
         });
+
+        const loanId = await ctx.db.insert("loans", {
+            businessId: tenant.businessId,
+            customerId: customer._id,
+            salesId: sale._id,
+            amount,
+            balance,
+            date: now,
+        });
+
+        // A deposit is a payment against the credit, and is recorded as one.
+        if (deposit > 0) {
+            await ctx.db.insert("payments", {
+                businessId: tenant.businessId,
+                loanId,
+                shopId: sale.shopId,
+                customerId: customer._id,
+                amount: deposit,
+                date: now,
+                paymentDate: now,
+                balance,
+                method: "cash",
+                userId: tenant.user._id,
+                note: "Deposit taken when the credit was opened",
+            });
+        }
 
         // Log activity
         await logActivity(
@@ -457,10 +555,288 @@ export const add = mutation({
             tenant.businessId,
             tenant.user._id,
             "Create Loan",
-            `Created loan for ${customer?.name || 'customer'} - Amount: ${args.amount.toLocaleString()}, Balance: ${args.balance.toLocaleString()}`
+            `Opened credit of ${amount.toLocaleString()} for ${customer.name} - Deposit: ${deposit.toLocaleString()}, Balance: ${balance.toLocaleString()}`
         );
 
-        return loanId;
+        await writeAudit(ctx, {
+            businessId: tenant.businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "loans.create",
+            targetType: "loan",
+            targetId: loanId,
+            metadata: {
+                customerId: customer._id,
+                customerName: customer.name,
+                salesId: sale._id,
+                amount,
+                deposit,
+                balance,
+                dueDate: dueDate ?? null,
+            },
+        });
+
+        return { loanId, amount, deposit, balance, dueDate: dueDate ?? null };
+    },
+});
+
+/**
+ * The credit book: every credit this business has given, and what is still
+ * owed on it.
+ *
+ * The due date belongs to the sale the credit was taken on, so the days
+ * overdue are counted from there. A cashier sees the credit given at their
+ * own counter; a manager sees the whole business.
+ */
+export const getCreditBook = query({
+    args: {
+        customerId: v.optional(v.id("customers")),
+        searchTerm: v.optional(v.string()),
+        businessId: v.optional(v.id("businesses")),
+    },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "loans.view");
+
+        const shopId = await callerShopId(ctx, tenant.user._id, tenant.businessId);
+
+        const loans = await ctx.db
+            .query("loans")
+            .withIndex("by_businessId", (q) => q.eq("businessId", tenant.businessId))
+            .collect();
+
+        const saleIds = [...new Set(loans.map((l) => l.salesId))];
+        const customerIds = [
+            ...new Set(loans.map((l) => l.customerId).filter((id): id is Id<"customers"> => !!id)),
+        ];
+
+        const [sales, customers] = (await Promise.all([
+            Promise.all(saleIds.map((id) => ctx.db.get(id))),
+            Promise.all(customerIds.map((id) => ctx.db.get(id))),
+        ])) as any[];
+
+        const saleMap = new Map<any, any>(
+            sales.filter((s: any) => s !== null).map((s: any) => [s._id, s])
+        );
+        const customerMap = new Map<any, any>(
+            customers.filter((c: any) => c !== null).map((c: any) => [c._id, c])
+        );
+
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const today = startOfToday.getTime();
+        const weekAhead = today + 7 * 24 * 60 * 60 * 1000;
+
+        const rows = loans
+            .map((loan) => {
+                const sale = saleMap.get(loan.salesId);
+                if (!sale) return null;
+                // A cashier sees the credit given at their own counter.
+                if (shopId && sale.shopId !== shopId) return null;
+
+                const customer = loan.customerId ? customerMap.get(loan.customerId) : null;
+                const dueDate = sale.paymentDueDate ?? null;
+                const dueTime = dueDate ? Date.parse(dueDate) : NaN;
+                const hasDueDate = !Number.isNaN(dueTime);
+                const daysOverdue =
+                    hasDueDate && loan.balance > 0 && dueTime < today
+                        ? Math.floor((today - dueTime) / (24 * 60 * 60 * 1000))
+                        : 0;
+                const overdue = daysOverdue > 0;
+                const dueSoon =
+                    hasDueDate && loan.balance > 0 && dueTime >= today && dueTime <= weekAhead;
+
+                return {
+                    _id: loan._id,
+                    customerId: loan.customerId ?? null,
+                    customerName:
+                        customer?.name ?? loan.manualCustomerName ?? "Walk-in customer",
+                    customerPhone: customer?.phone ?? null,
+                    salesId: loan.salesId,
+                    invoiceNumber: sale.invoiceNumber ?? null,
+                    date: loan.date,
+                    dueDate,
+                    amount: loan.amount,
+                    paid: Math.max(0, loan.amount - loan.balance),
+                    balance: loan.balance,
+                    daysOverdue,
+                    overdue,
+                    dueSoon,
+                    status: loan.balance <= 0 ? "cleared" : overdue ? "overdue" : "pending",
+                };
+            })
+            .filter((row): row is NonNullable<typeof row> => row !== null);
+
+        let filtered = rows;
+        if (args.customerId) {
+            filtered = filtered.filter((row) => row.customerId === args.customerId);
+        }
+        if (args.searchTerm && args.searchTerm.trim()) {
+            const needle = args.searchTerm.trim().toLowerCase();
+            filtered = filtered.filter(
+                (row) =>
+                    row.customerName.toLowerCase().includes(needle) ||
+                    (row.invoiceNumber ?? "").toLowerCase().includes(needle)
+            );
+        }
+
+        const outstanding = filtered.reduce((sum, row) => sum + row.balance, 0);
+        const issued = filtered.reduce((sum, row) => sum + row.amount, 0);
+        const overdueRows = filtered.filter((row) => row.overdue);
+        const dueSoonRows = filtered.filter((row) => row.dueSoon);
+        const maxDaysOverdue = overdueRows.reduce((max, row) => Math.max(max, row.daysOverdue), 0);
+
+        return {
+            page: filtered,
+            totals: {
+                loans: filtered.length,
+                openLoans: filtered.filter((row) => row.balance > 0).length,
+                issued,
+                outstanding,
+                paid: Math.max(0, issued - outstanding),
+                overdueAmount: overdueRows.reduce((sum, row) => sum + row.balance, 0),
+                overdueCount: overdueRows.length,
+                dueSoonAmount: dueSoonRows.reduce((sum, row) => sum + row.balance, 0),
+                dueSoonCount: dueSoonRows.length,
+                maxDaysOverdue,
+            },
+        };
+    },
+});
+
+/**
+ * What opening credit on a sale would actually do.
+ *
+ * The form shows this, so the operator sees the figures the server will use
+ * before they commit to them. The arithmetic is the server's — the browser
+ * never sends an amount of its own, and never gets to change one.
+ */
+export const getOriginationPreview = query({
+    args: {
+        salesId: v.id("sales"),
+        deposit: v.optional(v.number()),
+        businessId: v.optional(v.id("businesses")),
+    },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "loans.view");
+
+        const sale = await ctx.db.get(args.salesId);
+        if (!sale || sale.businessId !== tenant.businessId) {
+            throw new ConvexError("Forbidden: that sale belongs to another business.");
+        }
+        const customer = sale.customerId ? await ctx.db.get(sale.customerId) : null;
+
+        const amount = sale.total;
+        const taken = Math.max(0, sale.initialDeposit ?? 0);
+        const deposit = Math.max(0, args.deposit ?? 0);
+        const balance = Math.max(0, amount - taken - deposit);
+
+        const outstanding = sale.customerId
+            ? await outstandingBalance(ctx, sale.customerId)
+            : 0;
+        const creditLimit = customer?.creditLimit ?? 0;
+
+        return {
+            customerId: sale.customerId ?? null,
+            customerName: customer?.name ?? null,
+            date: sale.date,
+            invoiceNumber: sale.invoiceNumber ?? null,
+            amount,
+            taken,
+            deposit,
+            balance,
+            outstanding,
+            creditLimit,
+            /** Null when the customer has no limit set — no limit at all. */
+            availableCredit:
+                creditLimit > 0 ? Math.max(0, creditLimit - outstanding) : null,
+            overLimit: creditLimit > 0 && outstanding + balance > creditLimit,
+            dueDate: sale.paymentDueDate ?? null,
+        };
+    },
+});
+
+/**
+ * The sales that credit can still be opened on.
+ *
+ * A sale can only be put on the book when it has not been paid and has not
+ * already been given credit. The credit position of the customer is worked
+ * out here, so the form can show what the server will use — the browser
+ * never sends a figure of its own.
+ */
+export const listOriginationCandidates = query({
+    args: {
+        customerId: v.optional(v.id("customers")),
+        limit: v.optional(v.number()),
+        businessId: v.optional(v.id("businesses")),
+    },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "loans.view");
+        const businessId = tenant.businessId;
+
+        const limit = args.limit ?? 50;
+
+        const loans = await ctx.db
+            .query("loans")
+            .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+            .collect();
+        const onCredit = new Set(loans.map((l) => l.salesId));
+
+        const outstandingByCustomer = new Map<string, number>();
+        for (const loan of loans) {
+            if (!loan.customerId) continue;
+            outstandingByCustomer.set(
+                loan.customerId,
+                (outstandingByCustomer.get(loan.customerId) ?? 0) + loan.balance
+            );
+        }
+
+        const sales = await ctx.db
+            .query("sales")
+            .withIndex("by_businessId_date", (q) => q.eq("businessId", businessId))
+            .order("desc")
+            .take(200);
+
+        const candidates = sales.filter((sale) => {
+            if (onCredit.has(sale._id)) return false;
+            if (!sale.customerId) return false;
+            if (args.customerId && sale.customerId !== args.customerId) return false;
+            const mode = (sale.paymentMode ?? "").trim().toLowerCase();
+            return mode === "" || mode === "none" || mode === "loan" || mode === "credit";
+        });
+
+        const customerIds = [
+            ...new Set(candidates.map((s) => s.customerId!)),
+        ];
+        const customers = (await Promise.all(
+            customerIds.map((id) => ctx.db.get(id))
+        )) as any[];
+        const customerMap = new Map<any, any>(
+            customers.filter((c: any) => c !== null).map((c: any) => [c._id, c])
+        );
+
+        return candidates.slice(0, limit).map((sale) => {
+            const customer = customerMap.get(sale.customerId!);
+            const outstanding = outstandingByCustomer.get(sale.customerId!) ?? 0;
+            const limit_ = customer?.creditLimit ?? 0;
+            return {
+                salesId: sale._id,
+                date: sale.date,
+                invoiceNumber: sale.invoiceNumber ?? null,
+                total: sale.total,
+                initialDeposit: sale.initialDeposit ?? 0,
+                paymentMode: sale.paymentMode ?? null,
+                dueDate: sale.paymentDueDate ?? null,
+                customerId: sale.customerId!,
+                customerName: customer?.name ?? "Customer",
+                outstanding,
+                creditLimit: limit_,
+                /** Null when the customer has no limit set — no limit at all. */
+                availableCredit: limit_ > 0 ? Math.max(0, limit_ - outstanding) : null,
+            };
+        });
     },
 });
 
@@ -472,7 +848,8 @@ export const makePayment = mutation({
         method: v.optional(v.string()),
         reference: v.optional(v.string()),
         note: v.optional(v.string()),
-        userId: v.id("users"), // @deprecated — the caller is derived from the session
+        /** @deprecated — the caller is derived from the session. */
+        userId: v.optional(v.id("users")),
         businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {

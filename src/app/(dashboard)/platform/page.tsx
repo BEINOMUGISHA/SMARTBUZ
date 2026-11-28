@@ -42,9 +42,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 export default function PlatformConsolePage() {
-    const whoami = useQuery(api.platform.whoami, {});
+    
+    const t = useT();const whoami = useQuery(api.platform.whoami, {});
     const [tab, setTab] = useState("subscriptions");
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("");
@@ -108,8 +110,8 @@ export default function PlatformConsolePage() {
             <div className="space-y-6">
                 <VerticalPageHeader
                     icon={ShieldCheck}
-                    title="Platform console"
-                    description="Plans, subscriptions, payments and license keys."
+                    title={t("Platform console")}
+                    description={t("Plans, subscriptions, payments and license keys.")}
                 />
                 <LoadingState rows={2} />
             </div>
@@ -121,12 +123,12 @@ export default function PlatformConsolePage() {
             <div className="space-y-6">
                 <VerticalPageHeader
                     icon={ShieldCheck}
-                    title="Platform console"
-                    description="Plans, subscriptions, payments and license keys."
+                    title={t("Platform console")}
+                    description={t("Plans, subscriptions, payments and license keys.")}
                 />
                 <EmptyState
-                    title="This area is for the SMARTBUZ platform team"
-                    hint="Your account is not a platform administrator. If you should have access, ask the platform owner to grant it."
+                    title={t("This area is for the SMARTBUZ platform team")}
+                    hint={t("Your account is not a platform administrator. If you should have access, ask the platform owner to grant it.")}
                 />
             </div>
         );
@@ -138,10 +140,10 @@ export default function PlatformConsolePage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={ShieldCheck}
-                title="Platform console"
-                description="Plans, subscriptions, payments and license keys."
+                title={t("Platform console")}
+                description={t("Plans, subscriptions, payments and license keys.")}
                 actions={
-                    <Badge variant="outline" className="text-[10px] font-bold uppercase">
+                    <Badge variant="outline" className="text-eyebrow uppercase tracking-eyebrow">
                         {whoami.platformRole.replace(/_/g, " ")}
                     </Badge>
                 }
@@ -162,10 +164,10 @@ export default function PlatformConsolePage() {
 
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList>
-                    <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
-                    <TabsTrigger value="plans">Plans</TabsTrigger>
-                    <TabsTrigger value="payments">Payments</TabsTrigger>
-                    <TabsTrigger value="keys">License keys</TabsTrigger>
+                    <TabsTrigger value="subscriptions">{t("Subscriptions")}</TabsTrigger>
+                    <TabsTrigger value="plans">{t("Plans")}</TabsTrigger>
+                    <TabsTrigger value="payments">{t("Payments")}</TabsTrigger>
+                    <TabsTrigger value="keys">{t("License keys")}</TabsTrigger>
                 </TabsList>
 
                 {/* ── Subscriptions ── */}
@@ -174,7 +176,7 @@ export default function PlatformConsolePage() {
                         <SearchBox
                             value={search}
                             onChange={setSearch}
-                            placeholder="Search businesses…"
+                            placeholder={t("Search businesses…")}
                             className="w-full sm:w-72"
                         />
                         <select
@@ -182,21 +184,21 @@ export default function PlatformConsolePage() {
                             onChange={(e) => setStatusFilter(e.target.value)}
                             className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
                         >
-                            <option value="">All states</option>
-                            <option value="trial">Trial</option>
-                            <option value="active">Active</option>
-                            <option value="grace">Grace</option>
-                            <option value="past_due">Past due</option>
-                            <option value="suspended">Suspended</option>
-                            <option value="expired">Expired</option>
-                            <option value="cancelled">Cancelled</option>
+                            <option value="">{t("All states")}</option>
+                            <option value="trial">{t("Trial")}</option>
+                            <option value="active">{t("Active")}</option>
+                            <option value="grace">{t("Grace")}</option>
+                            <option value="past_due">{t("Past due")}</option>
+                            <option value="suspended">{t("Suspended")}</option>
+                            <option value="expired">{t("Expired")}</option>
+                            <option value="cancelled">{t("Cancelled")}</option>
                         </select>
                     </div>
 
                     {!subscriptions ? (
                         <LoadingState rows={4} />
                     ) : subscriptions.page.length === 0 ? (
-                        <EmptyState title="No subscriptions match" />
+                        <EmptyState title={t("No subscriptions match")} />
                     ) : (
                         <div className="space-y-2">
                             {subscriptions.page.map((s: any) => (
@@ -210,7 +212,7 @@ export default function PlatformConsolePage() {
                                         <p className="truncate text-sm font-bold">
                                             {s.businessName}
                                         </p>
-                                        <p className="text-[11px] text-muted-foreground">
+                                        <p className="text-xs text-muted-foreground">
                                             {s.planName} •{" "}
                                             {s.currentPeriodEnd
                                                 ? new Date(
@@ -234,7 +236,7 @@ export default function PlatformConsolePage() {
                     <div className="flex flex-wrap gap-2">
                         <Button onClick={() => setShowCreatePlan(true)}>
                             <Layers className="mr-2 h-4 w-4" />
-                            New plan
+                            {t("New plan")}
                         </Button>
                         <Button
                             variant="outline"
@@ -251,7 +253,7 @@ export default function PlatformConsolePage() {
                                 }
                             }}
                         >
-                            Seed the built-in plans
+                            {t("Seed the built-in plans")}
                         </Button>
                     </div>
 
@@ -259,8 +261,8 @@ export default function PlatformConsolePage() {
                         <LoadingState rows={4} />
                     ) : plans.length === 0 ? (
                         <EmptyState
-                            title="No plans in the catalogue"
-                            hint="Seed the built-in plans, or create one of your own."
+                            title={t("No plans in the catalogue")}
+                            hint={t("Seed the built-in plans, or create one of your own.")}
                         />
                     ) : (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -269,17 +271,17 @@ export default function PlatformConsolePage() {
                                     <CardContent className="space-y-3 p-4">
                                         <div className="flex items-start justify-between gap-2">
                                             <div>
-                                                <p className="text-base font-black">{p.name}</p>
-                                                <p className="text-[11px] text-muted-foreground">
-                                                    key: {p.key}
+                                                <p className="text-base font-semibold">{p.name}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {t("key:")} {p.key}
                                                 </p>
                                             </div>
                                             <Badge
                                                 variant="outline"
                                                 className={
                                                     p.isActive
-                                                        ? "border-emerald-500/30 bg-emerald-500/10 text-[10px] font-bold text-emerald-700 dark:text-emerald-400"
-                                                        : "text-[10px] font-bold"
+                                                        ? "border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-700 dark:text-emerald-400"
+                                                        : "text-xs font-bold"
                                                 }
                                             >
                                                 {p.isActive ? "On offer" : "Retired"}
@@ -288,28 +290,27 @@ export default function PlatformConsolePage() {
 
                                         <div className="grid grid-cols-2 gap-2 text-sm">
                                             <div>
-                                                <p className="text-[10px] font-bold uppercase text-muted-foreground">
-                                                    Monthly
+                                                <p className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">
+                                                    {t("Monthly")}
                                                 </p>
-                                                <p className="font-black tabular-nums">
+                                                <p className="font-semibold tabular-nums">
                                                     {p.currency}{" "}
                                                     {p.priceMonthly.toLocaleString("en-UG")}
                                                 </p>
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-bold uppercase text-muted-foreground">
-                                                    Annual
+                                                <p className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">
+                                                    {t("Annual")}
                                                 </p>
-                                                <p className="font-black tabular-nums">
+                                                <p className="font-semibold tabular-nums">
                                                     {p.currency}{" "}
                                                     {p.priceAnnual.toLocaleString("en-UG")}
                                                 </p>
                                             </div>
                                         </div>
 
-                                        <p className="text-[11px] text-muted-foreground">
-                                            {p.trialDays}-day trial • {p.gracePeriodDays}-day
-                                            grace • {p.deviceLimit || "∞"} devices •{" "}
+                                        <p className="text-xs text-muted-foreground">
+                                            {p.trialDays}{t("-day trial •")} {p.gracePeriodDays}{t("-day grace •")} {p.deviceLimit || "∞"} {t("devices •")}{" "}
                                             {p.features.length} features
                                         </p>
 
@@ -319,7 +320,7 @@ export default function PlatformConsolePage() {
                                                 variant="outline"
                                                 onClick={() => setShowEditPlan(p)}
                                             >
-                                                Edit
+                                                {t("Edit")}
                                             </Button>
                                             {p.isActive && (
                                                 <Button
@@ -337,7 +338,7 @@ export default function PlatformConsolePage() {
                                                         }
                                                     }}
                                                 >
-                                                    Retire
+                                                    {t("Retire")}
                                                 </Button>
                                             )}
                                         </div>
@@ -352,16 +353,14 @@ export default function PlatformConsolePage() {
                 <TabsContent value="payments" className="space-y-4">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Payments waiting to be confirmed</CardTitle>
+                            <CardTitle>{t("Payments waiting to be confirmed")}</CardTitle>
                             <CardDescription>
-                                A payment is not a payment until it has been confirmed
-                                against the provider&apos;s own record. The amount here
-                                must match what the provider shows.
+                                {t("A payment is not a payment until it has been confirmed against the provider&apos;s own record. The amount here must match what the provider shows.")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-2">
                             {pendingPayments.length === 0 ? (
-                                <EmptyState title="Nothing waiting" />
+                                <EmptyState title={t("Nothing waiting")} />
                             ) : (
                                 pendingPayments.map((p: any) => (
                                     <div
@@ -372,7 +371,7 @@ export default function PlatformConsolePage() {
                                             <p className="text-sm font-bold">
                                                 {p.currency} {p.amount.toLocaleString("en-UG")}
                                             </p>
-                                            <p className="text-[11px] text-muted-foreground">
+                                            <p className="text-xs text-muted-foreground">
                                                 {p.businessName ?? p.businessId} • {p.provider}
                                                 {p.providerReference
                                                     ? ` • ref ${p.providerReference}`
@@ -394,7 +393,7 @@ export default function PlatformConsolePage() {
                                                     }
                                                 }}
                                             >
-                                                Confirm
+                                                {t("Confirm")}
                                             </Button>
                                             <Button
                                                 size="sm"
@@ -411,7 +410,7 @@ export default function PlatformConsolePage() {
                                                     }
                                                 }}
                                             >
-                                                Reject
+                                                {t("Reject")}
                                             </Button>
                                         </div>
                                     </div>
@@ -425,13 +424,13 @@ export default function PlatformConsolePage() {
                 <TabsContent value="keys" className="space-y-4">
                     <Button onClick={() => setShowIssueKey(true)}>
                         <KeyRound className="mr-2 h-4 w-4" />
-                        Issue a license key
+                        {t("Issue a license key")}
                     </Button>
 
                     {!keys ? (
                         <LoadingState rows={3} />
                     ) : keys.length === 0 ? (
-                        <EmptyState title="No license keys issued" />
+                        <EmptyState title={t("No license keys issued")} />
                     ) : (
                         <div className="space-y-2">
                             {keys.map((k: any) => (
@@ -446,8 +445,8 @@ export default function PlatformConsolePage() {
                                                 • {k.planKey}
                                             </span>
                                         </p>
-                                        <p className="text-[11px] text-muted-foreground">
-                                            {k.businessName ?? "unassigned"} • issued{" "}
+                                        <p className="text-xs text-muted-foreground">
+                                            {k.businessName ?? "unassigned"} {t("• issued")}{" "}
                                             {new Date(k.issuedAt).toLocaleDateString("en-UG")}
                                         </p>
                                     </div>
@@ -469,7 +468,7 @@ export default function PlatformConsolePage() {
                                                     }
                                                 }}
                                             >
-                                                Revoke
+                                                {t("Revoke")}
                                             </Button>
                                         )}
                                     </div>
@@ -499,7 +498,7 @@ export default function PlatformConsolePage() {
                                 variant="ghost"
                                 onClick={() => setSelectedBusiness(null)}
                             >
-                                Close
+                                {t("Close")}
                             </Button>
                         </div>
                     </CardHeader>
@@ -520,7 +519,7 @@ export default function PlatformConsolePage() {
                                     }}
                                 >
                                     <Play className="mr-2 h-4 w-4" />
-                                    Activate
+                                    {t("Activate")}
                                 </Button>
                             )}
                             {detail.status === "suspended" ? (
@@ -539,7 +538,7 @@ export default function PlatformConsolePage() {
                                     }}
                                 >
                                     <Repeat className="mr-2 h-4 w-4" />
-                                    Reactivate
+                                    {t("Reactivate")}
                                 </Button>
                             ) : (
                                 <Button
@@ -548,7 +547,7 @@ export default function PlatformConsolePage() {
                                     onClick={() => setShowSuspend(detail)}
                                 >
                                     <Ban className="mr-2 h-4 w-4" />
-                                    Suspend
+                                    {t("Suspend")}
                                 </Button>
                             )}
                             <Button
@@ -557,14 +556,14 @@ export default function PlatformConsolePage() {
                                 onClick={() => setShowExtend(detail)}
                             >
                                 <CalendarPlus className="mr-2 h-4 w-4" />
-                                Extend
+                                {t("Extend")}
                             </Button>
                             <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => setShowChangePlan(detail)}
                             >
-                                Change plan
+                                {t("Change plan")}
                             </Button>
                             <Button
                                 size="sm"
@@ -582,18 +581,18 @@ export default function PlatformConsolePage() {
                                 }}
                             >
                                 <XCircle className="mr-2 h-4 w-4" />
-                                Cancel
+                                {t("Cancel")}
                             </Button>
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div>
-                                <p className="mb-2 text-xs font-black uppercase tracking-wider text-muted-foreground">
-                                    Devices
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    {t("Devices")}
                                 </p>
                                 {detail.devices.length === 0 ? (
                                     <p className="text-xs text-muted-foreground">
-                                        No devices registered.
+                                        {t("No devices registered.")}
                                     </p>
                                 ) : (
                                     <div className="space-y-1">
@@ -625,7 +624,7 @@ export default function PlatformConsolePage() {
                                                             }
                                                         }}
                                                     >
-                                                        Revoke
+                                                        {t("Revoke")}
                                                     </Button>
                                                 )}
                                             </div>
@@ -635,12 +634,12 @@ export default function PlatformConsolePage() {
                             </div>
 
                             <div>
-                                <p className="mb-2 text-xs font-black uppercase tracking-wider text-muted-foreground">
-                                    Payments
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    {t("Payments")}
                                 </p>
                                 {detail.payments.length === 0 ? (
                                     <p className="text-xs text-muted-foreground">
-                                        No payments recorded.
+                                        {t("No payments recorded.")}
                                     </p>
                                 ) : (
                                     <div className="space-y-1">
@@ -663,8 +662,8 @@ export default function PlatformConsolePage() {
                         </div>
 
                         <div>
-                            <p className="mb-2 text-xs font-black uppercase tracking-wider text-muted-foreground">
-                                History
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                {t("History")}
                             </p>
                             <div className="space-y-1">
                                 {detail.history.map((h: any) => (
@@ -686,8 +685,8 @@ export default function PlatformConsolePage() {
             <FormDialog
                 open={showCreatePlan}
                 onOpenChange={setShowCreatePlan}
-                title="New plan"
-                description="The key is the stable name a subscription refers to. It cannot be changed later."
+                title={t("New plan")}
+                description={t("The key is the stable name a subscription refers to. It cannot be changed later.")}
                 submitLabel="Create plan"
                 fields={[
                     { name: "key", label: "Key", required: true, placeholder: "retail-plus" },
@@ -755,7 +754,7 @@ export default function PlatformConsolePage() {
                 open={!!showEditPlan}
                 onOpenChange={(v) => !v && setShowEditPlan(null)}
                 title={showEditPlan ? `Edit ${showEditPlan.name}` : "Edit plan"}
-                description="A price change applies to the next period. What existing subscribers pay is already recorded on their subscription."
+                description={t("A price change applies to the next period. What existing subscribers pay is already recorded on their subscription.")}
                 submitLabel="Save"
                 fields={[
                     { name: "name", label: "Name", defaultValue: showEditPlan?.name },
@@ -845,8 +844,8 @@ export default function PlatformConsolePage() {
             <FormDialog
                 open={showIssueKey}
                 onOpenChange={setShowIssueKey}
-                title="Issue a license key"
-                description="The key is shown once and never stored. Only its hash is kept."
+                title={t("Issue a license key")}
+                description={t("The key is shown once and never stored. Only its hash is kept.")}
                 submitLabel="Issue key"
                 fields={[
                     {
@@ -880,7 +879,7 @@ export default function PlatformConsolePage() {
             <FormDialog
                 open={!!showExtend}
                 onOpenChange={(v) => !v && setShowExtend(null)}
-                title="Extend the subscription"
+                title={t("Extend the subscription")}
                 submitLabel="Extend"
                 fields={[
                     {
@@ -907,7 +906,7 @@ export default function PlatformConsolePage() {
             <FormDialog
                 open={!!showChangePlan}
                 onOpenChange={(v) => !v && setShowChangePlan(null)}
-                title="Change the plan"
+                title={t("Change the plan")}
                 submitLabel="Change plan"
                 fields={[
                     {
@@ -936,8 +935,8 @@ export default function PlatformConsolePage() {
             <FormDialog
                 open={!!showSuspend}
                 onOpenChange={(v) => !v && setShowSuspend(null)}
-                title="Suspend the subscription"
-                description="The business keeps its data. It simply cannot record anything new until the subscription is restored."
+                title={t("Suspend the subscription")}
+                description={t("The business keeps its data. It simply cannot record anything new until the subscription is restored.")}
                 submitLabel="Suspend"
                 fields={[
                     {

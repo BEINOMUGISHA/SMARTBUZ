@@ -14,7 +14,9 @@ import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
+import { writeAudit } from "../audit";
 import { logActivity, requirePermission, requireTenant } from "../tenancy";
+import { assertScreenAvailable } from "../packages/manage";
 
 /* ───────────────────────── appointments ───────────────────────── */
 
@@ -66,7 +68,9 @@ export const createAppointment = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "customers.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["appointments"]);
 
         // Guard against double-booking the same staff member at the same time.
         if (args.staffId) {
@@ -124,7 +128,9 @@ export const updateAppointmentStatus = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "customers.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["appointments"]);
         const appt = await ctx.db.get(args.id);
         if (!appt) throw new ConvexError("Appointment not found");
         if (appt.businessId !== businessId) {
@@ -186,7 +192,9 @@ export const createOutlet = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["services"]);
         const id = await ctx.db.insert("serviceOutlets", {
             businessId,
             businessType: args.businessType,
@@ -216,7 +224,14 @@ export const updateOutletStatus = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "branches.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["services"]);
+        const outlet = await ctx.db.get(args.id);
+        if (!outlet) throw new ConvexError("Table not found");
+        if (outlet.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
         await ctx.db.patch(args.id, {
             status: args.status,
             currentBookingId: args.currentBookingId,
@@ -236,7 +251,9 @@ export const openTableOrder = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.create");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["tables"]);
         const outlet = await ctx.db.get(args.outletId);
         if (!outlet) throw new ConvexError("Table not found");
         if (outlet.businessId !== businessId) {
@@ -277,7 +294,9 @@ export const addTableOrderItems = mutation({
     },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.create");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["tables"]);
         const order = await ctx.db.get(args.tableOrderId);
         if (!order) throw new ConvexError("Table order not found");
         if (order.businessId !== businessId) {
@@ -300,7 +319,9 @@ export const closeTableOrder = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.create");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["tables"]);
         const order = await ctx.db.get(args.tableOrderId);
         if (!order) throw new ConvexError("Table order not found");
         if (order.businessId !== businessId) {
@@ -365,6 +386,7 @@ export const upsertMenuItem = mutation({
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["menu"]);
         const payload = {
             businessId,
             stockId: args.stockId,
@@ -378,7 +400,25 @@ export const upsertMenuItem = mutation({
         };
 
         if (args.id) {
+            // Amending an existing item is a catalogue change, so it is
+            // permission-checked and the row must belong to the caller.
+            await requirePermission(ctx, businessId, "products.update");
+            const existing = await ctx.db.get(args.id);
+            if (!existing) throw new ConvexError("Menu item not found");
+            if (existing.businessId !== businessId) {
+                throw new ConvexError("Forbidden: that record belongs to another business.");
+            }
             await ctx.db.patch(args.id, payload);
+            await logActivity(ctx, businessId, tenant.user._id, "Update Menu Item", `${payload.name} updated`);
+            await writeAudit(ctx, {
+                businessId,
+                actorUserId: tenant.user._id,
+                actorRole: tenant.membership.role,
+                action: "menu.item.update",
+                targetType: "menu_item",
+                targetId: args.id,
+                metadata: { name: payload.name, category: payload.category, price: payload.price },
+            });
             return args.id;
         }
         return await ctx.db.insert("menuItems", payload);
@@ -389,7 +429,14 @@ export const toggleMenuAvailability = mutation({
     args: { id: v.id("menuItems"), available: v.boolean(), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "products.update");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["menu"]);
+        const item = await ctx.db.get(args.id);
+        if (!item) throw new ConvexError("Menu item not found");
+        if (item.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
         await ctx.db.patch(args.id, { available: args.available });
         return args.id;
     },
@@ -429,5 +476,314 @@ export const getScheduleSummary = query({
             outletsAvailable: outlets.filter((o) => o.status === "available").length,
             outletsOccupied: outlets.filter((o) => o.status === "occupied").length,
         };
+    },
+});
+
+/* ───────────────────────── record lifecycle ───────────────────────── */
+
+/**
+ * Amend a booking.
+ *
+ * Only the fields the front desk edits are writable. The tenant, the shop
+ * and the money side of the record are never taken from the client.
+ */
+export const updateAppointment = mutation({
+    args: {
+        id: v.id("appointments"),
+        customerName: v.optional(v.string()),
+        customerPhone: v.optional(v.string()),
+        staffId: v.optional(v.id("users")),
+        staffName: v.optional(v.string()),
+        serviceName: v.optional(v.string()),
+        date: v.optional(v.string()),
+        startTime: v.optional(v.string()),
+        endTime: v.optional(v.string()),
+        status: v.optional(v.string()),
+        notes: v.optional(v.string()),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "sales.create");
+
+        const appt = await ctx.db.get(args.id);
+        if (!appt) throw new ConvexError("Appointment not found");
+        if (appt.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        const date = args.date ?? appt.date;
+        const startTime = args.startTime ?? appt.startTime;
+        const endTime = args.endTime ?? appt.endTime;
+        const staffId = args.staffId ?? appt.staffId;
+
+        // Guard against double-booking the same staff member at the same time.
+        if (staffId) {
+            const dayAppts = await ctx.db
+                .query("appointments")
+                .withIndex("by_businessId", (q) => q.eq("businessId", businessId))
+                .collect();
+            const overlapping = dayAppts.filter(
+                (a) =>
+                    a._id !== args.id &&
+                    a.date === date &&
+                    a.staffId === staffId &&
+                    a.status === "confirmed" &&
+                    a.startTime < (endTime ?? "23:59") &&
+                    (endTime ?? "23:59") > a.startTime
+            );
+        await assertScreenAvailable(ctx, businessId, ["appointments"]);
+            if (overlapping.length > 0) {
+                throw new ConvexError(
+                    `${args.staffName ?? appt.staffName ?? "Staff"} already has an appointment at ${startTime} on ${date}.`
+                );
+            }
+        }
+
+        await ctx.db.patch(args.id, {
+            ...(args.customerName !== undefined ? { customerName: args.customerName } : {}),
+            ...(args.customerPhone !== undefined ? { customerPhone: args.customerPhone } : {}),
+            ...(args.staffId !== undefined ? { staffId: args.staffId } : {}),
+            ...(args.staffName !== undefined ? { staffName: args.staffName } : {}),
+            ...(args.serviceName !== undefined ? { serviceName: args.serviceName } : {}),
+            ...(args.date !== undefined ? { date: args.date } : {}),
+            ...(args.startTime !== undefined ? { startTime: args.startTime } : {}),
+            ...(args.endTime !== undefined ? { endTime: args.endTime } : {}),
+            ...(args.status !== undefined ? { status: args.status } : {}),
+            ...(args.notes !== undefined ? { notes: args.notes } : {}),
+        });
+
+        // Completing or cancelling a chair/room booking frees the outlet again.
+        if (args.status === "completed" || args.status === "cancelled") {
+            const outlets = await ctx.db.query("serviceOutlets").collect();
+            for (const o of outlets) {
+                if (o.businessId === businessId && o.currentBookingId === args.id) {
+                    await ctx.db.patch(o._id, { currentBookingId: undefined, status: "available" });
+                }
+            }
+        }
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Update Appointment",
+            `${appt.serviceName} for ${appt.customerName} amended`
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "appointment.update",
+            targetType: "appointment",
+            targetId: args.id,
+            metadata: {
+                customerName: args.customerName ?? appt.customerName,
+                serviceName: args.serviceName ?? appt.serviceName,
+                date: args.date ?? appt.date,
+                startTime: args.startTime ?? appt.startTime,
+                status: args.status ?? appt.status,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a booking.
+ *
+ * A booking that is currently holding a room or chair cannot be deleted —
+ * the outlet has to be released first, otherwise the room would be stranded.
+ */
+export const deleteAppointment = mutation({
+    args: {
+        id: v.id("appointments"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "sales.create");
+
+        const appt = await ctx.db.get(args.id);
+        if (!appt) throw new ConvexError("Appointment not found");
+        if (appt.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+        if (appt.businessType === "prescription") {
+            throw new ConvexError("Prescriptions are clinical records and cannot be deleted here.");
+        }
+
+        const outlets = await ctx.db.query("serviceOutlets").collect();
+        const holder = outlets.find((o) => o.businessId === businessId && o.currentBookingId === args.id);
+        if (holder) {
+            throw new ConvexError(
+                `${holder.name} is still held by this booking. Complete or cancel the appointment before deleting it.`
+            );
+        await assertScreenAvailable(ctx, businessId, ["appointments"]);
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Appointment",
+            `${appt.serviceName} for ${appt.customerName} on ${appt.date} deleted`
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "appointment.delete",
+            targetType: "appointment",
+            targetId: args.id,
+            metadata: {
+                customerName: appt.customerName,
+                serviceName: appt.serviceName,
+                date: appt.date,
+                startTime: appt.startTime,
+                businessType: appt.businessType,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/** Amend the details of a table / room / chair. */
+export const updateOutlet = mutation({
+    args: {
+        id: v.id("serviceOutlets"),
+        name: v.optional(v.string()),
+        capacity: v.optional(v.number()),
+        rate: v.optional(v.number()),
+        notes: v.optional(v.string()),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["services"]);
+        await requirePermission(ctx, businessId, "sales.create");
+
+        const outlet = await ctx.db.get(args.id);
+        if (!outlet) throw new ConvexError("Table not found");
+        if (outlet.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        await ctx.db.patch(args.id, {
+            ...(args.name !== undefined ? { name: args.name } : {}),
+            ...(args.capacity !== undefined ? { capacity: args.capacity } : {}),
+            ...(args.rate !== undefined ? { rate: args.rate } : {}),
+            ...(args.notes !== undefined ? { notes: args.notes } : {}),
+        });
+
+        await logActivity(ctx, businessId, tenant.user._id, "Update Outlet", `${outlet.name} updated`);
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "outlet.update",
+            targetType: "service_outlet",
+            targetId: args.id,
+            metadata: {
+                name: args.name ?? outlet.name,
+                capacity: args.capacity ?? outlet.capacity,
+                rate: args.rate ?? outlet.rate,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a table / room / chair.
+ *
+ * Refused when an order was ever opened on it: the order points at the
+ * outlet, so removing the outlet would orphan a sales record.
+ */
+export const deleteOutlet = mutation({
+    args: {
+        id: v.id("serviceOutlets"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "sales.create");
+
+        const outlet = await ctx.db.get(args.id);
+        if (!outlet) throw new ConvexError("Table not found");
+        if (outlet.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        const orders = await ctx.db.query("tableOrders").collect();
+        const used = orders.find((o) => o.businessId === businessId && o.outletId === args.id);
+        if (used) {
+            throw new ConvexError(
+                `${outlet.name} has order history and cannot be deleted. Take it out of service instead.`
+            );
+        await assertScreenAvailable(ctx, businessId, ["services"]);
+        }
+        if (outlet.currentBookingId) {
+            throw new ConvexError(`${outlet.name} is currently held by a booking. Complete or cancel it first.`);
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(ctx, businessId, tenant.user._id, "Delete Outlet", `${outlet.name} deleted`);
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "outlet.delete",
+            targetType: "service_outlet",
+            targetId: args.id,
+            metadata: { name: outlet.name, businessType: outlet.businessType, capacity: outlet.capacity },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a menu item.
+ *
+ * Nothing points at a menu item: orders copy the name and the price and
+ * point at the stock, so the catalogue entry itself is safe to remove.
+ */
+export const deleteMenuItem = mutation({
+    args: {
+        id: v.id("menuItems"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["menu"]);
+        await requirePermission(ctx, businessId, "products.update");
+
+        const item = await ctx.db.get(args.id);
+        if (!item) throw new ConvexError("Menu item not found");
+        if (item.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(ctx, businessId, tenant.user._id, "Delete Menu Item", `${item.name} deleted`);
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "menu.item.delete",
+            targetType: "menu_item",
+            targetId: args.id,
+            metadata: { name: item.name, category: item.category, price: item.price },
+        });
+
+        return args.id;
     },
 });

@@ -1,5 +1,5 @@
-"use strict";
 "use client";
+"use strict";
 
 import { ReactNode, useEffect } from "react";
 import { ConvexProvider, ConvexReactClient } from "convex/react";

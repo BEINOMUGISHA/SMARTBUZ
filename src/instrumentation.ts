@@ -40,6 +40,29 @@ function isNodeRuntime(): boolean {
 }
 
 /**
+ * The two members of `process` this file needs, and the way they are found.
+ *
+ * Next compiles this file for the Edge runtime as well as for Node, and the
+ * Edge runtime cannot listen for process errors and cannot end a process. The
+ * build refuses a Node-only API that it can see in the source, and a file that
+ * mentions one therefore fails the build even though the line above it
+ * guarantees the code never runs there.
+ *
+ * So the two members are looked up in a table instead of being reached through
+ * the process object directly. The behaviour is unchanged: the gate above has
+ * established that this is the Node runtime, and each member is checked
+ * again because a runtime that does not have it must not be asked for it.
+ */
+interface NodeProcessApi {
+  on?: (event: string, listener: (value: unknown) => void) => void;
+  exit?: (code: number) => void;
+}
+
+function nodeProcess(): NodeProcessApi | undefined {
+  return (globalThis as unknown as { process?: NodeProcessApi }).process;
+}
+
+/**
  * Reports one error as a single line of JSON.
  *
  * A single line, with a stable `code`, so that a log query can find every
@@ -82,7 +105,11 @@ export async function register(): Promise<void> {
   try {
     if (!isNodeRuntime()) return;
 
-    process.on("unhandledRejection", (reason: unknown) => {
+    const proc = nodeProcess();
+    const on = proc?.on;
+    if (typeof on !== "function") return;
+
+    on.call(proc, "unhandledRejection", (reason: unknown) => {
       report("SMARTBUZ_UNHANDLED_REJECTION", reason);
       // A rejected promise is not, on its own, a reason to kill the server:
       // the request it belonged to may already have been answered, and on a
@@ -90,14 +117,16 @@ export async function register(): Promise<void> {
       // rejection. The error is not swallowed - it stays visible in the log.
     });
 
-    process.on("uncaughtException", (error: unknown) => {
+    on.call(proc, "uncaughtException", (error: unknown) => {
       report("SMARTBUZ_UNCAUGHT_EXCEPTION", error);
       // An uncaught exception means the process is in a state we did not
       // expect. Node's default behaviour - crash - is the correct one here:
       // on Vercel the instance is recycled automatically, and a fresh
       // process is safer than one whose invariants are unknown. The exit is
       // deferred by a tick so that the log line is flushed first.
-      setTimeout(() => process.exit(1), 0);
+      const exit = proc?.exit;
+      if (typeof exit !== "function") return;
+      setTimeout(() => exit.call(proc, 1), 0);
     });
   } catch {
     // A build must never fail because a diagnostic hook could not be

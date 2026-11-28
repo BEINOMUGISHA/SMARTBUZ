@@ -40,9 +40,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 export default function SubscriptionPage() {
-    const { can } = useAuth();
+    
+    const t = useT();const { can } = useAuth();
     const canView = can("subscriptions.self.view");
     const canManage = can("subscriptions.self.manage");
 
@@ -87,12 +89,12 @@ export default function SubscriptionPage() {
             <div className="space-y-6">
                 <VerticalPageHeader
                     icon={CreditCard}
-                    title="Subscription"
-                    description="Your plan, your devices and your billing history."
+                    title={t("Subscription")}
+                    description={t("Your plan, your devices and your billing history.")}
                 />
                 <EmptyState
-                    title="You may not view this business's subscription"
-                    hint="Ask the owner or an administrator if you need to see the plan."
+                    title={t("You may not view this business's subscription")}
+                    hint={t("Ask the owner or an administrator if you need to see the plan.")}
                 />
             </div>
         );
@@ -103,8 +105,8 @@ export default function SubscriptionPage() {
             <div className="space-y-6">
                 <VerticalPageHeader
                     icon={CreditCard}
-                    title="Subscription"
-                    description="Your plan, your devices and your billing history."
+                    title={t("Subscription")}
+                    description={t("Your plan, your devices and your billing history.")}
                 />
                 <LoadingState rows={2} />
             </div>
@@ -136,18 +138,18 @@ export default function SubscriptionPage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={CreditCard}
-                title="Subscription"
-                description="Your plan, your devices and your billing history."
+                title={t("Subscription")}
+                description={t("Your plan, your devices and your billing history.")}
                 actions={
                     canManage ? (
                         <>
                             <Button variant="outline" onClick={() => setShowPayment(true)}>
                                 <Wallet className="mr-2 h-4 w-4" />
-                                Submit payment
+                                {t("Submit payment")}
                             </Button>
                             <Button onClick={() => setShowKey(true)}>
                                 <KeyRound className="mr-2 h-4 w-4" />
-                                Redeem key
+                                {t("Redeem key")}
                             </Button>
                         </>
                     ) : undefined
@@ -194,9 +196,7 @@ export default function SubscriptionPage() {
                     <div className="space-y-1">
                         <p className="text-sm font-bold">{subscription.explanation}</p>
                         <p className="text-xs text-muted-foreground">
-                            Nothing has been deleted. Your sales, stock and records are
-                            all still here — you simply cannot record anything new
-                            until the subscription is put right.
+                            {t("Nothing has been deleted. Your sales, stock and records are all still here — you simply cannot record anything new until the subscription is put right.")}
                         </p>
                     </div>
                 </div>
@@ -209,37 +209,34 @@ export default function SubscriptionPage() {
                             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                             <div>
                                 <p className="text-sm font-bold">
-                                    Your free trial is running
+                                    {t("Your free trial is running")}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    Submit your payment and it will be activated once the
-                                    payment is confirmed against the provider&apos;s own
-                                    record.
+                                    {t("Submit your payment and it will be activated once the payment is confirmed against the provider&apos;s own record.")}
                                 </p>
                             </div>
                         </div>
-                        <Button onClick={() => setShowPayment(true)}>Pay now</Button>
+                        <Button onClick={() => setShowPayment(true)}>{t("Pay now")}</Button>
                     </CardContent>
                 </Card>
             )}
 
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="plans">Plans</TabsTrigger>
-                    <TabsTrigger value="devices">Devices</TabsTrigger>
-                    <TabsTrigger value="payments">Payments</TabsTrigger>
-                    <TabsTrigger value="history">History</TabsTrigger>
+                    <TabsTrigger value="overview">{t("Overview")}</TabsTrigger>
+                    <TabsTrigger value="plans">{t("Plans")}</TabsTrigger>
+                    <TabsTrigger value="devices">{t("Devices")}</TabsTrigger>
+                    <TabsTrigger value="payments">{t("Payments")}</TabsTrigger>
+                    <TabsTrigger value="history">{t("History")}</TabsTrigger>
                 </TabsList>
 
                 {/* ── Overview ── */}
                 <TabsContent value="overview" className="space-y-4">
                     <Card>
                         <CardHeader>
-                            <CardTitle>What your plan allows</CardTitle>
+                            <CardTitle>{t("What your plan allows")}</CardTitle>
                             <CardDescription>
-                                These are decided on the server. A feature that is not on
-                                your plan is refused even if it is called directly.
+                                {t("These are decided on the server. A feature that is not on your plan is refused even if it is called directly.")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -254,9 +251,9 @@ export default function SubscriptionPage() {
                                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                                     )}
                                     <div className="min-w-0">
-                                        <p className="text-sm font-bold">{e.label}</p>
-                                        <p className="text-[11px] text-muted-foreground">
-                                            {e.description}
+                                        <p className="text-sm font-bold">{t(e.label)}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {t(e.description)}
                                         </p>
                                     </div>
                                 </div>
@@ -266,9 +263,9 @@ export default function SubscriptionPage() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Usage</CardTitle>
+                            <CardTitle>{t("Usage")}</CardTitle>
                             <CardDescription>
-                                Counted from your real records, so it cannot drift.
+                                {t("Counted from your real records, so it cannot drift.")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
@@ -305,7 +302,7 @@ export default function SubscriptionPage() {
                     />
                     {!canManage && (
                         <p className="text-xs text-muted-foreground">
-                            Only the owner or an administrator can change the plan.
+                            {t("Only the owner or an administrator can change the plan.")}
                         </p>
                     )}
                 </TabsContent>
@@ -315,20 +312,20 @@ export default function SubscriptionPage() {
                     <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">
                             {subscription.devices.used} of{" "}
-                            {subscription.devices.limit || "unlimited"} devices registered.
+                            {subscription.devices.limit || "unlimited"} {t("devices registered.")}
                         </p>
                         {canManage && (
                             <Button size="sm" onClick={() => setShowDevice(true)}>
                                 <Monitor className="mr-2 h-4 w-4" />
-                                Register device
+                                {t("Register device")}
                             </Button>
                         )}
                     </div>
 
                     {subscription.devices.registered.length === 0 ? (
                         <EmptyState
-                            title="No devices registered"
-                            hint="Register the tills and devices that will use this account."
+                            title={t("No devices registered")}
+                            hint={t("Register the tills and devices that will use this account.")}
                         />
                     ) : (
                         <div className="space-y-2">
@@ -341,7 +338,7 @@ export default function SubscriptionPage() {
                                         <p className="truncate text-sm font-bold">
                                             {d.deviceName}
                                         </p>
-                                        <p className="truncate text-[11px] text-muted-foreground">
+                                        <p className="truncate text-xs text-muted-foreground">
                                             {d.deviceId}
                                             {d.platform ? ` • ${d.platform}` : ""}
                                         </p>
@@ -362,7 +359,7 @@ export default function SubscriptionPage() {
                                                 }
                                             }}
                                         >
-                                            Revoke
+                                            {t("Revoke")}
                                         </Button>
                                     )}
                                 </div>
@@ -375,8 +372,8 @@ export default function SubscriptionPage() {
                 <TabsContent value="payments" className="space-y-4">
                     {subscription.payments.length === 0 ? (
                         <EmptyState
-                            title="No payments yet"
-                            hint="Submit a payment and it will be activated once confirmed."
+                            title={t("No payments yet")}
+                            hint={t("Submit a payment and it will be activated once confirmed.")}
                         />
                     ) : (
                         <div className="space-y-2">
@@ -389,7 +386,7 @@ export default function SubscriptionPage() {
                                         <p className="text-sm font-bold">
                                             {p.currency} {p.amount.toLocaleString("en-UG")}
                                         </p>
-                                        <p className="text-[11px] text-muted-foreground">
+                                        <p className="text-xs text-muted-foreground">
                                             {p.billingCycle} • {p.provider}
                                             {p.providerReference
                                                 ? ` • ref ${p.providerReference}`
@@ -406,7 +403,7 @@ export default function SubscriptionPage() {
                 {/* ── History ── */}
                 <TabsContent value="history" className="space-y-4">
                     {(history?.page ?? []).length === 0 ? (
-                        <EmptyState title="Nothing has happened yet" />
+                        <EmptyState title={t("Nothing has happened yet")} />
                     ) : (
                         <div className="space-y-2">
                             {(history?.page ?? []).map((e: any) => (
@@ -419,12 +416,12 @@ export default function SubscriptionPage() {
                                         <p className="text-sm font-bold">
                                             {e.type.replace(/_/g, " ")}
                                         </p>
-                                        <p className="text-[11px] text-muted-foreground">
+                                        <p className="text-xs text-muted-foreground">
                                             {e.note ??
                                                 `${e.fromStatus ?? "—"} → ${e.toStatus ?? "—"}`}
                                         </p>
                                     </div>
-                                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                                    <span className="shrink-0 text-xs text-muted-foreground">
                                         {new Date(e.createdAt).toLocaleDateString("en-UG")}
                                     </span>
                                 </div>
@@ -438,8 +435,8 @@ export default function SubscriptionPage() {
             <FormDialog
                 open={showPayment}
                 onOpenChange={setShowPayment}
-                title="Submit a payment"
-                description="Your payment is recorded as pending. The subscription is activated once it has been confirmed against the provider's own record."
+                title={t("Submit a payment")}
+                description={t("Your payment is recorded as pending. The subscription is activated once it has been confirmed against the provider's own record.")}
                 submitLabel="Submit payment"
                 fields={[
                     {
@@ -497,8 +494,8 @@ export default function SubscriptionPage() {
             <FormDialog
                 open={showDevice}
                 onOpenChange={setShowDevice}
-                title="Register a device"
-                description="The device limit comes from your plan and is checked on the server."
+                title={t("Register a device")}
+                description={t("The device limit comes from your plan and is checked on the server.")}
                 submitLabel="Register"
                 fields={[
                     {
@@ -533,8 +530,8 @@ export default function SubscriptionPage() {
             <FormDialog
                 open={showKey}
                 onOpenChange={setShowKey}
-                title="Redeem a license key"
-                description="A key moves your account onto the plan it was issued for."
+                title={t("Redeem a license key")}
+                description={t("A key moves your account onto the plan it was issued for.")}
                 submitLabel="Redeem key"
                 fields={[
                     {
@@ -557,7 +554,7 @@ export default function SubscriptionPage() {
                     <div className="flex justify-end">
                         <Button variant="outline" onClick={handleActivate}>
                             <Package className="mr-2 h-4 w-4" />
-                            Activate now
+                            {t("Activate now")}
                         </Button>
                     </div>
                 )}

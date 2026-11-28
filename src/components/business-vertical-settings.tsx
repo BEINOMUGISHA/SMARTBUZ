@@ -27,9 +27,11 @@ import { Check, Loader2, Percent, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 export function BusinessVerticalSettings() {
-    const { user, activeBusiness } = useAuth();
+    
+    const t = useT();const { user, activeBusiness } = useAuth();
     const profile = useQuery(api.businesses.getActive, {});
     const setCategory = useMutation(api.businesses.setCategory);
     const updateProfile = useMutation(api.businesses.updateSettings);
@@ -121,31 +123,31 @@ export function BusinessVerticalSettings() {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                         <Store className="h-4 w-4 text-primary" />
-                        Your business type
+                        {t("Your business type")}
                     </CardTitle>
                     <CardDescription>
-                        SMART_BUZ tailors the menu, VAT handling and receipts to your trade.
+                        {t("SMART_BUZ tailors the menu, VAT handling and receipts to your trade.")}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="rounded-xl border bg-muted/30 p-4">
-                        <p className="text-lg font-black">{activeCat?.name ?? "Not set"}</p>
+                        <p className="text-lg font-semibold">{activeCat?.name ?? "Not set"}</p>
                         {activeCat && (
                             <>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    {activeCat.description}
+                                    {t(activeCat.description)}
                                 </p>
                                 <div className="mt-3 flex flex-wrap gap-1.5">
-                                    <Badge variant="outline" className="text-[10px]">
+                                    <Badge variant="outline" className="text-xs">
                                         {activeCat.modules.length} modules
                                     </Badge>
-                                    <Badge variant="outline" className="text-[10px]">
+                                    <Badge variant="outline" className="text-xs">
                                         {activeCat.tax.enabled
                                             ? `VAT ${activeCat.tax.rate}%${activeCat.tax.inclusive ? " incl." : ""}`
                                             : "No VAT"}
                                     </Badge>
-                                    <Badge variant="outline" className="text-[10px]">
-                                        Unit: {activeCat.units.default}
+                                    <Badge variant="outline" className="text-xs">
+                                        {t("Unit:")} {activeCat.units.default}
                                     </Badge>
                                 </div>
                             </>
@@ -154,7 +156,7 @@ export function BusinessVerticalSettings() {
 
                     {isAdmin && (
                         <div className="space-y-3">
-                            <Label>Change business type</Label>
+                            <Label>{t("Change business type")}</Label>
                             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                 {BUSINESS_CATEGORIES.map((c) => (
                                     <button
@@ -176,16 +178,15 @@ export function BusinessVerticalSettings() {
                             {selected && (
                                 <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
                                     <p className="flex-1 text-xs text-muted-foreground">
-                                        Switching to{" "}
+                                        {t("Switching to")}{" "}
                                         <span className="font-bold text-foreground">
                                             {BUSINESS_CATEGORIES.find((c) => c.id === selected)?.name}
                                         </span>{" "}
-                                        will change your sidebar, VAT settings and receipt format. Your
-                                        existing products and sales are not affected.
+                                        {t("will change your sidebar, VAT settings and receipt format. Your existing products and sales are not affected.")}
                                     </p>
                                     <Button size="sm" onClick={handleSwitch} disabled={saving}>
                                         {saving ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-                                        Switch
+                                        {t("Switch")}
                                     </Button>
                                 </div>
                             )}
@@ -198,15 +199,15 @@ export function BusinessVerticalSettings() {
             {profile && (
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-base">Business details &amp; URA registration</CardTitle>
+                        <CardTitle className="text-base">{t("Business details &amp; URA registration")}</CardTitle>
                         <CardDescription>
-                            Your TIN appears on every fiscal receipt, as required by URA.
+                            {t("Your TIN appears on every fiscal receipt, as required by URA.")}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="s-bizName">Business name</Label>
+                                <Label htmlFor="s-bizName">{t("Business name")}</Label>
                                 <Input
                                     id="s-bizName"
                                     defaultValue={profile.name}
@@ -215,16 +216,16 @@ export function BusinessVerticalSettings() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="s-tin">URA TIN</Label>
+                                <Label htmlFor="s-tin">{t("URA TIN")}</Label>
                                 <Input
                                     id="s-tin"
                                     defaultValue={(profile as any).tin ?? ""}
                                     onChange={(e) => setTin(e.target.value)}
-                                    placeholder="e.g. 4012345678901"
+                                    placeholder={t("e.g. 4012345678901")}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="s-bizPhone">Phone</Label>
+                                <Label htmlFor="s-bizPhone">{t("Phone")}</Label>
                                 <Input
                                     id="s-bizPhone"
                                     defaultValue={profile.businessPhone ?? ""}
@@ -233,19 +234,19 @@ export function BusinessVerticalSettings() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="s-bizAddress">Address</Label>
+                                <Label htmlFor="s-bizAddress">{t("Address")}</Label>
                                 <Input
                                     id="s-bizAddress"
                                     defaultValue={profile.businessAddress ?? ""}
                                     onChange={(e) => setBusinessAddress(e.target.value)}
-                                    placeholder="Kampala, Uganda"
+                                    placeholder={t("Kampala, Uganda")}
                                 />
                             </div>
                         </div>
                         <div className="flex justify-end">
                             <Button onClick={handleSaveDetails} disabled={saving}>
                                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                Save details
+                                {t("Save details")}
                             </Button>
                         </div>
                     </CardContent>
@@ -258,29 +259,27 @@ export function BusinessVerticalSettings() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Percent className="h-4 w-4 text-primary" />
-                            Till controls
+                            {t("Till controls")}
                         </CardTitle>
                         <CardDescription>
-                            Decide what a cashier is allowed to change while a sale is open.
+                            {t("Decide what a cashier is allowed to change while a sale is open.")}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="flex items-start justify-between gap-4 rounded-xl border bg-muted/30 p-4">
                             <div className="space-y-1">
                                 <Label htmlFor="s-allowOverrides" className="text-sm">
-                                    Allow price overrides at the till
+                                    {t("Allow price overrides at the till")}
                                 </Label>
                                 <p className="text-xs text-muted-foreground">
-                                    When on, a cashier can lower a line price in the cart and the
-                                    sale records both the original and the agreed price for audit.
-                                    When off, the server always charges the list price.
+                                    {t("When on, a cashier can lower a line price in the cart and the sale records both the original and the agreed price for audit. When off, the server always charges the list price.")}
                                 </p>
                             </div>
                             <Switch
                                 id="s-allowOverrides"
                                 checked={overridesEnabled}
                                 onCheckedChange={handleToggleOverrides}
-                                aria-label="Allow price overrides at the till"
+                                aria-label={t("Allow price overrides at the till")}
                             />
                         </div>
                     </CardContent>
@@ -290,16 +289,16 @@ export function BusinessVerticalSettings() {
             {/* Sector reference */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-base">Supported trades</CardTitle>
+                    <CardTitle className="text-base">{t("Supported trades")}</CardTitle>
                     <CardDescription>
                         {BUSINESS_CATEGORIES.length} business types across{" "}
-                        {CATEGORY_SECTORS.length} sectors.
+                        {CATEGORY_SECTORS.length} {t("sectors.")}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                     {CATEGORY_SECTORS.map((sector) => (
                         <div key={sector.id}>
-                            <p className="mb-1.5 text-xs font-black uppercase tracking-wider text-muted-foreground">
+                            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                 {sector.name}
                             </p>
                             <div className="flex flex-wrap gap-1.5">
@@ -310,7 +309,7 @@ export function BusinessVerticalSettings() {
                                         <Badge
                                             key={id}
                                             variant={currentCategory === id ? "default" : "outline"}
-                                            className="text-[10px]"
+                                            className="text-xs"
                                         >
                                             {c.name}
                                         </Badge>

@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ShieldCheck, ShieldAlert, Search } from "lucide-react";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 /** The action families the trail records, for the filter. */
 const ACTION_GROUPS: { label: string; prefix: string }[] = [
@@ -46,7 +47,8 @@ function formatTimestamp(timestamp: string): string {
 }
 
 export function SecurityAuditTrail() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const [group, setGroup] = useState("");
     const [search, setSearch] = useState("");
 
@@ -78,19 +80,17 @@ export function SecurityAuditTrail() {
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                     <ShieldCheck className="h-5 w-5 text-primary" />
-                    Security audit trail
+                    {t("Security audit trail")}
                 </CardTitle>
                 <CardDescription className="font-medium">
-                    Privileged actions — sign-ins, session revocations, role and
-                    permission changes, refunds and platform operations. This log
-                    is append-only.
+                    {t("Privileged actions — sign-ins, session revocations, role and permission changes, refunds and platform operations. This log is append-only.")}
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                         <Label className="text-xs font-semibold uppercase text-muted-foreground">
-                            Event type
+                            {t("Event type")}
                         </Label>
                         <div className="flex flex-wrap gap-2">
                             {ACTION_GROUPS.map((option) => (
@@ -101,7 +101,7 @@ export function SecurityAuditTrail() {
                                     variant={group === option.prefix ? "default" : "outline"}
                                     onClick={() => setGroup(option.prefix)}
                                 >
-                                    {option.label}
+                                    {t(option.label)}
                                 </Button>
                             ))}
                         </div>
@@ -109,12 +109,12 @@ export function SecurityAuditTrail() {
 
                     <div className="space-y-2">
                         <Label className="text-xs font-semibold uppercase text-muted-foreground">
-                            Search
+                            {t("Search")}
                         </Label>
                         <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Search events..."
+                                placeholder={t("Search events...")}
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 className="pl-9"
@@ -124,25 +124,25 @@ export function SecurityAuditTrail() {
                 </div>
 
                 {result === undefined ? (
-                    <p className="text-sm text-muted-foreground">Loading…</p>
+                    <p className="text-sm text-muted-foreground">{t("Loading…")}</p>
                 ) : result === null ? (
                     <p className="text-sm text-muted-foreground">
-                        You do not have access to the security audit trail.
+                        {t("You do not have access to the security audit trail.")}
                     </p>
                 ) : rows.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                        No matching events.
+                        {t("No matching events.")}
                     </p>
                 ) : (
                     <div className="overflow-x-auto rounded-xl border border-border/60">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/40">
                                 <tr className="text-left">
-                                    <th className="px-4 py-3 font-bold">When</th>
-                                    <th className="px-4 py-3 font-bold">Action</th>
-                                    <th className="px-4 py-3 font-bold">Actor</th>
-                                    <th className="px-4 py-3 font-bold">Target</th>
-                                    <th className="px-4 py-3 font-bold">Details</th>
+                                    <th className="px-4 py-3 font-bold">{t("When")}</th>
+                                    <th className="px-4 py-3 font-bold">{t("Action")}</th>
+                                    <th className="px-4 py-3 font-bold">{t("Actor")}</th>
+                                    <th className="px-4 py-3 font-bold">{t("Target")}</th>
+                                    <th className="px-4 py-3 font-bold">{t("Details")}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -158,7 +158,7 @@ export function SecurityAuditTrail() {
                                                 ) : (
                                                     <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
                                                 )}
-                                                {row.action}
+                                                {t(row.action)}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3">

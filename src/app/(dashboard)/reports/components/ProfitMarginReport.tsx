@@ -21,9 +21,11 @@ import {
     SheetDescription,
 } from "@/components/ui/sheet";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function ProfitMarginReport() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -115,14 +117,14 @@ export function ProfitMarginReport() {
                     ]}
                     value={selectedShop}
                     onValueChange={setSelectedShop}
-                    placeholder="Select Shop"
+                    placeholder={t("Select Shop")}
                     width="160px"
                 />
 
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search product name or code..."
+                        placeholder={t("Search product name or code...")}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -133,8 +135,8 @@ export function ProfitMarginReport() {
             <ReportSummary customStats={customStats} isLoading={summary === undefined} />
 
             <ReportTable
-                title="Profit Margin Report"
-                subtitle="Analysis of product profitability, cost vs revenue, and margin performance."
+                title={t("Profit Margin Report")}
+                subtitle={t("Analysis of product profitability, cost vs revenue, and margin performance.")}
                 data={products?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
                 isLoading={products === undefined}
                 onViewDetails={handleViewDetails}
@@ -159,8 +161,8 @@ export function ProfitMarginReport() {
                         header: "Product",
                         accessor: (p: any) => (
                             <div className="flex flex-col gap-0.5 min-w-[160px]">
-                                <span className="font-black text-primary leading-none">{p.productName}</span>
-                                <span className="text-[9px] font-bold text-muted-foreground">{p.productCode}</span>
+                                <span className="font-semibold text-primary leading-none">{p.productName}</span>
+                                <span className="text-xs font-bold text-muted-foreground">{p.productCode}</span>
                             </div>
                         ),
                         exportValue: (p: any) => p.productName,
@@ -168,7 +170,7 @@ export function ProfitMarginReport() {
                     {
                         header: "Quantity",
                         accessor: (p: any) => (
-                            <span className="font-black text-blue-600 text-sm">{p.totalQuantity.toLocaleString()}</span>
+                            <span className="font-semibold text-blue-600 text-sm">{p.totalQuantity.toLocaleString()}</span>
                         ),
                         exportValue: (p: any) => p.totalQuantity.toLocaleString(),
                         className: "text-right",
@@ -176,7 +178,7 @@ export function ProfitMarginReport() {
                     {
                         header: "Revenue",
                         accessor: (p: any) => (
-                            <span className="font-black text-emerald-700 text-sm">{currency} {p.totalRevenue.toLocaleString()}</span>
+                            <span className="font-semibold text-emerald-700 text-sm">{currency} {p.totalRevenue.toLocaleString()}</span>
                         ),
                         exportValue: (p: any) => p.totalRevenue.toLocaleString(),
                         className: "text-right",
@@ -203,7 +205,7 @@ export function ProfitMarginReport() {
                         header: "Margin",
                         accessor: (p: any) => (
                             <Badge variant={p.profitMargin >= 0 ? "default" : "destructive"} className={cn(
-                                "text-[10px] uppercase font-black tracking-tighter",
+                                "tracking-tighter text-eyebrow uppercase tracking-eyebrow",
                                 p.profitMargin >= 20 ? "bg-emerald-100 text-emerald-700" : p.profitMargin >= 0 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
                             )}>
                                 {p.profitMargin.toFixed(1)}%
@@ -219,41 +221,41 @@ export function ProfitMarginReport() {
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Product Profit Details</SheetTitle>
+                        <SheetTitle>{t("Product Profit Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete profitability analysis for this product.
+                            {t("Complete profitability analysis for this product.")}
                         </SheetDescription>
                     </SheetHeader>
                     {viewingProduct ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Product Name</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Product Name")}</span>
                                     <span className="font-semibold">{viewingProduct.productName}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Product Code</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Product Code")}</span>
                                     <span className="font-semibold">{viewingProduct.productCode}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Quantity Sold</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Quantity Sold")}</span>
                                     <span className="font-bold text-lg text-blue-600">{viewingProduct.totalQuantity.toLocaleString()}</span>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Revenue & Cost</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Revenue & Cost")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Total Revenue</span>
+                                        <span className="text-sm text-muted-foreground">{t("Total Revenue")}</span>
                                         <span className="font-bold text-lg text-emerald-600">{currency} {viewingProduct.totalRevenue.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Total Cost</span>
+                                        <span className="text-sm text-muted-foreground">{t("Total Cost")}</span>
                                         <span className="font-bold text-lg text-red-600">{currency} {viewingProduct.totalCost.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between pt-2 border-t">
-                                        <span className="text-sm font-bold text-muted-foreground">Net Profit</span>
+                                        <span className="text-sm font-bold text-muted-foreground">{t("Net Profit")}</span>
                                         <span className={cn("font-bold text-2xl", viewingProduct.totalProfit >= 0 ? "text-emerald-600" : "text-destructive")}>
                                             {currency} {viewingProduct.totalProfit.toLocaleString()}
                                         </span>
@@ -262,23 +264,23 @@ export function ProfitMarginReport() {
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Profit Margin</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Profit Margin")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Margin Percentage</span>
+                                        <span className="text-sm text-muted-foreground">{t("Margin Percentage")}</span>
                                         <Badge variant={viewingProduct.profitMargin >= 0 ? "default" : "destructive"} className={cn(
-                                            "text-sm uppercase font-black tracking-tighter",
+                                            "text-sm uppercase font-semibold tracking-tighter",
                                             viewingProduct.profitMargin >= 20 ? "bg-emerald-100 text-emerald-700" : viewingProduct.profitMargin >= 0 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
                                         )}>
                                             {viewingProduct.profitMargin.toFixed(1)}%
                                         </Badge>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Avg Price per Unit</span>
+                                        <span className="text-sm text-muted-foreground">{t("Avg Price per Unit")}</span>
                                         <span className="font-semibold">{currency} {Math.round(viewingProduct.totalRevenue / viewingProduct.totalQuantity).toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Avg Cost per Unit</span>
+                                        <span className="text-sm text-muted-foreground">{t("Avg Cost per Unit")}</span>
                                         <span className="font-semibold">{currency} {Math.round(viewingProduct.totalCost / viewingProduct.totalQuantity).toLocaleString()}</span>
                                     </div>
                                 </div>

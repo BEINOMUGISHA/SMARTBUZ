@@ -33,6 +33,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useConvex } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useAuth } from "@/context/auth-context";
+import { CATEGORY_SECTORS } from "@/lib/business-categories";
 import {
     VerticalPageHeader,
     StatStrip,
@@ -58,6 +59,7 @@ import {
     ShieldCheck,
     ShieldAlert,
     ShieldQuestion,
+    Search,
     PlugZap,
     Info,
     Wrench,
@@ -68,6 +70,7 @@ import {
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { drawerCapabilities, printerCapabilities } from "@/lib/hardware";
+import { useT } from "@/i18n/provider";
 
 /** The four verification states, and how each is shown. */
 function verificationBadge(status: string) {
@@ -146,7 +149,8 @@ function categoryIcon(category: string) {
 }
 
 export default function IntegrationsPage() {
-    const { can } = useAuth();
+    
+    const t = useT();const { can } = useAuth();
     const convex = useConvex();
     const canView = can("integrations.view");
     const canManage = can("integrations.manage");
@@ -199,12 +203,12 @@ export default function IntegrationsPage() {
             <div className="space-y-6">
                 <VerticalPageHeader
                     icon={Plug}
-                    title="Integrations"
-                    description="Payment providers, messaging channels, till hardware and industry packages."
+                    title={t("Integrations")}
+                    description={t("Payment providers, messaging channels, till hardware and industry packages.")}
                 />
                 <EmptyState
-                    title="You may not view this"
-                    hint="Ask the owner or an administrator if you need to see the integrations."
+                    title={t("You may not view this")}
+                    hint={t("Ask the owner or an administrator if you need to see the integrations.")}
                 />
             </div>
         );
@@ -239,8 +243,8 @@ export default function IntegrationsPage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={Plug}
-                title="Integrations"
-                description="Payment providers, messaging channels, till hardware and industry packages."
+                title={t("Integrations")}
+                description={t("Payment providers, messaging channels, till hardware and industry packages.")}
             />
 
             {adapters === undefined ? (
@@ -269,9 +273,9 @@ export default function IntegrationsPage() {
 
                     <Tabs value={tab} onValueChange={setTab}>
                         <TabsList>
-                            <TabsTrigger value="providers">Providers</TabsTrigger>
-                            <TabsTrigger value="hardware">Hardware</TabsTrigger>
-                            <TabsTrigger value="packages">Industry packages</TabsTrigger>
+                            <TabsTrigger value="providers">{t("Providers")}</TabsTrigger>
+                            <TabsTrigger value="hardware">{t("Hardware")}</TabsTrigger>
+                            <TabsTrigger value="packages">{t("Industry packages")}</TabsTrigger>
                         </TabsList>
 
                         {/* ── Providers ─────────────────────────────────── */}
@@ -279,7 +283,7 @@ export default function IntegrationsPage() {
                             <div className="space-y-3">
                                 <h3 className="text-sm font-semibold flex items-center gap-2">
                                     <CreditCard className="h-4 w-4" />
-                                    Payments
+                                    {t("Payments")}
                                 </h3>
                                 {payments.map((adapter: any) => (
                                     <AdapterCard
@@ -348,20 +352,19 @@ export default function IntegrationsPage() {
                             <div className="space-y-3">
                                 <h3 className="text-sm font-semibold flex items-center gap-2">
                                     <Banknote className="h-4 w-4" />
-                                    Payment history
+                                    {t("Payment history")}
                                 </h3>
 
                                 {!canSeePayments ? (
                                     <p className="text-xs text-muted-foreground">
-                                        Your role can configure the payment providers but
-                                        cannot read the payments taken through them.
+                                        {t("Your role can configure the payment providers but cannot read the payments taken through them.")}
                                     </p>
                                 ) : paymentHistory === undefined ? (
                                     <LoadingState rows={2} />
                                 ) : paymentHistory.length === 0 ? (
                                     <EmptyState
-                                        title="No payments yet"
-                                        hint="Payments taken through a provider appear here, with the environment they were taken in."
+                                        title={t("No payments yet")}
+                                        hint={t("Payments taken through a provider appear here, with the environment they were taken in.")}
                                     />
                                 ) : (
                                     <div className="space-y-2">
@@ -393,8 +396,7 @@ export default function IntegrationsPage() {
                                                 <p className="mt-1 text-xs text-muted-foreground">
                                                     {payment.adapterKey} ·{" "}
                                                     {payment.currency}{" "}
-                                                    {Number(payment.amount).toLocaleString()} ·
-                                                    created{" "}
+                                                    {Number(payment.amount).toLocaleString()} {t("· created")}{" "}
                                                     {new Date(
                                                         payment.createdAt
                                                     ).toLocaleString()}
@@ -411,7 +413,7 @@ export default function IntegrationsPage() {
                             <div className="space-y-3">
                                 <h3 className="text-sm font-semibold flex items-center gap-2">
                                     <MessageSquare className="h-4 w-4" />
-                                    Messaging
+                                    {t("Messaging")}
                                 </h3>
                                 {messaging.map((adapter: any) => (
                                     <AdapterCard
@@ -513,7 +515,8 @@ function AdapterCard({
     onToggle,
     onTest,
 }: AdapterCardProps) {
-    const [open, setOpen] = useState(false);
+    
+    const t = useT();const [open, setOpen] = useState(false);
     const badge = verificationBadge(adapter.verificationStatus);
     const BadgeIcon = badge.icon;
     const Icon = categoryIcon(adapter.category);
@@ -546,22 +549,22 @@ function AdapterCard({
                         </div>
                         <div className="min-w-0">
                             <CardTitle className="text-base flex flex-wrap items-center gap-2">
-                                {adapter.label}
+                                {t(adapter.label)}
                                 <Badge variant="outline" className={badge.className}>
                                     <BadgeIcon className="h-3 w-3 mr-1" />
-                                    {badge.label}
+                                    {t(badge.label)}
                                 </Badge>
                                 {environment && (
                                     <Badge
                                         variant="outline"
                                         className={environment.className}
                                     >
-                                        {environment.label}
+                                        {t(environment.label)}
                                     </Badge>
                                 )}
                             </CardTitle>
                             <CardDescription className="mt-1">
-                                {adapter.summary}
+                                {t(adapter.summary)}
                             </CardDescription>
                             <p className="text-xs text-muted-foreground mt-1">
                                 {adapter.vendor}
@@ -615,45 +618,42 @@ function AdapterCard({
                             <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                             <div className="text-xs min-w-0 space-y-1.5">
                                 <p className="font-semibold text-amber-800 dark:text-amber-200">
-                                    Sandbox —{" "}
+                                    {t("Sandbox —")}{" "}
                                     {adapter.category === "payment"
                                         ? "this will not move real money."
                                         : "messages will not reach a real handset."}
                                 </p>
                                 <p className="text-muted-foreground">
-                                    This adapter is switched on, but it is still pointed at
-                                    the provider&apos;s sandbox. Nothing it does reaches a
-                                    real account.
+                                    {t("This adapter is switched on, but it is still pointed at the provider&apos;s sandbox. Nothing it does reaches a real account.")}
                                 </p>
                                 <p className="text-muted-foreground">
                                     {canManage ? (
                                         <>
-                                            To go live, open{" "}
+                                            {t("To go live, open")}{" "}
                                             <span className="font-medium text-foreground">
-                                                Configure
+                                                {t("Configure")}
                                             </span>
-                                            , set{" "}
+                                            {t(", set")}{" "}
                                             <span className="font-medium text-foreground">
-                                                Environment
+                                                {t("Environment")}
                                             </span>{" "}
                                             to{" "}
                                             <span className="font-medium text-foreground">
-                                                Live
+                                                {t("Live")}
                                             </span>
-                                            , save, and then run the verification test
-                                            again.
+                                            {t(", save, and then run the verification test again.")}
                                         </>
                                     ) : (
                                         <>
-                                            To go live, an administrator has to set{" "}
+                                            {t("To go live, an administrator has to set")}{" "}
                                             <span className="font-medium text-foreground">
-                                                Environment
+                                                {t("Environment")}
                                             </span>{" "}
                                             to{" "}
                                             <span className="font-medium text-foreground">
-                                                Live
+                                                {t("Live")}
                                             </span>{" "}
-                                            and re-verify the adapter.
+                                            {t("and re-verify the adapter.")}
                                         </>
                                     )}
                                 </p>
@@ -685,7 +685,7 @@ function AdapterCard({
                                     rel="noreferrer"
                                     className="underline underline-offset-2"
                                 >
-                                    The provider&apos;s own documentation
+                                    {t("The provider&apos;s own documentation")}
                                 </a>
                             )}
                         </div>
@@ -698,7 +698,7 @@ function AdapterCard({
                         <div className="flex items-start gap-2">
                             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                             <div className="text-xs min-w-0">
-                                <p className="font-medium mb-1">What it does not do</p>
+                                <p className="font-medium mb-1">{t("What it does not do")}</p>
                                 <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
                                     {adapter.limitations.map((l: string) => (
                                         <li key={l}>{l}</li>
@@ -712,7 +712,7 @@ function AdapterCard({
                 {/* The last test */}
                 {adapter.lastTestedAt && (
                     <p className="text-xs text-muted-foreground">
-                        Last tested {new Date(adapter.lastTestedAt).toLocaleString()}
+                        {t("Last tested")} {new Date(adapter.lastTestedAt).toLocaleString()}
                         {adapter.lastTestResult ? ` — ${adapter.lastTestResult}` : ""}
                     </p>
                 )}
@@ -720,7 +720,7 @@ function AdapterCard({
                 {/* What is still missing */}
                 {adapter.missing && adapter.missing.length > 0 && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                        Still needed: {adapter.missing.join(", ")}
+                        {t("Still needed:")} {adapter.missing.join(", ")}
                     </p>
                 )}
 
@@ -730,7 +730,7 @@ function AdapterCard({
                         {adapter.fields.map((field: any) => (
                             <div key={field.key} className="space-y-1.5">
                                 <Label htmlFor={`${adapter.key}-${field.key}`} className="text-xs font-semibold">
-                                    {field.label}
+                                    {t(field.label)}
                                     {field.required && (
                                         <span className="text-destructive ml-1">*</span>
                                     )}
@@ -758,7 +758,7 @@ function AdapterCard({
                                     >
                                         {field.options.map((o: any) => (
                                             <option key={o.value} value={o.value}>
-                                                {o.label}
+                                                {t(o.label)}
                                             </option>
                                         ))}
                                     </select>
@@ -778,21 +778,20 @@ function AdapterCard({
                                     <Input
                                         id={`${adapter.key}-${field.key}`}
                                         type={field.type === "number" ? "number" : "text"}
-                                        placeholder={field.placeholder}
+                                        placeholder={t(field.placeholder)}
                                         value={String(draft[field.key] ?? field.value ?? "")}
                                         onChange={(e) => onDraft(field.key, e.target.value)}
                                     />
                                 )}
 
                                 {field.type !== "boolean" && field.help && (
-                                    <p className="text-[11px] text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground">
                                         {field.help}
                                     </p>
                                 )}
                                 {field.type === "secret" && field.hasValue && (
-                                    <p className="text-[11px] text-muted-foreground">
-                                        A value is saved. It is encrypted and cannot be read back —
-                                        only replaced.
+                                    <p className="text-xs text-muted-foreground">
+                                        {t("A value is saved. It is encrypted and cannot be read back — only replaced.")}
                                     </p>
                                 )}
                             </div>
@@ -803,7 +802,7 @@ function AdapterCard({
                             onClick={() => onSave(pendingConfig, pendingSecrets)}
                             disabled={Object.keys(draft).length === 0}
                         >
-                            Save configuration
+                            {t("Save configuration")}
                         </Button>
                     </div>
                 )}
@@ -824,7 +823,7 @@ function AdapterCard({
                                 ) : (
                                     <PlugZap className="h-3.5 w-3.5" />
                                 )}
-                                Run the live test
+                                {t("Run the live test")}
                             </Button>
                         ) : (
                             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -835,7 +834,7 @@ function AdapterCard({
 
                         {!adapter.enabled && (
                             <span className="text-xs text-muted-foreground">
-                                Switch the adapter on to test it.
+                                {t("Switch the adapter on to test it.")}
                             </span>
                         )}
                     </div>
@@ -850,7 +849,8 @@ function AdapterCard({
  * ──────────────────────────────────────────────────────────────────────── */
 
 function HardwareTab({ hardware, canManage }: { hardware: any; canManage: boolean }) {
-    const [showCapabilities, setShowCapabilities] = useState(false);
+    
+    const t = useT();const [showCapabilities, setShowCapabilities] = useState(false);
 
     if (!hardware) return <LoadingState />;
 
@@ -861,10 +861,9 @@ function HardwareTab({ hardware, canManage }: { hardware: any; canManage: boolea
         <div className="space-y-4">
             <div className="rounded-lg border bg-muted/40 p-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs space-y-1">
-                    <p className="font-medium">What this browser can do</p>
+                    <p className="font-medium">{t("What this browser can do")}</p>
                     <p className="text-muted-foreground">
-                        Hardware runs in the browser, because the browser is what can reach a USB
-                        or serial port. What is available depends on the browser and the machine.
+                        {t("Hardware runs in the browser, because the browser is what can reach a USB or serial port. What is available depends on the browser and the machine.")}
                     </p>
                 </div>
                 <Button
@@ -881,10 +880,10 @@ function HardwareTab({ hardware, canManage }: { hardware: any; canManage: boolea
             {showCapabilities && (
                 <div className="rounded-lg border p-3 space-y-2 text-xs">
                     <div className="grid gap-1.5 sm:grid-cols-2">
-                        <Capability label="Serial port (USB scales, printers)" ok={printerCaps.webSerial} />
-                        <Capability label="USB devices" ok={printerCaps.webUsb} />
-                        <Capability label="Bluetooth devices" ok={printerCaps.webBluetooth} />
-                        <Capability label="Cash drawer via the printer" ok={drawerCaps.escposViaPrinter} />
+                        <Capability label={t("Serial port (USB scales, printers)")} ok={printerCaps.webSerial} />
+                        <Capability label={t("USB devices")} ok={printerCaps.webUsb} />
+                        <Capability label={t("Bluetooth devices")} ok={printerCaps.webBluetooth} />
+                        <Capability label={t("Cash drawer via the printer")} ok={drawerCaps.escposViaPrinter} />
                     </div>
                     <p className="text-muted-foreground pt-1">{drawerCaps.detail}</p>
                 </div>
@@ -906,14 +905,14 @@ function HardwareTab({ hardware, canManage }: { hardware: any; canManage: boolea
                                 )}
                             </div>
                             <div className="min-w-0">
-                                <CardTitle className="text-base">{item.label}</CardTitle>
-                                <CardDescription className="mt-1">{item.summary}</CardDescription>
+                                <CardTitle className="text-base">{t(item.label)}</CardTitle>
+                                <CardDescription className="mt-1">{t(item.summary)}</CardDescription>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         <div className="text-xs space-y-1.5">
-                            <p className="font-medium">What it needs</p>
+                            <p className="font-medium">{t("What it needs")}</p>
                             <ul className="list-disc list-inside text-muted-foreground">
                                 {item.requirements.map((r: string) => (
                                     <li key={r}>{r}</li>
@@ -925,7 +924,7 @@ function HardwareTab({ hardware, canManage }: { hardware: any; canManage: boolea
                             <div className="flex items-start gap-2">
                                 <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                                 <div className="text-xs">
-                                    <p className="font-medium mb-1">What it does not do</p>
+                                    <p className="font-medium mb-1">{t("What it does not do")}</p>
                                     <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
                                         {item.limitations.map((l: string) => (
                                             <li key={l}>{l}</li>
@@ -936,13 +935,13 @@ function HardwareTab({ hardware, canManage }: { hardware: any; canManage: boolea
                         </div>
 
                         <div className="text-xs">
-                            <p className="font-medium">How it is proved</p>
+                            <p className="font-medium">{t("How it is proved")}</p>
                             <p className="text-muted-foreground">{item.verification.method}</p>
                         </div>
 
                         {item.devices.length > 0 && (
                             <div className="space-y-1.5">
-                                <p className="text-xs font-medium">Registered devices</p>
+                                <p className="text-xs font-medium">{t("Registered devices")}</p>
                                 {item.devices.map((device: any) => (
                                     <div
                                         key={device.id}
@@ -966,8 +965,7 @@ function HardwareTab({ hardware, canManage }: { hardware: any; canManage: boolea
 
                         {item.devices.length === 0 && canManage && (
                             <p className="text-xs text-muted-foreground">
-                                No device is registered for this yet. Register one from the till
-                                once the hardware is connected.
+                                {t("No device is registered for this yet. Register one from the till once the hardware is connected.")}
                             </p>
                         )}
                     </CardContent>
@@ -997,34 +995,104 @@ function Capability({ label, ok }: { label: string; ok: boolean }) {
  * ──────────────────────────────────────────────────────────────────────── */
 
 function PackagesTab({ packages }: { packages: any }) {
-    const enablePackage = useMutation(api.packages.manage.enablePackage);
+    
+    const t = useT();const enablePackage = useMutation(api.packages.manage.enablePackage);
     const setFeature = useMutation(api.packages.manage.setPackageFeature);
     const setSettings = useMutation(api.packages.manage.setPackageSettings);
 
+    const [search, setSearch] = useState("");
+    const [filter, setFilter] = useState<"all" | "on" | "off">("all");
+    const [expanded, setExpanded] = useState<string | null>(null);
+
     if (!packages) return <LoadingState />;
 
-    return (
-        <div className="space-y-4">
-            {packages.map((pkg: any) => (
-                <Card key={pkg.key}>
-                    <CardHeader className="pb-3">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="flex items-start gap-3 min-w-0">
-                                <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                                    <Package className="h-4 w-4" />
-                                </div>
-                                <div className="min-w-0">
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        {pkg.label}
-                                        {pkg.enabled && (
-                                            <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
-                                                On
-                                            </Badge>
-                                        )}
-                                    </CardTitle>
-                                    <CardDescription className="mt-1">{pkg.summary}</CardDescription>
-                                </div>
+    /**
+     * There are now as many packages as there are trades, so a flat list
+     * of cards is a wall. The list is searched, filtered and grouped by
+     * the sector the trade sits in, and only the package being worked on
+     * is open.
+     */
+    const term = search.trim().toLowerCase();
+
+    const matching = packages.filter((pkg: any) => {
+        const matchesFilter =
+            filter === "all" || (filter === "on" ? pkg.enabled : !pkg.enabled);
+        if (!matchesFilter) return false;
+        if (!term) return true;
+        return (
+            pkg.label.toLowerCase().includes(term) ||
+            pkg.summary.toLowerCase().includes(term) ||
+            pkg.features.some(
+                (feature: any) =>
+                    feature.label.toLowerCase().includes(term) ||
+                    feature.summary.toLowerCase().includes(term)
+            )
+        );
+    });
+
+    const sectorOf = (categoryId: string) =>
+        CATEGORY_SECTORS.find((sector) =>
+            (sector.categories as string[]).includes(categoryId)
+        );
+
+    const grouped = CATEGORY_SECTORS.map((sector) => ({
+        sector,
+        items: matching.filter(
+            (pkg: any) => sectorOf(pkg.categoryId)?.id === sector.id
+        ),
+    })).filter((group) => group.items.length > 0);
+
+    const ungrouped = matching.filter(
+        (pkg: any) => !sectorOf(pkg.categoryId)
+    );
+
+    const onCount = packages.filter((pkg: any) => pkg.enabled).length;
+
+    const renderPackage = (pkg: any) => {
+        const isOpen = expanded === pkg.key;
+
+        return (
+            <Card key={pkg.key}>
+                <CardHeader className="pb-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setExpanded(isOpen ? null : pkg.key)}
+                            className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                            aria-expanded={isOpen}
+                        >
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                <Package className="h-4 w-4" />
                             </div>
+                            <div className="min-w-0">
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                    {t(pkg.label)}
+                                    {pkg.enabled && (
+                                        <Badge
+                                            variant="success"
+                                            className="border-green-500/20"
+                                        >
+                                            {t("On")}
+                                        </Badge>
+                                    )}
+                                    <span className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                                        {pkg.features.length} {t("features ·")}{" "}
+                                        {pkg.modules?.length ?? 0} screens
+                                    </span>
+                                </CardTitle>
+                                <CardDescription className="mt-1">
+                                    {t(pkg.summary)}
+                                </CardDescription>
+                            </div>
+                        </button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setExpanded(isOpen ? null : pkg.key)}
+                            >
+                                {isOpen ? "Close" : "Open"}
+                            </Button>
                             <Button
                                 variant={pkg.enabled ? "outline" : "default"}
                                 size="sm"
@@ -1037,7 +1105,7 @@ function PackagesTab({ packages }: { packages: any }) {
                                         toast.success(
                                             pkg.enabled
                                                 ? `${pkg.label} switched off. Nothing it produced was deleted.`
-                                                : `${pkg.label} switched on.`
+                                                : `${pkg.label} switched on — ${pkg.modules?.length ?? 0} screens added to the menu.`
                                         );
                                     } catch (err: any) {
                                         toast.error(formatError(err));
@@ -1047,20 +1115,29 @@ function PackagesTab({ packages }: { packages: any }) {
                                 {pkg.enabled ? "Switch off" : "Switch on"}
                             </Button>
                         </div>
-                    </CardHeader>
+                    </div>
+                </CardHeader>
 
+                {isOpen && (
                     <CardContent className="space-y-4">
                         <div className="space-y-2">
-                            <p className="text-xs font-semibold">Features</p>
+                            <p className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                                {t("Features")}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                {t("A feature that is switched off is refused by the app: the work it belongs to cannot be done until the feature is back on.")}
+                            </p>
                             {pkg.features.map((feature: any) => (
                                 <div
                                     key={feature.key}
                                     className="flex items-start justify-between gap-3 rounded-md border px-3 py-2"
                                 >
                                     <div className="min-w-0">
-                                        <p className="text-xs font-medium">{feature.label}</p>
-                                        <p className="text-[11px] text-muted-foreground">
-                                            {feature.summary}
+                                        <p className="text-xs font-medium">
+                                            {t(feature.label)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {t(feature.summary)}
                                         </p>
                                     </div>
                                     <Switch
@@ -1084,16 +1161,20 @@ function PackagesTab({ packages }: { packages: any }) {
 
                         {pkg.settings.length > 0 && (
                             <div className="space-y-2">
-                                <p className="text-xs font-semibold">Settings</p>
+                                <p className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                                    {t("Settings")}
+                                </p>
                                 {pkg.settings.map((setting: any) => (
                                     <div
                                         key={setting.key}
                                         className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
                                     >
                                         <div className="min-w-0">
-                                            <p className="text-xs font-medium">{setting.label}</p>
+                                            <p className="text-xs font-medium">
+                                                {t(setting.label)}
+                                            </p>
                                             {setting.help && (
-                                                <p className="text-[11px] text-muted-foreground">
+                                                <p className="text-xs text-muted-foreground">
                                                     {setting.help}
                                                 </p>
                                             )}
@@ -1107,7 +1188,9 @@ function PackagesTab({ packages }: { packages: any }) {
                                                         try {
                                                             await setSettings({
                                                                 packageKey: pkg.key,
-                                                                settings: { [setting.key]: checked },
+                                                                settings: {
+                                                                    [setting.key]: checked,
+                                                                },
                                                             });
                                                         } catch (err: any) {
                                                             toast.error(formatError(err));
@@ -1122,7 +1205,9 @@ function PackagesTab({ packages }: { packages: any }) {
                                                         try {
                                                             await setSettings({
                                                                 packageKey: pkg.key,
-                                                                settings: { [setting.key]: e.target.value },
+                                                                settings: {
+                                                                    [setting.key]: e.target.value,
+                                                                },
                                                             });
                                                         } catch (err: any) {
                                                             toast.error(formatError(err));
@@ -1130,16 +1215,27 @@ function PackagesTab({ packages }: { packages: any }) {
                                                     }}
                                                     className="h-8 rounded-md border bg-background px-2 text-xs"
                                                 >
-                                                    {(setting.options ?? []).map((o: any) => (
-                                                        <option key={o.value} value={o.value}>
-                                                            {o.label}
-                                                        </option>
-                                                    ))}
+                                                    {(setting.options ?? []).map(
+                                                        (o: any) => (
+                                                            <option
+                                                                key={o.value}
+                                                                value={o.value}
+                                                            >
+                                                                {t(o.label)}
+                                                            </option>
+                                                        )
+                                                    )}
                                                 </select>
                                             ) : (
                                                 <Input
-                                                    type={setting.type === "number" ? "number" : "text"}
-                                                    defaultValue={String(setting.value ?? "")}
+                                                    type={
+                                                        setting.type === "number"
+                                                            ? "number"
+                                                            : "text"
+                                                    }
+                                                    defaultValue={String(
+                                                        setting.value ?? ""
+                                                    )}
                                                     disabled={!pkg.enabled}
                                                     className="h-8 w-40 text-xs"
                                                     onBlur={async (e) => {
@@ -1148,13 +1244,20 @@ function PackagesTab({ packages }: { packages: any }) {
                                                             setting.type === "number"
                                                                 ? Number(raw)
                                                                 : raw;
-                                                        if (String(value) === String(setting.value ?? "")) {
+                                                        if (
+                                                            String(value) ===
+                                                            String(
+                                                                setting.value ?? ""
+                                                            )
+                                                        ) {
                                                             return;
                                                         }
                                                         try {
                                                             await setSettings({
                                                                 packageKey: pkg.key,
-                                                                settings: { [setting.key]: value },
+                                                                settings: {
+                                                                    [setting.key]: value,
+                                                                },
                                                             });
                                                         } catch (err: any) {
                                                             toast.error(formatError(err));
@@ -1168,13 +1271,37 @@ function PackagesTab({ packages }: { packages: any }) {
                             </div>
                         )}
 
+                        {(pkg.modules?.length ?? 0) > 0 && (
+                            <div className="space-y-2">
+                                <p className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                                    {t("The screens it brings")}
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {pkg.modules.map((moduleId: string) => (
+                                        <Badge
+                                            key={moduleId}
+                                            variant="outline"
+                                            className="font-normal"
+                                        >
+                                            {moduleId}
+                                        </Badge>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {t("Switching this on puts these screens in the menu. Switching it off takes them away again — nothing they produced is deleted.")}
+                                </p>
+                            </div>
+                        )}
+
                         {pkg.limitations.length > 0 && (
                             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
                                 <div className="flex items-start gap-2">
-                                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
                                     <div className="text-xs">
-                                        <p className="font-medium mb-1">What it does not do</p>
-                                        <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                                        <p className="mb-1 font-medium">
+                                            {t("What it does not do")}
+                                        </p>
+                                        <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
                                             {pkg.limitations.map((l: string) => (
                                                 <li key={l}>{l}</li>
                                             ))}
@@ -1184,8 +1311,85 @@ function PackagesTab({ packages }: { packages: any }) {
                             </div>
                         )}
                     </CardContent>
-                </Card>
-            ))}
+                )}
+            </Card>
+        );
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-full sm:w-72">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        placeholder={t("Search the trades…")}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="h-9 pl-10"
+                    />
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant={filter === "all" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setFilter("all")}
+                    >
+                        {t("All")} {packages.length}
+                    </Button>
+                    <Button
+                        variant={filter === "on" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setFilter("on")}
+                    >
+                        {t("On")} {onCount}
+                    </Button>
+                    <Button
+                        variant={filter === "off" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setFilter("off")}
+                    >
+                        {t("Off")} {packages.length - onCount}
+                    </Button>
+                </div>
+            </div>
+
+            {matching.length === 0 ? (
+                <EmptyState
+                    title={t("No trade matches that")}
+                    hint={t("Try a different word, or clear the filter.")}
+                />
+            ) : (
+                <>
+                    {grouped.map(({ sector, items }) => (
+                        <section key={sector.id} className="space-y-3">
+                            <div>
+                                <h3 className="text-section-title font-semibold">
+                                    {sector.name}
+                                </h3>
+                                <p className="text-sm text-muted-foreground">
+                                    {t(sector.description)}
+                                </p>
+                            </div>
+                            <div className="space-y-3">
+                                {items.map((pkg: any) => renderPackage(pkg))}
+                            </div>
+                        </section>
+                    ))}
+
+                    {ungrouped.length > 0 && (
+                        <section className="space-y-3">
+                            <div>
+                                <h3 className="text-section-title font-semibold">
+                                    {t("Other trades")}
+                                </h3>
+                            </div>
+                            <div className="space-y-3">
+                                {ungrouped.map((pkg: any) => renderPackage(pkg))}
+                            </div>
+                        </section>
+                    )}
+                </>
+            )}
         </div>
     );
 }

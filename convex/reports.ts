@@ -1158,6 +1158,14 @@ export const getProductPerformanceReport = query({
         endDate: v.optional(v.string()),
         shopId: v.optional(v.id("shops")),
         search: v.optional(v.string()),
+        /**
+         * How many products to return, best first.
+         *
+         * The limit belongs here rather than in the screen: a client that
+         * fetched every product and threw most of them away would pull the
+         * whole catalogue over the wire to show five lines.
+         */
+        limit: v.optional(v.number()),
         businessId: v.optional(v.id("businesses")),
     },
     handler: async (ctx, args) => {
@@ -1209,6 +1217,11 @@ export const getProductPerformanceReport = query({
                 p.productName.toLowerCase().includes(s) ||
                 p.productCode.toLowerCase().includes(s)
             );
+        }
+
+        // The best sellers first, and only as many as were asked for.
+        if (args.limit !== undefined && args.limit >= 0) {
+            products = products.slice(0, args.limit);
         }
 
         return products;

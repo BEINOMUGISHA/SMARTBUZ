@@ -5,10 +5,12 @@ import { paginationOptsValidator } from "convex/server";
 import { Id, Doc } from "./_generated/dataModel";
 import { hasPermission, logActivity, requireBranchAccess, requirePermission, requireTenant } from "./tenancy";
 import { writeAudit } from "./audit";
+import { notifyBusiness } from "./notifications";
 import {
     applySale,
     generateInvoiceNumber,
     processPromotionTriggers,
+    quoteRefundLines,
 } from "./salesCore";
 import { salePaymentModeToMethod } from "./paymentRules";
 import { restateLoanPaymentBalances, reverseSaleLines } from "./saleCompensation";
@@ -1216,6 +1218,49 @@ export const getSale = query({
 });
 
 /**
+ * What a refund would be worth, before it is made.
+ *
+ * The till has to tell the operator how much money they are about to hand
+ * back before they authorise it. That figure is worked out here, on the
+ * server, from the prices the sale was rung up at — the browser is never
+ * trusted with an amount, it only ever asks about one.
+ *
+ * It is a quote, not a promise: the refund itself decides what is actually
+ * refunded, and the operator is shown that figure when it goes through.
+ */
+export const quoteRefund = query({
+    args: {
+        saleId: v.id("sales"),
+        items: v.array(
+            v.object({
+                stockId: v.id("stocks"),
+                quantity: v.number(),
+            })
+        ),
+        businessId: v.optional(v.id("businesses")),
+    },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "sales.refund");
+
+        const sale = await ctx.db.get(args.saleId);
+        if (!sale) throw new ConvexError("Sale not found");
+        if (sale.businessId !== tenant.businessId) {
+            throw new ConvexError(
+                "Forbidden: that sale belongs to another business."
+            );
+        }
+
+        // A branch manager may only quote refunds for their own branches.
+        if (sale.branchId) {
+            await requireBranchAccess(ctx, tenant.membership, sale.branchId);
+        }
+
+        return quoteRefundLines(sale, args.items);
+    },
+});
+
+/**
  * Refund a completed sale.
  *
  * A refund is not a sale edit. It is a separate action with its own
@@ -1304,6 +1349,21 @@ export const refundSale = mutation({
                 })),
                 reason: args.reason,
             },
+        });
+
+        await notifyBusiness(ctx, {
+            businessId,
+            kind: "sales",
+            title: `Refund on ${sale.invoiceNumber || "a sale"}`,
+            body: `${compensation.refundTotal.toLocaleString()} refunded${
+                args.reason ? ` — ${args.reason}` : ""
+            }.`,
+            link: "/sales",
+            severity: "warning",
+            sourceType: "sale",
+            sourceId: args.saleId,
+            roles: ["business_owner", "business_admin", "accountant"],
+            exceptUserId: userId,
         });
 
         return {

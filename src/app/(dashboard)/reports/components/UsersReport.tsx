@@ -21,9 +21,11 @@ import {
     SheetDescription,
 } from "@/components/ui/sheet";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function UsersReport() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [dateRange, setDateRange] = useState({
         from: format(subMonths(new Date(), 1), "yyyy-MM-dd"),
@@ -115,14 +117,14 @@ export function UsersReport() {
                     ]}
                     value={selectedShop}
                     onValueChange={setSelectedShop}
-                    placeholder="Select Shop"
+                    placeholder={t("Select Shop")}
                     width="160px"
                 />
 
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search user name or email..."
+                        placeholder={t("Search user name or email...")}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -133,8 +135,8 @@ export function UsersReport() {
             <ReportSummary customStats={customStats} isLoading={summary === undefined} />
 
             <ReportTable
-                title="User/Staff Performance Report"
-                subtitle="Analysis of staff sales performance, revenue generation, and productivity."
+                title={t("User/Staff Performance Report")}
+                subtitle={t("Analysis of staff sales performance, revenue generation, and productivity.")}
                 data={users?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
                 isLoading={users === undefined}
                 onViewDetails={handleViewDetails}
@@ -159,8 +161,8 @@ export function UsersReport() {
                         header: "User",
                         accessor: (u: any) => (
                             <div className="flex flex-col gap-0.5 min-w-[160px]">
-                                <span className="font-black text-primary leading-none capitalize">{u.userName}</span>
-                                <span className="text-[9px] font-bold text-muted-foreground">{u.userEmail}</span>
+                                <span className="font-semibold text-primary leading-none capitalize">{u.userName}</span>
+                                <span className="text-xs font-bold text-muted-foreground">{u.userEmail}</span>
                             </div>
                         ),
                         exportValue: (u: any) => u.userName,
@@ -168,8 +170,8 @@ export function UsersReport() {
                     {
                         header: "Sales",
                         accessor: (u: any) => (
-                            <Badge variant="outline" className="text-[9px] uppercase font-black tracking-tighter">
-                                {u.totalSales} SALES
+                            <Badge variant="outline" className="tracking-tighter text-eyebrow uppercase tracking-eyebrow">
+                                {u.totalSales} {t("SALES")}
                             </Badge>
                         ),
                         exportValue: (u: any) => u.totalSales,
@@ -178,7 +180,7 @@ export function UsersReport() {
                     {
                         header: "Revenue",
                         accessor: (u: any) => (
-                            <span className="font-black text-emerald-700 text-sm">{currency} {u.totalRevenue.toLocaleString()}</span>
+                            <span className="font-semibold text-emerald-700 text-sm">{currency} {u.totalRevenue.toLocaleString()}</span>
                         ),
                         exportValue: (u: any) => u.totalRevenue.toLocaleString(),
                         className: "text-right",
@@ -203,8 +205,8 @@ export function UsersReport() {
                         header: "PV / BV",
                         accessor: (u: any) => (
                             <div className="text-right">
-                                <div className="font-black text-purple-700 text-xs">{u.totalPV.toLocaleString()} PV</div>
-                                <div className="font-black text-indigo-700 text-xs">{u.totalBV.toLocaleString()} BV</div>
+                                <div className="font-semibold text-purple-700 text-xs">{u.totalPV.toLocaleString()} {t("PV")}</div>
+                                <div className="font-semibold text-indigo-700 text-xs">{u.totalBV.toLocaleString()} {t("BV")}</div>
                             </div>
                         ),
                         exportValue: (u: any) => `${u.totalPV.toLocaleString()} PV / ${u.totalBV.toLocaleString()} BV`,
@@ -217,61 +219,61 @@ export function UsersReport() {
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>User Performance Details</SheetTitle>
+                        <SheetTitle>{t("User Performance Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete performance analysis for this staff member.
+                            {t("Complete performance analysis for this staff member.")}
                         </SheetDescription>
                     </SheetHeader>
                     {viewingUser ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Name</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Name")}</span>
                                     <span className="font-semibold capitalize">{viewingUser.userName}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Email</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Email")}</span>
                                     <span className="font-semibold text-sm">{viewingUser.userEmail}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Total Sales</span>
-                                    <Badge variant="outline" className="text-xs uppercase font-black tracking-tighter">
-                                        {viewingUser.totalSales} SALES
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Total Sales")}</span>
+                                    <Badge variant="outline" className="text-xs uppercase font-semibold tracking-tighter">
+                                        {viewingUser.totalSales} {t("SALES")}
                                     </Badge>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Total Revenue</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Total Revenue")}</span>
                                     <span className="font-bold text-lg text-emerald-600">{currency} {viewingUser.totalRevenue.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Avg per Sale</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Avg per Sale")}</span>
                                     <span className="font-semibold">{currency} {Math.round(viewingUser.totalRevenue / viewingUser.totalSales).toLocaleString()}</span>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Productivity Metrics</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Productivity Metrics")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Items Sold</span>
+                                        <span className="text-sm text-muted-foreground">{t("Items Sold")}</span>
                                         <span className="font-bold text-blue-600">{viewingUser.totalItems.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Avg Items per Sale</span>
+                                        <span className="text-sm text-muted-foreground">{t("Avg Items per Sale")}</span>
                                         <span className="font-semibold">{Math.round(viewingUser.totalItems / viewingUser.totalSales)} items</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">PV / BV Contribution</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("PV / BV Contribution")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Total PV</span>
+                                        <span className="text-sm text-muted-foreground">{t("Total PV")}</span>
                                         <span className="font-bold text-purple-700">{viewingUser.totalPV.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Total BV</span>
+                                        <span className="text-sm text-muted-foreground">{t("Total BV")}</span>
                                         <span className="font-bold text-indigo-700">{viewingUser.totalBV.toLocaleString()}</span>
                                     </div>
                                 </div>

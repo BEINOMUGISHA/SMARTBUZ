@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, startOfDay, endOfDay, startOfMonth } from "date-fns";
 import { toast } from "sonner";
-import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
+import { exportExcel, exportPdf, extractTextFromReact, toExportColumns } from "@/lib/export";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -20,9 +20,11 @@ import { Calendar as CalendarIcon, Loader2, Printer, Download, FileSpreadsheet, 
 import { DatePickerWithRange } from "@/components/date-range-picker";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 export function PromotionsReportView() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const [dateMode, setDateMode] = useState<"audit" | "range">("audit");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
     const [date, setDate] = useState<DateRange | undefined>({
@@ -125,8 +127,8 @@ export function PromotionsReportView() {
                 <div className="flex items-center gap-3">
                     <Tabs value={dateMode} onValueChange={(v: any) => setDateMode(v)} className="w-auto">
                         <TabsList className="h-9 p-1 bg-linear-to-b from-muted double border shadow-xs rounded-lg">
-                            <TabsTrigger value="audit" className="text-[10px] font-bold uppercase tracking-wider h-7 px-3">Daily Audit</TabsTrigger>
-                            <TabsTrigger value="range" className="text-[10px] font-bold uppercase tracking-wider h-7 px-3">Date Range</TabsTrigger>
+                            <TabsTrigger value="audit" className="h-7 px-3 text-eyebrow uppercase tracking-eyebrow">{t("Daily Audit")}</TabsTrigger>
+                            <TabsTrigger value="range" className="h-7 px-3 text-eyebrow uppercase tracking-eyebrow">{t("Date Range")}</TabsTrigger>
                         </TabsList>
                     </Tabs>
 
@@ -135,7 +137,7 @@ export function PromotionsReportView() {
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className={cn("w-[160px] justify-start text-left font-normal h-9 bg-white", !selectedDate && "text-muted-foreground")}>
                                     <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                                    {selectedDate ? format(selectedDate, "PPP") : <span>{t("Pick a date")}</span>}
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
@@ -151,19 +153,25 @@ export function PromotionsReportView() {
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => exportToExcel(results || [], columns as any, "Promotions_Report")}
-                        className="h-9 px-3 gap-2 text-[10px] font-black uppercase border-emerald-600/20 text-emerald-700 hover:bg-emerald-50 bg-white"
+                        onClick={() =>
+                            exportExcel(
+                                "Promotions Report",
+                                (results || []) as unknown as Record<string, unknown>[],
+                                toExportColumns(columns)
+                            )
+                        }
+                        className="h-9 px-3 gap-2 border-emerald-600/20 text-emerald-700 hover:bg-emerald-50 bg-white text-eyebrow uppercase tracking-eyebrow"
                     >
-                        <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+                        <FileSpreadsheet className="h-3.5 w-3.5" /> {t("Excel")}
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={async () => {
                             const summaryStats = [
-                                { title: "Total Redemptions", value: fmt(stats?.totalRedemptions || 0), description: "Times prize won" },
-                                { title: "Unique Customers", value: fmt(stats?.uniqueCustomers || 0), description: "Beneficiaries" },
-                                { title: "Unique Products", value: fmt(stats?.uniqueProducts || 0), description: "Driving items" }
+                                { label: "Total Redemptions", value: fmt(stats?.totalRedemptions || 0), hint: "Times prize won" },
+                                { label: "Unique Customers", value: fmt(stats?.uniqueCustomers || 0), hint: "Beneficiaries" },
+                                { label: "Unique Products", value: fmt(stats?.uniqueProducts || 0), hint: "Driving items" }
                             ];
 
                             let logoBase64 = undefined;
@@ -179,19 +187,24 @@ export function PromotionsReportView() {
                                 console.error("Failed to load logo for PDF", error);
                             }
 
-                            exportToPDF(results || [], columns as any, "Promotions_Report", "Promotions Redemptions Report", summaryStats, logoBase64);
+                            await exportPdf(
+                                "Promotions Redemptions Report",
+                                (results || []) as unknown as Record<string, unknown>[],
+                                toExportColumns(columns),
+                                { stats: summaryStats, business: { logoDataUrl: logoBase64 } }
+                            );
                         }}
-                        className="h-9 px-3 gap-2 text-[10px] font-black uppercase border-red-600/20 text-red-700 hover:bg-red-50 bg-white"
+                        className="h-9 px-3 gap-2 border-red-600/20 text-red-700 hover:bg-red-50 bg-white text-eyebrow uppercase tracking-eyebrow"
                     >
-                        <FileText className="h-3.5 w-3.5" /> PDF
+                        <FileText className="h-3.5 w-3.5" /> {t("PDF")}
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={handlePrint}
-                        className="h-9 px-3 gap-2 text-[10px] font-black uppercase border-muted-foreground/20 bg-white"
+                        className="h-9 px-3 gap-2 border-muted-foreground/20 bg-white text-eyebrow uppercase tracking-eyebrow"
                     >
-                        <Printer className="h-3.5 w-3.5" /> Print
+                        <Printer className="h-3.5 w-3.5" /> {t("Print")}
                     </Button>
                 </div>
             </div>
@@ -200,31 +213,31 @@ export function PromotionsReportView() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 print:hidden">
                 <Card className="bg-primary/5 border-primary/20 shadow-sm">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Redemptions</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t("Total Redemptions")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{fmt(stats?.totalRedemptions || 0)}</div>
-                        <p className="text-[10px] text-muted-foreground mt-1">Total times promotions were triggered</p>
+                        <p className="text-xs text-muted-foreground mt-1">{t("Total times promotions were triggered")}</p>
                     </CardContent>
                 </Card>
 
                 <Card className="bg-emerald-50/50 border-emerald-100">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-emerald-700 uppercase tracking-wider">Unique Customers</CardTitle>
+                        <CardTitle className="text-sm font-medium text-emerald-700 uppercase tracking-wider">{t("Unique Customers")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-emerald-600">{fmt(stats?.uniqueCustomers || 0)}</div>
-                        <p className="text-[10px] text-emerald-600/70 mt-1">Number of customers who won prizes</p>
+                        <p className="text-xs text-emerald-600/70 mt-1">{t("Number of customers who won prizes")}</p>
                     </CardContent>
                 </Card>
 
                 <Card className="bg-orange-50/50 border-orange-100">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-orange-700 uppercase tracking-wider">Products Source</CardTitle>
+                        <CardTitle className="text-sm font-medium text-orange-700 uppercase tracking-wider">{t("Products Source")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-orange-600">{fmt(stats?.uniqueProducts || 0)}</div>
-                        <p className="text-[10px] text-orange-600/70 mt-1">Number of unique products involved</p>
+                        <p className="text-xs text-orange-600/70 mt-1">{t("Number of unique products involved")}</p>
                     </CardContent>
                 </Card>
             </div>
@@ -235,13 +248,13 @@ export function PromotionsReportView() {
                     <Table>
                         <TableHeader className="sticky top-0 bg-background z-10">
                             <TableRow>
-                                <TableHead>Date</TableHead>
-                                <TableHead>Promotion</TableHead>
-                                <TableHead>Product</TableHead>
-                                <TableHead className="text-center">Qty</TableHead>
-                                <TableHead>Prize</TableHead>
-                                <TableHead>Customer</TableHead>
-                                <TableHead>Operator</TableHead>
+                                <TableHead>{t("Date")}</TableHead>
+                                <TableHead>{t("Promotion")}</TableHead>
+                                <TableHead>{t("Product")}</TableHead>
+                                <TableHead className="text-center">{t("Qty")}</TableHead>
+                                <TableHead>{t("Prize")}</TableHead>
+                                <TableHead>{t("Customer")}</TableHead>
+                                <TableHead>{t("Operator")}</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -249,7 +262,7 @@ export function PromotionsReportView() {
                                 <TableRow>
                                     <TableCell colSpan={7} className="h-24 text-center">
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />
-                                        Loading...
+                                        {t("Loading...")}
                                     </TableCell>
                                 </TableRow>
                             ) : results.length === 0 ? (
@@ -259,15 +272,16 @@ export function PromotionsReportView() {
                                             <div className="relative h-20 w-20 rounded-2xl overflow-hidden shadow-lg border border-primary/20 bg-muted/20">
                                                 <Image
                                                     src="/images/promo-rewards.jpg"
-                                                    alt="Promotions & Rewards"
+                                                    alt={t("Promotions & Rewards")}
                                                     fill
+                                                    sizes="80px"
                                                     className="object-cover"
                                                 />
                                             </div>
                                             <div className="space-y-1">
-                                                <p className="font-bold text-sm text-foreground">No Promo Redemptions Yet</p>
+                                                <p className="font-bold text-sm text-foreground">{t("No Promo Redemptions Yet")}</p>
                                                 <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                                                    Sales qualifying for active reward rules will automatically appear here with full prize and client tracking.
+                                                    {t("Sales qualifying for active reward rules will automatically appear here with full prize and client tracking.")}
                                                 </p>
                                             </div>
                                         </div>
@@ -293,7 +307,7 @@ export function PromotionsReportView() {
                 {/* Pagination (Similar to MySalesView) */}
                 <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-2 print:hidden">
                     <div className="flex items-center space-x-2 mr-auto">
-                        <p className="text-xs font-medium uppercase tracking-tighter">Rows per page</p>
+                        <p className="text-xs font-medium uppercase tracking-tighter">{t("Rows per page")}</p>
                         <Select
                             value={`${rowsPerPage}`}
                             onValueChange={(value) => {
@@ -322,7 +336,7 @@ export function PromotionsReportView() {
                             onClick={() => loadMore(rowsPerPage)}
                             className="h-8 px-3 text-xs"
                         >
-                            Load More
+                            {t("Load More")}
                         </Button>
                     )}
                 </div>
@@ -332,15 +346,15 @@ export function PromotionsReportView() {
             <div id="promotions-report-print" className="hidden print:report-print-view bg-white text-black p-4 min-h-screen">
                 <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans relative">
                     <div className="text-center px-20">
-                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
-                        {businessAddress && <p className="text-[11px] leading-tight font-bold text-gray-600">{businessAddress}</p>}
-                        {businessPhone && <p className="text-[11px] font-bold text-gray-500">Tel: {businessPhone}</p>}
-                        <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
-                            OFFICIAL PROMOTIONS REDEMPTIONS REPORT
+                        <h2 className="text-3xl font-semibold text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
+                        {businessAddress && <p className="text-xs leading-tight font-bold text-gray-600">{businessAddress}</p>}
+                        {businessPhone && <p className="text-xs font-bold text-gray-500">{t("Tel:")} {businessPhone}</p>}
+                        <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white rounded-full text-eyebrow uppercase tracking-eyebrow">
+                            {t("OFFICIAL PROMOTIONS REDEMPTIONS REPORT")}
                         </div>
                     </div>
                     <div className="absolute right-0 top-0 h-full flex items-start pt-1">
-                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-black text-2xl text-emerald-800 bg-emerald-50">
+                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-semibold text-2xl text-emerald-800 bg-emerald-50">
                             {businessName.slice(0, 2).toUpperCase()}
                         </div>
                     </div>
@@ -348,36 +362,36 @@ export function PromotionsReportView() {
 
                 <div className="grid grid-cols-3 gap-4 mb-4 border-b border-gray-100 pb-4">
                     <div className="flex flex-col pl-4 border-l border-gray-100 first:pl-0 first:border-0">
-                        <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">TOTAL REDEMPTIONS</p>
-                        <p className="text-xs font-black text-black">{fmt(stats?.totalRedemptions || 0)}</p>
-                        <p className="text-[7px] font-bold text-gray-400 italic font-mono">Total prizes given</p>
+                        <p className="text-[#008542] tracking-tighter text-eyebrow uppercase tracking-eyebrow">{t("TOTAL REDEMPTIONS")}</p>
+                        <p className="text-xs font-semibold text-black">{fmt(stats?.totalRedemptions || 0)}</p>
+                        <p className="text-xs font-bold text-gray-400 italic font-mono">{t("Total prizes given")}</p>
                     </div>
                     <div className="flex flex-col pl-4 border-l border-gray-100">
-                        <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">UNIQUE CUSTOMERS</p>
-                        <p className="text-xs font-black text-black">{fmt(stats?.uniqueCustomers || 0)}</p>
-                        <p className="text-[7px] font-bold text-gray-400 italic font-mono">Unique beneficiaries</p>
+                        <p className="text-[#008542] tracking-tighter text-eyebrow uppercase tracking-eyebrow">{t("UNIQUE CUSTOMERS")}</p>
+                        <p className="text-xs font-semibold text-black">{fmt(stats?.uniqueCustomers || 0)}</p>
+                        <p className="text-xs font-bold text-gray-400 italic font-mono">{t("Unique beneficiaries")}</p>
                     </div>
                     <div className="flex flex-col pl-4 border-l border-gray-100">
-                        <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">PRODUCTS SOURCE</p>
-                        <p className="text-xs font-black text-black">{fmt(stats?.uniqueProducts || 0)}</p>
-                        <p className="text-[7px] font-bold text-gray-400 italic font-mono">Different products triggered</p>
+                        <p className="text-[#008542] tracking-tighter text-eyebrow uppercase tracking-eyebrow">{t("PRODUCTS SOURCE")}</p>
+                        <p className="text-xs font-semibold text-black">{fmt(stats?.uniqueProducts || 0)}</p>
+                        <p className="text-xs font-bold text-gray-400 italic font-mono">{t("Different products triggered")}</p>
                     </div>
                 </div>
 
                 <div className="mb-4">
-                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Redemption Records</h3>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5 tracking-wide">
+                    <h3 className="text-lg font-semibold text-gray-900 uppercase tracking-tight">{t("Redemption Records")}</h3>
+                    <p className="text-gray-500 mt-0.5 tracking-wide text-eyebrow uppercase tracking-eyebrow">
                         {dateMode === "audit" ? `Audit Date: ${format(selectedDate || new Date(), "PPP")}` : `Range: ${format(date?.from || new Date(), "PP")} - ${format(date?.to || new Date(), "PP")}`}
                     </p>
                 </div>
 
-                <table className="w-full border-collapse border border-gray-300 print:text-[10px]">
+                <table className="w-full border-collapse border border-gray-300 print:text-xs">
                     <thead>
                         <tr className="bg-[#008542] border-b-2 border-emerald-800">
-                            <th className="px-1 py-3 text-center font-black uppercase text-[10px] border-r border-emerald-700 w-8 text-white">#</th>
+                            <th className="px-1 py-3 text-center border-r border-emerald-700 w-8 text-white text-eyebrow uppercase tracking-eyebrow">#</th>
                             {columns.map((col, idx) => (
-                                <th key={idx} className="px-3 py-2 text-[10px] border-r border-gray-300 last:border-0 text-white text-left font-black uppercase">
-                                    {col.header}
+                                <th key={idx} className="px-3 py-2 border-r border-gray-300 last:border-0 text-white text-left text-eyebrow uppercase tracking-eyebrow">
+                                    {t(col.header)}
                                 </th>
                             ))}
                         </tr>
@@ -385,9 +399,9 @@ export function PromotionsReportView() {
                     <tbody>
                         {(results || []).map((item, rowIdx) => (
                             <tr key={rowIdx} className={rowIdx % 2 === 1 ? "bg-gray-50" : "bg-white"}>
-                                <td className="px-1 py-2 text-[10px] border-r border-gray-300 text-center font-bold text-gray-500 w-8">{rowIdx + 1}</td>
+                                <td className="px-1 py-2 text-xs border-r border-gray-300 text-center font-bold text-gray-500 w-8">{rowIdx + 1}</td>
                                 {columns.map((col, colIdx) => (
-                                    <td key={colIdx} className="px-3 py-2 text-[10px] border-r border-gray-300 last:border-0 text-black font-medium whitespace-pre-line">
+                                    <td key={colIdx} className="px-3 py-2 text-xs border-r border-gray-300 last:border-0 text-black font-medium whitespace-pre-line">
                                         {typeof col.accessor === "function"
                                             ? extractTextFromReact(col.accessor(item))
                                             : (item as any)[col.accessor as any]}
@@ -398,9 +412,9 @@ export function PromotionsReportView() {
                     </tbody>
                 </table>
 
-                <div className="mt-8 flex justify-between text-[10px] font-bold text-gray-400 italic">
-                    <span>Generated by System on {new Date().toLocaleString()}</span>
-                    <span>Verified Official Document</span>
+                <div className="mt-8 flex justify-between text-xs font-bold text-gray-400 italic">
+                    <span>{t("Generated by System on")} {new Date().toLocaleString()}</span>
+                    <span>{t("Verified Official Document")}</span>
                 </div>
             </div>
         </div>

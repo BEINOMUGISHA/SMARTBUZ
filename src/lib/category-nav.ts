@@ -43,6 +43,15 @@ import {
     Landmark,
     Wrench,
     PackageCheck,
+    Tag,
+    ConciergeBell,
+    FileText,
+    Target,
+    Handshake,
+    HandCoins,
+    Ruler,
+    Bell,
+    Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ModuleId, BusinessCategory } from "./business-categories";
@@ -315,6 +324,26 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
             "accountant",
         ],
     },
+    /**
+     * The money book: what came in, what went out, and what is left.
+     *
+     * It sits beside Finance in the records group because it answers a
+     * different question — not what the business earned, but what actually
+     * moved through its bank.
+     */
+    banking: {
+        id: "banking",
+        href: "/banking",
+        label: "Banking",
+        icon: Landmark,
+        group: "records",
+        roles: [
+            "business_owner",
+            "business_admin",
+            "accountant",
+            "auditor",
+        ],
+    },
     businessIntelligence: {
         id: "businessIntelligence",
         href: "/reports/analysis",
@@ -322,6 +351,107 @@ export const MODULE_REGISTRY: Record<ModuleId, NavItem> = {
         icon: BarChart3,
         group: "records",
         roles: ["business_owner", "business_admin", "accountant", "auditor"],
+    },
+    /**
+     * Pricing — volume bands, a customer's own price, and the units the
+     * trade measures in. Every trade that sells goods prices differently;
+     * this is where those rules are kept.
+     */
+    pricing: {
+        id: "pricing",
+        href: "/pricing",
+        label: "Pricing",
+        icon: Tag,
+        group: "operations",
+        roles: ["business_owner", "business_admin", "accountant"],
+    },
+    /** The hotel front desk — rooms, reservations, stays and the folio. */
+    frontDesk: {
+        id: "frontDesk",
+        href: "/front-desk",
+        label: "Front Desk",
+        icon: ConciergeBell,
+        group: "operations",
+        roles: ["business_owner", "business_admin", "accountant", "auditor"],
+    },
+    /** School and institute fees — term invoices, payments and arrears. */
+    fees: {
+        id: "fees",
+        href: "/fees",
+        label: "Student Fees",
+        icon: GraduationCap,
+        group: "records",
+        roles: ["business_owner", "business_admin", "accountant", "auditor"],
+    },
+    /** Quotations — the offer a business makes before the work starts. */
+    quotes: {
+        id: "quotes",
+        href: "/quotes",
+        label: "Quotations",
+        icon: FileText,
+        group: "records",
+        roles: ["business_owner", "business_admin", "sales_agent", "accountant"],
+    },
+    /** The pipeline — the people who might buy, before they are customers. */
+    leads: {
+        id: "leads",
+        href: "/leads",
+        label: "Pipeline",
+        icon: Target,
+        group: "records",
+        roles: ["business_owner", "business_admin", "sales_agent"],
+    },
+    /**
+     * Instalment plans — hire purchase and layaway contracts. Stock stays on
+     * the shelf until the plan completes, and the balance is tracked so it
+     * can never drift from the schedule.
+     */
+    plans: {
+        id: "plans",
+        href: "/plans",
+        label: "Instalment Plans",
+        icon: Handshake,
+        group: "records",
+        roles: ["business_owner", "business_admin", "accountant", "auditor"],
+    },
+    /**
+     * Payroll — the wages this business owes its staff, run by run and
+     * staff member by staff member, with the figures worked out on the
+     * server from the business's own records.
+     */
+    payroll: {
+        id: "payroll",
+        href: "/payroll",
+        label: "Payroll",
+        icon: HandCoins,
+        group: "records",
+        roles: ["business_owner", "business_admin", "accountant"],
+    },
+    /** Measurements — the sizes a customer is, kept against the customer. */
+    measurements: {
+        id: "measurements",
+        href: "/measurements",
+        label: "Measurements",
+        icon: Ruler,
+        group: "records",
+        roles: ["business_owner", "business_admin", "sales_agent"],
+    },
+    /** The bell — what happened, and what still needs a person. */
+    notifications: {
+        id: "notifications",
+        href: "/notifications",
+        label: "Notifications",
+        icon: Bell,
+        group: "records",
+    },
+    /** Bulk import — a catalogue, a customer list or an opening stock. */
+    imports: {
+        id: "imports",
+        href: "/import",
+        label: "Bulk Import",
+        icon: Upload,
+        group: "operations",
+        roles: ["business_owner", "business_admin"],
     },
     promotions: {
         id: "promotions",
@@ -371,16 +501,29 @@ export const NAV_GROUPS: Array<{ id: NavItem["group"]; label: string }> = [
  * @param category  the active vertical
  * @param roles     the signed-in user's roles
  */
-export function buildNavigation(category: BusinessCategory, roles: string[]): NavItem[] {
-    const enabled = new Set(category.modules);
+export function buildNavigation(
+    category: BusinessCategory,
+    roles: string[],
+    /**
+     * The modules an industry package has brought.
+     *
+     * A business that switches the hospitality package on gets the front
+     * desk in its menu, even though it trades in something else.
+     */
+    extraModules: string[] = []
+): NavItem[] {
+    const enabled = new Set([...category.modules, ...extraModules]);
 
     // De-duplicate by href: several modules can point at the same route
     // (e.g. "bookings" and "appointments"), and we only want one entry.
     const seen = new Set<string>();
     const items: NavItem[] = [];
 
-    for (const moduleId of category.modules) {
-        const item = MODULE_REGISTRY[moduleId];
+    for (const moduleId of enabled) {
+        // The ids come from the category, the business's own choice and the
+        // industry packages. Only a registered module has a screen, so
+        // anything else is quietly ignored.
+        const item = MODULE_REGISTRY[moduleId as ModuleId];
         if (!item) continue;
         if (seen.has(item.href)) continue;
         if (item.roles && item.roles.length > 0 && !item.roles.some((r) => roles.includes(r))) {
@@ -402,6 +545,19 @@ export function buildNavigation(category: BusinessCategory, roles: string[]): Na
         return ai - bi;
     });
 }
+
+/**
+ * Every module, for the screens that let a business choose its own.
+ *
+ * The list comes from the registry, so a module cannot be offered that
+ * has no screen behind it, and a new module appears here the moment it
+ * is registered.
+ */
+export const MODULE_OPTIONS = Object.values(MODULE_REGISTRY).map((item) => ({
+    id: item.id,
+    label: item.label,
+    group: item.group,
+}));
 
 /** Group nav items for rendering. */
 export function groupNavigation(items: NavItem[]): Array<{

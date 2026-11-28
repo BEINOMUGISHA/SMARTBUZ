@@ -1,3 +1,5 @@
+"use client";
+
 import { format, parseISO } from "date-fns";
 import { Calendar as CalendarIcon, ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DatePickerWithRange } from "@/components/date-range-picker";
 import { cn } from "@/lib/utils";
 import { DateRange as DayPickerDateRange } from "react-day-picker";
+import { useT } from "@/i18n/provider";
 
 interface DateRange {
     from: string;
@@ -30,7 +33,8 @@ export function ReportFilters({
     showDailyAudit = true,
     onClearFilters,
 }: ReportFiltersProps) {
-    const handleDailySelect = (date: Date | undefined) => {
+    
+    const t = useT();const handleDailySelect = (date: Date | undefined) => {
         if (date) {
             const formatted = format(date, "yyyy-MM-dd");
             onDateRangeChange({ from: formatted, to: formatted });
@@ -63,15 +67,15 @@ export function ReportFilters({
                     <TabsList className="h-9 p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-xs rounded-lg">
                         <TabsTrigger
                             value="daily"
-                            className="text-[10px] font-bold uppercase tracking-wider h-7 px-3 rounded-md transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+                            className="h-7 px-3 rounded-md transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm text-eyebrow uppercase tracking-eyebrow"
                         >
-                            Daily Audit
+                            {t("Daily Audit")}
                         </TabsTrigger>
                         <TabsTrigger
                             value="range"
-                            className="text-[10px] font-bold uppercase tracking-wider h-7 px-3 rounded-md transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+                            className="h-7 px-3 rounded-md transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm text-eyebrow uppercase tracking-eyebrow"
                         >
-                            Date Range
+                            {t("Date Range")}
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>
@@ -88,7 +92,7 @@ export function ReportFilters({
                             )}
                         >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {dateObject.from ? format(dateObject.from, "PPP") : <span>Pick a date</span>}
+                            {dateObject.from ? format(dateObject.from, "PPP") : <span>{t("Pick a date")}</span>}
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -117,10 +121,10 @@ export function ReportFilters({
                     size="sm"
                     onClick={onClearFilters}
                     className="h-9 px-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors ml-auto"
-                    title="Clear All Filters"
+                    title={t("Clear All Filters")}
                 >
                     <X className="h-4 w-4 mr-1" />
-                    <span className="text-[10px] font-black uppercase tracking-wider">Clear</span>
+                    <span className="text-eyebrow uppercase tracking-eyebrow">{t("Clear")}</span>
                 </Button>
             )}
         </div>

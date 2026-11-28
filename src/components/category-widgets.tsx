@@ -11,6 +11,7 @@
  * Widgets are opt-in per category via the `features` array in the catalog.
  */
 
+import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +35,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { BusinessCategory } from "@/lib/business-categories";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
+import { useAuth } from "@/context/auth-context";
 
 function WidgetShell({
     title,
@@ -49,7 +52,7 @@ function WidgetShell({
     return (
         <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm font-black">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
                     <Icon className="h-4 w-4 text-primary" />
                     {title}
                 </CardTitle>
@@ -77,10 +80,10 @@ function StatTile({
     };
     return (
         <div className="rounded-xl border bg-muted/30 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <p className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">
                 {label}
             </p>
-            <p className={cn("mt-1 text-xl font-black tabular-nums", tones[tone])}>{value}</p>
+            <p className={cn("mt-1 text-xl font-semibold tabular-nums", tones[tone])}>{value}</p>
         </div>
     );
 }
@@ -88,12 +91,13 @@ function StatTile({
 /* ─────────────────────── Expiry / batch widget ─────────────────────── */
 
 function ExpiryWidget() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const summary = useQuery(api.verticals.batches.getExpirySummary, { withinDays: 30 });
 
     if (!summary) {
         return (
-            <WidgetShell title="Expiry Watch" icon={AlertTriangle}>
+            <WidgetShell title={t("Expiry Watch")} icon={AlertTriangle}>
                 <Skeleton className="h-24 w-full" />
             </WidgetShell>
         );
@@ -101,19 +105,19 @@ function ExpiryWidget() {
 
     return (
         <WidgetShell
-            title="Expiry Watch (30 days)"
+            title={t("Expiry Watch (30 days)")}
             icon={AlertTriangle}
             action={
                 <Button variant="ghost" size="sm" asChild>
-                    <a href="/batches?view=expiry">View all</a>
+                    <a href="/batches?view=expiry">{t("View all")}</a>
                 </Button>
             }
         >
             <div className="grid grid-cols-3 gap-2">
-                <StatTile label="Expired" value={summary.expired} tone="danger" />
-                <StatTile label="Expiring" value={summary.expiring} tone="warn" />
+                <StatTile label={t("Expired")} value={summary.expired} tone="danger" />
+                <StatTile label={t("Expiring")} value={summary.expiring} tone="warn" />
                 <StatTile
-                    label="Value at risk"
+                    label={t("Value at risk")}
                     value={`${currency} ${summary.expiringValue.toLocaleString()}`}
                     tone="warn"
                 />
@@ -128,7 +132,7 @@ function ExpiryWidget() {
                             <span className="truncate font-semibold">{b.productName}</span>
                             <Badge
                                 variant={b.daysToExpiry < 0 ? "destructive" : "outline"}
-                                className="ml-2 shrink-0 text-[10px]"
+                                className="ml-2 shrink-0 text-xs"
                             >
                                 {b.daysToExpiry < 0
                                     ? "Expired"
@@ -140,7 +144,7 @@ function ExpiryWidget() {
             )}
             {summary.soon.length === 0 && (
                 <p className="mt-3 text-xs text-muted-foreground">
-                    No stock is expiring in the next 30 days.
+                    {t("No stock is expiring in the next 30 days.")}
                 </p>
             )}
         </WidgetShell>
@@ -150,13 +154,14 @@ function ExpiryWidget() {
 /* ─────────────────────── Schedule widget ─────────────────────── */
 
 function ScheduleWidget({ category }: { category: BusinessCategory }) {
-    const summary = useQuery(api.verticals.scheduling.getScheduleSummary, {});
+    
+    const t = useT();const summary = useQuery(api.verticals.scheduling.getScheduleSummary, {});
     const isRooms = category.modules.includes("rooms");
     const isTables = category.modules.includes("tables");
 
     if (!summary) {
         return (
-            <WidgetShell title="Today's Schedule" icon={CalendarClock}>
+            <WidgetShell title={t("Today's Schedule")} icon={CalendarClock}>
                 <Skeleton className="h-24 w-full" />
             </WidgetShell>
         );
@@ -168,15 +173,15 @@ function ScheduleWidget({ category }: { category: BusinessCategory }) {
             icon={isRooms ? Boxes : CalendarClock}
         >
             <div className="grid grid-cols-3 gap-2">
-                <StatTile label="Total" value={summary.total} />
-                <StatTile label="Confirmed" value={summary.confirmed} tone="good" />
-                <StatTile label="Pending" value={summary.pending} tone="warn" />
+                <StatTile label={t("Total")} value={summary.total} />
+                <StatTile label={t("Confirmed")} value={summary.confirmed} tone="good" />
+                <StatTile label={t("Pending")} value={summary.pending} tone="warn" />
             </div>
             {(isRooms || isTables) && (
                 <div className="mt-3 grid grid-cols-3 gap-2">
-                    <StatTile label="Total" value={summary.outletsTotal} />
-                    <StatTile label="Free" value={summary.outletsAvailable} tone="good" />
-                    <StatTile label="In use" value={summary.outletsOccupied} tone="warn" />
+                    <StatTile label={t("Total")} value={summary.outletsTotal} />
+                    <StatTile label={t("Free")} value={summary.outletsAvailable} tone="good" />
+                    <StatTile label={t("In use")} value={summary.outletsOccupied} tone="warn" />
                 </div>
             )}
         </WidgetShell>
@@ -186,13 +191,14 @@ function ScheduleWidget({ category }: { category: BusinessCategory }) {
 /* ─────────────────────── Members widget ─────────────────────── */
 
 function MembersWidget({ category }: { category: BusinessCategory }) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const summary = useQuery(api.verticals.members.getMembersSummary, {});
     const isMoney = ["sacco", "realestate", "church", "ngo"].includes(category.id);
 
     if (!summary) {
         return (
-            <WidgetShell title="Members" icon={Users}>
+            <WidgetShell title={t("Members")} icon={Users}>
                 <Skeleton className="h-24 w-full" />
             </WidgetShell>
         );
@@ -204,13 +210,13 @@ function MembersWidget({ category }: { category: BusinessCategory }) {
             icon={Users}
             action={
                 <Button variant="ghost" size="sm" asChild>
-                    <a href="/members">Manage</a>
+                    <a href="/members">{t("Manage")}</a>
                 </Button>
             }
         >
             <div className="grid grid-cols-3 gap-2">
-                <StatTile label="Total" value={summary.totalMembers} />
-                <StatTile label="Active" value={summary.activeMembers} tone="good" />
+                <StatTile label={t("Total")} value={summary.totalMembers} />
+                <StatTile label={t("Active")} value={summary.activeMembers} tone="good" />
                 <StatTile
                     label={isMoney ? "Total Balance" : "Avg Balance"}
                     value={
@@ -228,12 +234,13 @@ function MembersWidget({ category }: { category: BusinessCategory }) {
 /* ─────────────────────── Fuel widget ─────────────────────── */
 
 function FuelWidget() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const summary = useQuery(api.verticals.operations.getFuelSummary, {});
 
     if (!summary) {
         return (
-            <WidgetShell title="Fuel Dispensing" icon={Fuel}>
+            <WidgetShell title={t("Fuel Dispensing")} icon={Fuel}>
                 <Skeleton className="h-24 w-full" />
             </WidgetShell>
         );
@@ -241,18 +248,18 @@ function FuelWidget() {
 
     return (
         <WidgetShell
-            title="Fuel Dispensing"
+            title={t("Fuel Dispensing")}
             icon={Fuel}
             action={
                 <Button variant="ghost" size="sm" asChild>
-                    <a href="/fuel">Pumps</a>
+                    <a href="/fuel">{t("Pumps")}</a>
                 </Button>
             }
         >
             <div className="grid grid-cols-2 gap-2">
-                <StatTile label="Litres Sold" value={summary.totalLitres.toFixed(1)} />
+                <StatTile label={t("Litres Sold")} value={summary.totalLitres.toFixed(1)} />
                 <StatTile
-                    label="Revenue"
+                    label={t("Revenue")}
                     value={`${currency} ${summary.totalRevenue.toLocaleString()}`}
                     tone="good"
                 />
@@ -266,7 +273,7 @@ function FuelWidget() {
                         >
                             <span className="font-semibold capitalize">{type}</span>
                             <span className="tabular-nums text-muted-foreground">
-                                {v.litres.toFixed(1)} L · {currency} {v.revenue.toLocaleString()}
+                                {v.litres.toFixed(1)} {t("L ·")} {currency} {v.revenue.toLocaleString()}
                             </span>
                         </li>
                     ))}
@@ -279,11 +286,12 @@ function FuelWidget() {
 /* ─────────────────────── Service jobs widget ─────────────────────── */
 
 function ServiceJobsWidget() {
-    const tickets = useQuery(api.verticals.operations.listServiceTickets, { limit: 50 });
+    
+    const tr = useT();const tickets = useQuery(api.verticals.operations.listServiceTickets, { limit: 50 });
 
     if (!tickets) {
         return (
-            <WidgetShell title="Service Jobs" icon={Scissors}>
+            <WidgetShell title={tr("Service Jobs")} icon={Scissors}>
                 <Skeleton className="h-24 w-full" />
             </WidgetShell>
         );
@@ -297,17 +305,17 @@ function ServiceJobsWidget() {
 
     return (
         <WidgetShell
-            title="Service Jobs"
+            title={tr("Service Jobs")}
             icon={Scissors}
             action={
                 <Button variant="ghost" size="sm" asChild>
-                    <a href="/service-tickets">Open</a>
+                    <a href="/service-tickets">{tr("Open")}</a>
                 </Button>
             }
         >
             <div className="grid grid-cols-2 gap-2">
-                <StatTile label="Open Jobs" value={open.length} />
-                <StatTile label="Total Tickets" value={tickets.length} />
+                <StatTile label={tr("Open Jobs")} value={open.length} />
+                <StatTile label={tr("Total Tickets")} value={tickets.length} />
             </div>
             {open.length > 0 && (
                 <ul className="mt-3 space-y-1.5">
@@ -319,7 +327,7 @@ function ServiceJobsWidget() {
                             <span className="truncate font-semibold">
                                 {t.ticketNumber} · {t.customerName}
                             </span>
-                            <Badge variant="outline" className="ml-2 shrink-0 text-[10px] capitalize">
+                            <Badge variant="outline" className="ml-2 shrink-0 text-xs capitalize">
                                 {t.status.replace("_", " ")}
                             </Badge>
                         </li>
@@ -333,12 +341,13 @@ function ServiceJobsWidget() {
 /* ─────────────────────── Stock value widget ─────────────────────── */
 
 function StockValueWidget({ category }: { category: BusinessCategory }) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const stats = useQuery(api.stocks.getInventoryStats, {});
 
     if (!stats) {
         return (
-            <WidgetShell title="Stock Position" icon={Package}>
+            <WidgetShell title={t("Stock Position")} icon={Package}>
                 <Skeleton className="h-24 w-full" />
             </WidgetShell>
         );
@@ -348,18 +357,20 @@ function StockValueWidget({ category }: { category: BusinessCategory }) {
 
     return (
         <WidgetShell
-            title="Stock Position"
+            title={t("Stock Position")}
             icon={Package}
             action={
                 <Button variant="ghost" size="sm" asChild>
-                    <a href="/inventory">Details</a>
+                    <a href="/inventory">{t("Details")}</a>
                 </Button>
             }
         >
             <div className="grid grid-cols-2 gap-2">
-                <StatTile label={`Total ${unit}s`} value={stats.totalItems} />
+                <StatTile label={t("Total {0}s", {
+            0: unit,
+        })} value={stats.totalItems} />
                 <StatTile
-                    label="Stock Value"
+                    label={t("Stock Value")}
                     value={`${currency} ${stats.totalSellValue.toLocaleString()}`}
                     tone="good"
                 />
@@ -367,7 +378,7 @@ function StockValueWidget({ category }: { category: BusinessCategory }) {
             {stats.outOfStockCount > 0 && (
                 <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-red-600 dark:text-red-400">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    {stats.outOfStockCount} item(s) out of stock
+                    {stats.outOfStockCount} {t("item(s) out of stock")}
                 </p>
             )}
         </WidgetShell>
@@ -377,7 +388,8 @@ function StockValueWidget({ category }: { category: BusinessCategory }) {
 /* ─────────────────────── Till widget ─────────────────────── */
 
 function TillWidget() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const sessions = useQuery(api.verticals.operations.listTillSessions, {
         status: "open",
         limit: 20,
@@ -385,7 +397,7 @@ function TillWidget() {
 
     if (!sessions) {
         return (
-            <WidgetShell title="Open Tills" icon={Wallet}>
+            <WidgetShell title={t("Open Tills")} icon={Wallet}>
                 <Skeleton className="h-24 w-full" />
             </WidgetShell>
         );
@@ -395,18 +407,18 @@ function TillWidget() {
 
     return (
         <WidgetShell
-            title="Cash Reconciliation"
+            title={t("Cash Reconciliation")}
             icon={Wallet}
             action={
                 <Button variant="ghost" size="sm" asChild>
-                    <a href="/till">Tills</a>
+                    <a href="/till">{t("Tills")}</a>
                 </Button>
             }
         >
             <div className="grid grid-cols-2 gap-2">
-                <StatTile label="Open Sessions" value={sessions.length} />
+                <StatTile label={t("Open Sessions")} value={sessions.length} />
                 <StatTile
-                    label="Cash Variance"
+                    label={t("Cash Variance")}
                     value={
                         variances.length === 0
                             ? "—"
@@ -426,7 +438,7 @@ function TillWidget() {
                         >
                             <span className="truncate font-semibold">{s.userName}</span>
                             <span className="ml-2 shrink-0 text-muted-foreground">
-                                Float {currency} {s.openingFloat.toLocaleString()}
+                                {t("Float")} {currency} {s.openingFloat.toLocaleString()}
                             </span>
                         </li>
                     ))}
@@ -439,13 +451,14 @@ function TillWidget() {
 /* ─────────────────────── Enrolment widget ─────────────────────── */
 
 function EnrolmentWidget() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const enrolments = useQuery(api.verticals.operations.listEnrolments, {});
     const attendance = useQuery(api.verticals.operations.listAttendance, {});
 
     if (!enrolments) {
         return (
-            <WidgetShell title="Enrolment" icon={GraduationCap}>
+            <WidgetShell title={t("Enrolment")} icon={GraduationCap}>
                 <Skeleton className="h-24 w-full" />
             </WidgetShell>
         );
@@ -455,26 +468,26 @@ function EnrolmentWidget() {
 
     return (
         <WidgetShell
-            title="Students & Fees"
+            title={t("Students & Fees")}
             icon={GraduationCap}
             action={
                 <Button variant="ghost" size="sm" asChild>
-                    <a href="/classes">Manage</a>
+                    <a href="/classes">{t("Manage")}</a>
                 </Button>
             }
         >
             <div className="grid grid-cols-2 gap-2">
-                <StatTile label="Enrolled" value={enrolments.length} />
+                <StatTile label={t("Enrolled")} value={enrolments.length} />
                 <StatTile
-                    label="Fees Outstanding"
+                    label={t("Fees Outstanding")}
                     value={`${currency} ${Math.max(0, due).toLocaleString()}`}
                     tone={due > 0 ? "warn" : "good"}
                 />
             </div>
             {attendance && (
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                    <StatTile label="Present Today" value={attendance.present} tone="good" />
-                    <StatTile label="Attendance" value={`${attendance.attendanceRate}%`} />
+                    <StatTile label={t("Present Today")} value={attendance.present} tone="good" />
+                    <StatTile label={t("Attendance")} value={`${attendance.attendanceRate}%`} />
                 </div>
             )}
         </WidgetShell>
@@ -484,21 +497,58 @@ function EnrolmentWidget() {
 /* ─────────────────────── Top products widget ─────────────────────── */
 
 function TopProductsWidget({ category }: { category: BusinessCategory }) {
-    const { currency } = useCurrency();
-    const report = useQuery(api.reports.getProductPerformanceReport, {
-        startDate: new Date(new Date().setDate(new Date().getDate() - 30))
-            .toISOString(),
-        endDate: new Date().toISOString(),
-        limit: 5,
-    } as any);
+    
+    const t = useT();const { currency } = useCurrency();
+    const { can } = useAuth();
 
-    if (!report || report.length === 0) {
+    /*
+     * The report behind this widget needs the reports permission, and a role
+     * that does not have it — a cashier, for one — must not ask for it. The
+     * server refuses the query, and the refusal arrives as an error on the
+     * dashboard for a person who is allowed to be there. So the question is
+     * only asked of the roles that may answer it.
+     */
+    const canViewReports = can("finance.reports.view");
+
+    /**
+     * The report window is "the last 30 days", worked out once when the
+     * widget mounts.
+     *
+     * It must not be worked out again on every render. Convex keys a query
+     * subscription on the JSON of its arguments, so an argument that changes
+     * on every render means a new subscription every render — and the new
+     * subscription re-renders the widget, which takes a new timestamp, which
+     * makes a new subscription. React finally stops it with "Maximum update
+     * depth exceeded".
+     */
+    const reportArgs = useMemo(
+        () => {
+            const end = new Date();
+            const start = new Date(end);
+            start.setDate(start.getDate() - 30);
+            return {
+                startDate: start.toISOString(),
+                endDate: end.toISOString(),
+                limit: 5,
+            };
+        },
+        []
+    );
+
+    const report = useQuery(
+        api.reports.getProductPerformanceReport,
+        canViewReports ? reportArgs : "skip"
+    );
+
+    if (!canViewReports || !report || report.length === 0) {
         return null;
     }
 
     return (
         <WidgetShell
-            title={`Top ${category.terminology.item}s (30d)`}
+            title={t("Top {0}s (30d)", {
+            0: category.terminology.item,
+        })}
             icon={TrendingUp}
         >
             <ul className="space-y-1.5">
@@ -508,7 +558,7 @@ function TopProductsWidget({ category }: { category: BusinessCategory }) {
                         className="flex items-center justify-between rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs"
                     >
                         <span className="flex min-w-0 items-center gap-2">
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10 text-[10px] font-black text-primary">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10 text-xs font-semibold text-primary">
                                 {i + 1}
                             </span>
                             <span className="truncate font-semibold">

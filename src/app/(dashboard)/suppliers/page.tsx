@@ -45,9 +45,11 @@ import {
 import { Truck, Plus, Pencil, PackageCheck, Receipt, Wallet, ScrollText } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 export default function SuppliersPage() {
-    const { user, can } = useAuth();
+    
+    const t = useT();const { user, can } = useAuth();
     const [tab, setTab] = useState("suppliers");
     const [search, setSearch] = useState("");
     const [createOpen, setCreateOpen] = useState(false);
@@ -141,8 +143,8 @@ export default function SuppliersPage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={Truck}
-                title="Suppliers"
-                description="Who you buy from, what you owe them, and every payment you have made."
+                title={t("Suppliers")}
+                description={t("Who you buy from, what you owe them, and every payment you have made.")}
                 actions={
                     can("suppliers.manage") ? (
                         <CreateButton
@@ -150,7 +152,7 @@ export default function SuppliersPage() {
                                 setEditing(null);
                                 setCreateOpen(true);
                             }}
-                            label="Add supplier"
+                            label={t("Add supplier")}
                         />
                     ) : undefined
                 }
@@ -172,16 +174,16 @@ export default function SuppliersPage() {
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="grid h-11 w-full grid-cols-4 rounded-xl border bg-muted/50 p-1.5">
                     <TabsTrigger value="suppliers" className="rounded-lg text-sm font-bold">
-                        <Truck className="mr-2 h-4 w-4" /> Suppliers
+                        <Truck className="mr-2 h-4 w-4" /> {t("Suppliers")}
                     </TabsTrigger>
                     <TabsTrigger value="receipts" className="rounded-lg text-sm font-bold">
-                        <PackageCheck className="mr-2 h-4 w-4" /> Goods received
+                        <PackageCheck className="mr-2 h-4 w-4" /> {t("Goods received")}
                     </TabsTrigger>
                     <TabsTrigger value="invoices" className="rounded-lg text-sm font-bold">
-                        <Receipt className="mr-2 h-4 w-4" /> Invoices
+                        <Receipt className="mr-2 h-4 w-4" /> {t("Invoices")}
                     </TabsTrigger>
                     <TabsTrigger value="payments" className="rounded-lg text-sm font-bold">
-                        <Wallet className="mr-2 h-4 w-4" /> Payments
+                        <Wallet className="mr-2 h-4 w-4" /> {t("Payments")}
                     </TabsTrigger>
                 </TabsList>
 
@@ -190,15 +192,15 @@ export default function SuppliersPage() {
                     <SearchBox
                         value={search}
                         onChange={setSearch}
-                        placeholder="Search suppliers…"
+                        placeholder={t("Search suppliers…")}
                     />
 
                     {!suppliers ? (
                         <LoadingState />
                     ) : suppliers.length === 0 ? (
                         <EmptyState
-                            title="No suppliers yet"
-                            hint="Add the companies you buy from so purchase orders and goods receipts can be tracked against them."
+                            title={t("No suppliers yet")}
+                            hint={t("Add the companies you buy from so purchase orders and goods receipts can be tracked against them.")}
                         />
                     ) : (
                         <RecordList
@@ -207,7 +209,7 @@ export default function SuppliersPage() {
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-black">{s.name}</p>
+                                            <p className="font-semibold">{s.name}</p>
                                             {s.isActive === false && (
                                                 <StatusBadge status="inactive" />
                                             )}
@@ -218,28 +220,26 @@ export default function SuppliersPage() {
                                             {s.email ? ` · ${s.email}` : ""}
                                         </p>
                                         {s.address && (
-                                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
                                                 {s.address}
                                             </p>
                                         )}
                                     </div>
                                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                                         <div className="text-right">
-                                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                Owed
+                                            <p className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                                                {t("Owed")}
                                             </p>
                                             <p
-                                                className={`text-sm font-black tabular-nums ${
-                                                    (s.balance ?? 0) > 0
+                                                className={`text-sm font-semibold tabular-nums ${(s.balance ?? 0) > 0
                                                         ? "text-amber-600 dark:text-amber-400"
-                                                        : ""
-                                                }`}
+                                                        : ""}`}
                                             >
                                                 {ugx(s.balance ?? 0)}
                                             </p>
                                         </div>
                                         {s.paymentTerms && (
-                                            <span className="rounded-md bg-muted px-2 py-1 text-[10px] font-bold">
+                                            <span className="rounded-md bg-muted px-2 py-1 text-xs font-bold">
                                                 {s.paymentTerms}
                                             </span>
                                         )}
@@ -249,7 +249,7 @@ export default function SuppliersPage() {
                                             onClick={() => setStatementFor(s)}
                                         >
                                             <ScrollText className="mr-1.5 h-3.5 w-3.5" />
-                                            Statement
+                                            {t("Statement")}
                                         </Button>
                                         {can("purchasing.pay") && (
                                             <Button
@@ -259,7 +259,7 @@ export default function SuppliersPage() {
                                                 onClick={() => setPayFor(s)}
                                             >
                                                 <Wallet className="mr-1.5 h-3.5 w-3.5" />
-                                                Pay
+                                                {t("Pay")}
                                             </Button>
                                         )}
                                         {can("suppliers.manage") && (
@@ -272,7 +272,7 @@ export default function SuppliersPage() {
                                                 }}
                                             >
                                                 <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                                Edit
+                                                {t("Edit")}
                                             </Button>
                                         )}
                                     </div>
@@ -288,8 +288,8 @@ export default function SuppliersPage() {
                         <LoadingState />
                     ) : receipts.page.length === 0 ? (
                         <EmptyState
-                            title="No goods received yet"
-                            hint="Receive goods against a purchase order to create a GRN and increase your stock."
+                            title={t("No goods received yet")}
+                            hint={t("Receive goods against a purchase order to create a GRN and increase your stock.")}
                         />
                     ) : (
                         <RecordList
@@ -299,16 +299,16 @@ export default function SuppliersPage() {
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <p className="font-mono text-xs font-bold">{r.receiptNumber}</p>
-                                            <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
-                                                RECEIVED
+                                            <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                                                {t("RECEIVED")}
                                             </span>
                                         </div>
-                                        <p className="mt-1 font-black">{r.supplierName}</p>
+                                        <p className="mt-1 font-semibold">{r.supplierName}</p>
                                         <p className="text-xs text-muted-foreground">
-                                            {r.items.length} line(s) · {shortDate(r.date)}
+                                            {r.items.length} {t("line(s) ·")} {shortDate(r.date)}
                                         </p>
                                     </div>
-                                    <p className="shrink-0 text-sm font-black tabular-nums">
+                                    <p className="shrink-0 text-sm font-semibold tabular-nums">
                                         {ugx(r.total)}
                                     </p>
                                 </div>
@@ -323,8 +323,8 @@ export default function SuppliersPage() {
                         <LoadingState />
                     ) : invoices.page.length === 0 ? (
                         <EmptyState
-                            title="No supplier invoices yet"
-                            hint="Record an invoice when a supplier sends one, so what you owe is tracked."
+                            title={t("No supplier invoices yet")}
+                            hint={t("Record an invoice when a supplier sends one, so what you owe is tracked.")}
                         />
                     ) : (
                         <RecordList
@@ -338,19 +338,19 @@ export default function SuppliersPage() {
                                             </p>
                                             <StatusBadge status={i.status} />
                                         </div>
-                                        <p className="mt-1 font-black">{i.supplierName}</p>
+                                        <p className="mt-1 font-semibold">{i.supplierName}</p>
                                         <p className="text-xs text-muted-foreground">
                                             {shortDate(i.date)}
                                             {i.dueDate ? ` · due ${shortDate(i.dueDate)}` : ""}
                                         </p>
                                     </div>
                                     <div className="shrink-0 text-right">
-                                        <p className="text-sm font-black tabular-nums">
+                                        <p className="text-sm font-semibold tabular-nums">
                                             {ugx(i.total)}
                                         </p>
                                         {i.amountPaid > 0 && (
-                                            <p className="text-[10px] text-muted-foreground tabular-nums">
-                                                {ugx(i.amountPaid)} paid ·{" "}
+                                            <p className="text-xs text-muted-foreground tabular-nums">
+                                                {ugx(i.amountPaid)} {t("paid ·")}{" "}
                                                 {ugx(i.total - i.amountPaid)} outstanding
                                             </p>
                                         )}
@@ -367,8 +367,8 @@ export default function SuppliersPage() {
                         <LoadingState />
                     ) : payments.page.length === 0 ? (
                         <EmptyState
-                            title="No payments made yet"
-                            hint="Pay a supplier from their row on the Suppliers tab."
+                            title={t("No payments made yet")}
+                            hint={t("Pay a supplier from their row on the Suppliers tab.")}
                         />
                     ) : (
                         <RecordList
@@ -377,9 +377,9 @@ export default function SuppliersPage() {
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-black">{p.supplierName}</p>
+                                            <p className="font-semibold">{p.supplierName}</p>
                                             {p.method && (
-                                                <span className="rounded-md bg-muted px-2 py-1 text-[10px] font-bold">
+                                                <span className="rounded-md bg-muted px-2 py-1 text-xs font-bold">
                                                     {p.method}
                                                 </span>
                                             )}
@@ -389,7 +389,7 @@ export default function SuppliersPage() {
                                             {p.reference ? ` · ref ${p.reference}` : ""}
                                         </p>
                                     </div>
-                                    <p className="shrink-0 text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                                    <p className="shrink-0 text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                                         −{ugx(p.amount)}
                                     </p>
                                 </div>
@@ -484,7 +484,7 @@ export default function SuppliersPage() {
                     if (!v) setInvoiceFor(null);
                 }}
                 title={invoiceFor ? `Record an invoice from ${invoiceFor.name}` : "Record invoice"}
-                description="The invoice number identifies the document — it cannot be recorded twice for the same supplier."
+                description={t("The invoice number identifies the document — it cannot be recorded twice for the same supplier.")}
                 submitLabel="Record invoice"
                 fields={[
                     { name: "invoiceNumber", label: "Invoice number", required: true },
@@ -502,10 +502,9 @@ export default function SuppliersPage() {
             <Sheet open={!!statementFor} onOpenChange={(v) => !v && setStatementFor(null)}>
                 <SheetContent className="overflow-y-auto sm:max-w-lg">
                     <SheetHeader>
-                        <SheetTitle>{statementFor?.name} — statement</SheetTitle>
+                        <SheetTitle>{statementFor?.name} {t("— statement")}</SheetTitle>
                         <SheetDescription>
-                            Every movement on the account, with the balance after each
-                            line.
+                            {t("Every movement on the account, with the balance after each line.")}
                         </SheetDescription>
                     </SheetHeader>
 
@@ -516,30 +515,30 @@ export default function SuppliersPage() {
                             <div className="grid grid-cols-3 gap-3">
                                 <Card>
                                     <CardContent className="p-3">
-                                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                            Billed
+                                        <p className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                                            {t("Billed")}
                                         </p>
-                                        <p className="text-sm font-black tabular-nums">
+                                        <p className="text-sm font-semibold tabular-nums">
                                             {ugx(statement.totalCharged)}
                                         </p>
                                     </CardContent>
                                 </Card>
                                 <Card>
                                     <CardContent className="p-3">
-                                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                            Paid
+                                        <p className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                                            {t("Paid")}
                                         </p>
-                                        <p className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                                        <p className="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                                             {ugx(statement.totalPaid)}
                                         </p>
                                     </CardContent>
                                 </Card>
                                 <Card>
                                     <CardContent className="p-3">
-                                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                            Owed
+                                        <p className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                                            {t("Owed")}
                                         </p>
-                                        <p className="text-sm font-black tabular-nums">
+                                        <p className="text-sm font-semibold tabular-nums">
                                             {ugx(statement.closingBalance)}
                                         </p>
                                     </CardContent>
@@ -548,21 +547,21 @@ export default function SuppliersPage() {
 
                             {statement.lines.length === 0 ? (
                                 <EmptyState
-                                    title="No movements yet"
-                                    hint="An invoice or payment will show up here."
+                                    title={t("No movements yet")}
+                                    hint={t("An invoice or payment will show up here.")}
                                 />
                             ) : (
                                 <div className="overflow-x-auto rounded-xl border border-border/60">
                                     <table className="w-full text-sm">
                                         <thead className="bg-muted/40">
                                             <tr className="text-left">
-                                                <th className="px-3 py-2 font-bold">Date</th>
-                                                <th className="px-3 py-2 font-bold">Details</th>
+                                                <th className="px-3 py-2 font-bold">{t("Date")}</th>
+                                                <th className="px-3 py-2 font-bold">{t("Details")}</th>
                                                 <th className="px-3 py-2 text-right font-bold">
-                                                    Amount
+                                                    {t("Amount")}
                                                 </th>
                                                 <th className="px-3 py-2 text-right font-bold">
-                                                    Balance
+                                                    {t("Balance")}
                                                 </th>
                                             </tr>
                                         </thead>
@@ -576,14 +575,12 @@ export default function SuppliersPage() {
                                                         {shortDate(line.date)}
                                                     </td>
                                                     <td className="px-3 py-2 text-xs">
-                                                        {line.description}
+                                                        {t(line.description)}
                                                     </td>
                                                     <td
-                                                        className={`px-3 py-2 text-right text-xs font-bold tabular-nums ${
-                                                            line.amount < 0
+                                                        className={`px-3 py-2 text-right text-xs font-bold tabular-nums ${line.amount < 0
                                                                 ? "text-emerald-600 dark:text-emerald-400"
-                                                                : ""
-                                                        }`}
+                                                                : ""}`}
                                                     >
                                                         {line.amount < 0 ? "−" : ""}
                                                         {ugx(Math.abs(line.amount))}

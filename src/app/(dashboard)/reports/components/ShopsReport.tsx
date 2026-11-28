@@ -24,9 +24,11 @@ import {
     SheetDescription,
 } from "@/components/ui/sheet";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function ShopsReport() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [activeNestedTab, setActiveNestedTab] = useState("overview");
 
     // --- OVERVIEW TAB STATE ---
@@ -146,14 +148,14 @@ export function ShopsReport() {
             <Tabs value={activeNestedTab} onValueChange={setActiveNestedTab} className="w-full">
                 <div className="flex items-center justify-between mb-2">
                     <TabsList className="bg-muted/50 p-1 rounded-xl h-10 border shadow-xs">
-                        <TabsTrigger value="overview" className="rounded-lg px-5 h-8 font-black uppercase text-[9px] tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white">
-                            Overview
+                        <TabsTrigger value="overview" className="rounded-lg px-5 h-8 data-[state=active]:bg-primary data-[state=active]:text-white text-eyebrow uppercase tracking-eyebrow">
+                            {t("Overview")}
                         </TabsTrigger>
-                        <TabsTrigger value="issued" className="rounded-lg px-5 h-8 font-black uppercase text-[9px] tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white text-emerald-600">
-                            Issued Stock
+                        <TabsTrigger value="issued" className="rounded-lg px-5 h-8 data-[state=active]:bg-emerald-600 data-[state=active]:text-white text-emerald-600 text-eyebrow uppercase tracking-eyebrow">
+                            {t("Issued Stock")}
                         </TabsTrigger>
-                        <TabsTrigger value="promotions" className="rounded-lg px-5 h-8 font-black uppercase text-[9px] tracking-widest data-[state=active]:bg-amber-500 data-[state=active]:text-white text-amber-600">
-                            Promotions
+                        <TabsTrigger value="promotions" className="rounded-lg px-5 h-8 data-[state=active]:bg-amber-500 data-[state=active]:text-white text-amber-600 text-eyebrow uppercase tracking-eyebrow">
+                            {t("Promotions")}
                         </TabsTrigger>
                     </TabsList>
 
@@ -162,20 +164,20 @@ export function ShopsReport() {
                             <button
                                 onClick={() => setDashView("sales")}
                                 className={cn(
-                                    "px-3 h-full rounded-md text-[9px] font-black uppercase tracking-widest transition-all",
+                                    "px-3 h-full rounded-md transition-all text-eyebrow uppercase tracking-eyebrow",
                                     dashView === "sales" ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-muted"
                                 )}
                             >
-                                Sales
+                                {t("Sales")}
                             </button>
                             <button
                                 onClick={() => setDashView("loans")}
                                 className={cn(
-                                    "px-3 h-full rounded-md text-[9px] font-black uppercase tracking-widest transition-all",
+                                    "px-3 h-full rounded-md transition-all text-eyebrow uppercase tracking-eyebrow",
                                     dashView === "loans" ? "bg-destructive text-white shadow-sm" : "text-muted-foreground hover:bg-muted"
                                 )}
                             >
-                                Loans
+                                {t("Loans")}
                             </button>
                         </div>
                     )}
@@ -209,7 +211,7 @@ export function ShopsReport() {
                             ]}
                             value={overviewShop}
                             onValueChange={setOverviewShop}
-                            placeholder="Select Branch"
+                            placeholder={t("Select Branch")}
                             width="200px"
                         />
 
@@ -221,7 +223,7 @@ export function ShopsReport() {
                                 ]}
                                 value={overviewCustomer}
                                 onValueChange={setOverviewCustomer}
-                                placeholder="Filter Client"
+                                placeholder={t("Filter Client")}
                                 width="180px"
                             />
                         )}
@@ -241,8 +243,13 @@ export function ShopsReport() {
 
                     {overviewShop !== "all" && dashView === "loans" ? (
                         <ReportTable
-                            title={`${shops?.find(s => String(s._id) === overviewShop)?.name || "Shop"} - Detailed Loans`}
-                            subtitle={`Comprehensive loan records from ${overviewDateRange.from} to ${overviewDateRange.to}`}
+                            title={t("{0} - Detailed Loans", {
+            0: shops?.find(s => String(s._id) === overviewShop)?.name || "Shop",
+        })}
+                            subtitle={t("Comprehensive loan records from {0} to {1}", {
+            0: overviewDateRange.from,
+            1: overviewDateRange.to,
+        })}
                             data={shopLoans || []}
                             isLoading={loansLoading}
                             summaryData={summaryData}
@@ -253,8 +260,8 @@ export function ShopsReport() {
                                     header: "Date/Time",
                                     accessor: (l: any) => (
                                         <div className="font-mono leading-tight">
-                                            <div className="font-black">{format(new Date(l.date || l._creationTime), "dd MMM yyyy")}</div>
-                                            <div className="text-[9px] text-muted-foreground">{format(new Date(l.date || l._creationTime), "HH:mm")}</div>
+                                            <div className="font-semibold">{format(new Date(l.date || l._creationTime), "dd MMM yyyy")}</div>
+                                            <div className="text-xs text-muted-foreground">{format(new Date(l.date || l._creationTime), "HH:mm")}</div>
                                         </div>
                                     )
                                 },
@@ -263,17 +270,17 @@ export function ShopsReport() {
                                     accessor: (l: any) => (
                                         <div className="space-y-1">
                                             <div className="flex gap-1 flex-wrap">
-                                                <Badge variant={l.clientType === "HP Client" ? "secondary" : "outline"} className="text-[9px] h-4">
+                                                <Badge variant={l.clientType === "HP Client" ? "secondary" : "outline"} className="text-xs h-4">
                                                     {l.clientType}
                                                 </Badge>
-                                                <Badge variant="destructive" className="text-[9px] h-4">
-                                                    Loan
+                                                <Badge variant="destructive" className="text-xs h-4">
+                                                    {t("Loan")}
                                                 </Badge>
                                             </div>
-                                            <div className="text-[10px] font-black text-primary truncate max-w-[120px]">
+                                            <div className="text-xs font-semibold text-primary truncate max-w-[120px]">
                                                 {l.customerName}
                                             </div>
-                                            <div className="text-[9px] font-medium text-muted-foreground italic">
+                                            <div className="text-xs font-medium text-muted-foreground italic">
                                                 {l.customerPhone}
                                             </div>
                                         </div>
@@ -284,12 +291,12 @@ export function ShopsReport() {
                                     accessor: (l: any) => (
                                         <div className="space-y-1 max-w-[300px]">
                                             {(l.items || []).map((item: any, idx: number) => (
-                                                <div key={idx} className="text-[10px] flex justify-between gap-4 border-b border-dashed border-muted pb-0.5 last:border-0">
+                                                <div key={idx} className="text-xs flex justify-between gap-4 border-b border-dashed border-muted pb-0.5 last:border-0">
                                                     <span className="truncate">
-                                                        <span className="font-black text-primary mr-1">{item.quantity}x</span>
+                                                        <span className="font-semibold text-primary mr-1">{item.quantity}x</span>
                                                         {item.name}
                                                     </span>
-                                                    <span className="text-muted-foreground shrink-0 font-medium">[{item.pv} PV / {item.bv} BV]</span>
+                                                    <span className="text-muted-foreground shrink-0 font-medium">[{item.pv} {t("PV /")} {item.bv} {t("BV]")}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -300,11 +307,11 @@ export function ShopsReport() {
                                     header: "Balances",
                                     accessor: (l: any) => (
                                         <div className="text-right space-y-0.5 font-mono">
-                                            <div className="text-[9px] text-muted-foreground">Original: {(l.totalAmount || 0).toLocaleString()}</div>
-                                            <div className="font-black text-destructive text-xs">Due: {(l.balance || 0).toLocaleString()}</div>
+                                            <div className="text-xs text-muted-foreground">{t("Original:")} {(l.totalAmount || 0).toLocaleString()}</div>
+                                            <div className="font-semibold text-destructive text-xs">{t("Due:")} {(l.balance || 0).toLocaleString()}</div>
                                             {l.dueDate && (
-                                                <div className="text-[8px] font-bold text-orange-600 bg-orange-50 px-1 py-0.5 rounded inline-block">
-                                                    Due: {format(new Date(l.dueDate), "dd MMM")}
+                                                <div className="text-xs font-bold text-orange-600 bg-orange-50 px-1 py-0.5 rounded inline-block">
+                                                    {t("Due:")} {format(new Date(l.dueDate), "dd MMM")}
                                                 </div>
                                             )}
                                         </div>
@@ -314,7 +321,7 @@ export function ShopsReport() {
                                 {
                                     header: "Status",
                                     accessor: (l: any) => (
-                                        <Badge variant={(l.balance || 0) > 0 ? "destructive" : "outline"} className="text-[9px] uppercase font-black tracking-tighter">
+                                        <Badge variant={(l.balance || 0) > 0 ? "destructive" : "outline"} className="tracking-tighter text-eyebrow uppercase tracking-eyebrow">
                                             {(l.balance || 0) > 0 ? "Outstanding" : "Cleared"}
                                         </Badge>
                                     ),
@@ -324,8 +331,13 @@ export function ShopsReport() {
                         />
                     ) : overviewShop !== "all" && dashView === "sales" ? (
                         <ReportTable
-                            title={`${shops?.find(s => String(s._id) === overviewShop)?.name || "Branch"} - Detailed Sales`}
-                            subtitle={`Sales transactions from ${overviewDateRange.from} to ${overviewDateRange.to}`}
+                            title={t("{0} - Detailed Sales", {
+            0: shops?.find(s => String(s._id) === overviewShop)?.name || "Branch",
+        })}
+                            subtitle={t("Sales transactions from {0} to {1}", {
+            0: overviewDateRange.from,
+            1: overviewDateRange.to,
+        })}
                             data={shopSales || []}
                             isLoading={salesLoading}
                             summaryData={summaryData}
@@ -336,8 +348,8 @@ export function ShopsReport() {
                                     header: "Date/Time",
                                     accessor: (s: any) => (
                                         <div className="font-mono leading-tight">
-                                            <div className="font-black">{format(new Date(s._creationTime), "dd MMM yyyy")}</div>
-                                            <div className="text-[9px] text-muted-foreground">{format(new Date(s._creationTime), "HH:mm")}</div>
+                                            <div className="font-semibold">{format(new Date(s._creationTime), "dd MMM yyyy")}</div>
+                                            <div className="text-xs text-muted-foreground">{format(new Date(s._creationTime), "HH:mm")}</div>
                                         </div>
                                     ),
                                     exportValue: (s: any) => format(new Date(s._creationTime), "dd/MM/yyyy HH:mm")
@@ -347,14 +359,14 @@ export function ShopsReport() {
                                     accessor: (s: any) => (
                                         <div className="space-y-1">
                                             <div className="flex gap-1 flex-wrap">
-                                                <Badge variant={s.clientType === "HP Client" ? "secondary" : "outline"} className="text-[9px] h-4">
+                                                <Badge variant={s.clientType === "HP Client" ? "secondary" : "outline"} className="text-xs h-4">
                                                     {s.clientType}
                                                 </Badge>
-                                                <Badge variant={s.paymentMode === "Loan" ? "destructive" : "default"} className="text-[9px] h-4">
+                                                <Badge variant={s.paymentMode === "Loan" ? "destructive" : "default"} className="text-xs h-4">
                                                     {s.paymentMode}
                                                 </Badge>
                                             </div>
-                                            <div className="text-[10px] font-black text-primary truncate max-w-[120px]">
+                                            <div className="text-xs font-semibold text-primary truncate max-w-[120px]">
                                                 {s.customerName}
                                             </div>
                                         </div>
@@ -366,12 +378,12 @@ export function ShopsReport() {
                                     accessor: (s: any) => (
                                         <div className="space-y-1 max-w-[300px]">
                                             {(s.items || []).map((item: any, idx: number) => (
-                                                <div key={idx} className="text-[10px] flex justify-between gap-4 border-b border-dashed border-muted pb-0.5 last:border-0">
+                                                <div key={idx} className="text-xs flex justify-between gap-4 border-b border-dashed border-muted pb-0.5 last:border-0">
                                                     <span className="truncate">
-                                                        <span className="font-black text-primary mr-1">{item.quantity}x</span>
+                                                        <span className="font-semibold text-primary mr-1">{item.quantity}x</span>
                                                         {item.name}
                                                     </span>
-                                                    <span className="text-muted-foreground shrink-0 font-medium">[{item.pv} PV / {item.bv} BV]</span>
+                                                    <span className="text-muted-foreground shrink-0 font-medium">[{item.pv} {t("PV /")} {item.bv} {t("BV]")}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -382,7 +394,7 @@ export function ShopsReport() {
                                 {
                                     header: "Total",
                                     accessor: (s: any) => (
-                                        <span className="font-black text-primary text-sm">{s.total.toLocaleString()}</span>
+                                        <span className="font-semibold text-primary text-sm">{s.total.toLocaleString()}</span>
                                     ),
                                     exportValue: (s: any) => s.total.toLocaleString(),
                                     className: "text-right"
@@ -399,8 +411,8 @@ export function ShopsReport() {
                         />
                     ) : (
                         <ReportTable
-                            title="Branch Performance Summary"
-                            subtitle="Key metrics per active shop"
+                            title={t("Branch Performance Summary")}
+                            subtitle={t("Key metrics per active shop")}
                             data={shopSummary || []}
                             summaryData={summaryData}
                             isLoading={shopSummary === undefined}
@@ -409,7 +421,7 @@ export function ShopsReport() {
                                 { header: "Branch Name", accessor: (item: any) => <span className="font-bold">{item.name}</span> },
                                 { header: "Location", accessor: "location" },
                                 { header: "Transactions", accessor: (item: any) => item.transactionCount.toLocaleString(), className: "text-center" },
-                                { header: "Total Sales", accessor: (item: any) => formatPrice(item.totalSales), className: "font-black text-right" },
+                                { header: "Total Sales", accessor: (item: any) => formatPrice(item.totalSales), className: "font-semibold text-right" },
                                 { header: "Last Active", accessor: (item: any) => item.lastSaleDate ? format(new Date(item.lastSaleDate), "dd MMM yyyy") : "Never" },
                             ]}
                         />
@@ -443,7 +455,7 @@ export function ShopsReport() {
                             ]}
                             value={issuedShop}
                             onValueChange={setIssuedShop}
-                            placeholder="Select Branch"
+                            placeholder={t("Select Branch")}
                             width="200px"
                         />
 
@@ -455,14 +467,14 @@ export function ShopsReport() {
                             ]}
                             value={issuedType}
                             onValueChange={(val: any) => setIssuedType(val)}
-                            placeholder="Stock Type"
+                            placeholder={t("Stock Type")}
                             width="180px"
                         />
 
                         <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-50" />
                             <Input
-                                placeholder="Search by product name or code..."
+                                placeholder={t("Search by product name or code...")}
                                 value={issuedSearch}
                                 onChange={(e) => setIssuedSearch(e.target.value)}
                                 className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -485,25 +497,27 @@ export function ShopsReport() {
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                     <Card className="bg-emerald-50 border-emerald-100 shadow-sm p-4 rounded-xl border-l-4 border-l-emerald-600">
-                                        <div className="text-[10px] font-black uppercase text-emerald-700 tracking-widest mb-1 font-mono">Total quantity Issued</div>
-                                        <div className="text-2xl font-black text-emerald-800">
+                                        <div className="text-emerald-700 mb-1 font-mono text-eyebrow uppercase tracking-eyebrow">{t("Total quantity Issued")}</div>
+                                        <div className="text-2xl font-semibold text-emerald-800">
                                             {totalQty.toLocaleString()}
                                         </div>
-                                        <div className="text-[9px] font-bold text-emerald-600/70 uppercase mt-0.5">Physical items sent</div>
+                                        <div className="text-emerald-600/70 mt-0.5 text-eyebrow uppercase tracking-eyebrow">{t("Physical items sent")}</div>
                                     </Card>
 
                                     <Card className="bg-blue-50 border-blue-100 shadow-sm p-4 rounded-xl border-l-4 border-l-blue-600">
-                                        <div className="text-[10px] font-black uppercase text-blue-700 tracking-widest mb-1 font-mono">No. of Different Products</div>
-                                        <div className="text-2xl font-black text-blue-800">
+                                        <div className="text-blue-700 mb-1 font-mono text-eyebrow uppercase tracking-eyebrow">{t("No. of Different Products")}</div>
+                                        <div className="text-2xl font-semibold text-blue-800">
                                             {uniqueProducts.toLocaleString()}
                                         </div>
-                                        <div className="text-[9px] font-bold text-blue-600/70 uppercase mt-0.5">Unique product types</div>
+                                        <div className="text-blue-600/70 mt-0.5 text-eyebrow uppercase tracking-eyebrow">{t("Unique product types")}</div>
                                     </Card>
                                 </div>
 
                                 <ReportTable
                                     title={issuedShop === "all" ? "Branch Stock Issue Log" : `${shops?.find(s => String(s._id) === issuedShop)?.name} - Issue Audit`}
-                                    subtitle={`Audit trail of ${issuedType !== "all" ? issuedType.toUpperCase() : "all"} stock transferred from HQ`}
+                                    subtitle={t("Audit trail of {0} stock transferred from HQ", {
+            0: issuedType !== "all" ? issuedType.toUpperCase() : "all",
+        })}
                                     data={filteredRecords}
                                     isLoading={issueRecords === undefined}
                                     variant="overview"
@@ -512,15 +526,15 @@ export function ShopsReport() {
                                             header: "Date/Time",
                                             accessor: (r: any) => (
                                                 <div className="font-mono leading-tight">
-                                                    <div className="font-black">{format(new Date(r.date), "dd MMM yyyy")}</div>
-                                                    <div className="text-[9px] text-muted-foreground">{format(new Date(r.date), "HH:mm")}</div>
+                                                    <div className="font-semibold">{format(new Date(r.date), "dd MMM yyyy")}</div>
+                                                    <div className="text-xs text-muted-foreground">{format(new Date(r.date), "HH:mm")}</div>
                                                 </div>
                                             )
                                         },
                                         {
                                             header: "Branch",
                                             accessor: (r: any) => (
-                                                <div className="flex items-center gap-2 font-black text-primary">
+                                                <div className="flex items-center gap-2 font-semibold text-primary">
                                                     <Store className="h-3 w-3 opacity-50" />
                                                     {r.shopName}
                                                 </div>
@@ -530,18 +544,18 @@ export function ShopsReport() {
                                             header: "Product",
                                             accessor: (r: any) => (
                                                 <div className="flex flex-col">
-                                                    <span className="text-[11px] font-black flex items-center gap-1">
+                                                    <span className="text-xs font-semibold flex items-center gap-1">
                                                         {r.stockName}
-                                                        {r.halfPrice && <Badge variant="outline" className="text-[8px] h-3.5 px-1 bg-amber-50 text-amber-700 border-amber-200">HP</Badge>}
+                                                        {r.halfPrice && <Badge variant="outline" className="text-xs h-3.5 px-1 bg-amber-50 text-amber-700 border-amber-200">{t("HP")}</Badge>}
                                                     </span>
-                                                    <span className="text-[9px] text-muted-foreground font-mono leading-none tracking-tighter uppercase">{r.productCode}</span>
+                                                    <span className="text-muted-foreground font-mono leading-none tracking-tighter text-eyebrow uppercase tracking-eyebrow">{r.productCode}</span>
                                                 </div>
                                             )
                                         },
                                         {
                                             header: "Qty Issued",
                                             accessor: (r: any) => (
-                                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-black h-5">
+                                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold h-5">
                                                     {r.quantity}
                                                 </Badge>
                                             ),
@@ -550,7 +564,7 @@ export function ShopsReport() {
                                         {
                                             header: "Issued By",
                                             accessor: "userName",
-                                            className: "text-right text-[10px] font-bold text-muted-foreground"
+                                            className: "text-right text-xs font-bold text-muted-foreground"
                                         }
                                     ]}
                                 />
@@ -584,7 +598,7 @@ export function ShopsReport() {
                             ]}
                             value={promotionsShop}
                             onValueChange={setPromotionsShop}
-                            placeholder="Select Branch"
+                            placeholder={t("Select Branch")}
                             width="200px"
                         />
                     </div>
@@ -592,31 +606,34 @@ export function ShopsReport() {
                     {/* Summary Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <Card className="bg-primary/5 border-primary/20 shadow-sm p-4 rounded-xl border-l-4 border-l-primary">
-                            <div className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-1 font-mono">Total Gifts Given</div>
-                            <div className="text-2xl font-black text-primary">
+                            <div className="text-muted-foreground mb-1 font-mono text-eyebrow uppercase tracking-eyebrow">{t("Total Gifts Given")}</div>
+                            <div className="text-2xl font-semibold text-primary">
                                 {stats?.totalRedemptions?.toLocaleString() || "0"}
                             </div>
-                            <div className="text-[9px] font-bold text-primary/70 uppercase mt-0.5">Overall redemptions</div>
+                            <div className="text-primary/70 mt-0.5 text-eyebrow uppercase tracking-eyebrow">{t("Overall redemptions")}</div>
                         </Card>
                         <Card className="bg-emerald-50 border-emerald-100 shadow-sm p-4 rounded-xl border-l-4 border-l-emerald-500">
-                            <div className="text-[10px] font-black uppercase text-emerald-700 tracking-widest mb-1 font-mono">People Given Gifts</div>
-                            <div className="text-2xl font-black text-emerald-600">
+                            <div className="text-emerald-700 mb-1 font-mono text-eyebrow uppercase tracking-eyebrow">{t("People Given Gifts")}</div>
+                            <div className="text-2xl font-semibold text-emerald-600">
                                 {stats?.uniqueCustomers?.toLocaleString() || "0"}
                             </div>
-                            <div className="text-[9px] font-bold text-emerald-600/70 uppercase mt-0.5">Unique customers</div>
+                            <div className="text-emerald-600/70 mt-0.5 text-eyebrow uppercase tracking-eyebrow">{t("Unique customers")}</div>
                         </Card>
                         <Card className="bg-amber-50 border-amber-100 shadow-sm p-4 rounded-xl border-l-4 border-l-amber-500">
-                            <div className="text-[10px] font-black uppercase text-amber-700 tracking-widest mb-1 font-mono">Main Products Sold</div>
-                            <div className="text-2xl font-black text-amber-600">
+                            <div className="text-amber-700 mb-1 font-mono text-eyebrow uppercase tracking-eyebrow">{t("Main Products Sold")}</div>
+                            <div className="text-2xl font-semibold text-amber-600">
                                 {stats?.uniqueProducts?.toLocaleString() || "0"}
                             </div>
-                            <div className="text-[9px] font-bold text-amber-600/70 uppercase mt-0.5">Unique item types</div>
+                            <div className="text-amber-600/70 mt-0.5 text-eyebrow uppercase tracking-eyebrow">{t("Unique item types")}</div>
                         </Card>
                     </div>
 
                     <ReportTable
                         title={promotionsShop === "all" ? "Branch Promotions Hub" : `${shops?.find(s => String(s._id) === promotionsShop)?.name} - Promotion Audit`}
-                        subtitle={`Detailed log of rewards redeemed from ${promotionsDateRange.from} to ${promotionsDateRange.to}`}
+                        subtitle={t("Detailed log of rewards redeemed from {0} to {1}", {
+            0: promotionsDateRange.from,
+            1: promotionsDateRange.to,
+        })}
                         data={redemptions || []}
                         isLoading={redemptionStatus === "LoadingFirstPage"}
                         summaryData={stats}
@@ -626,8 +643,8 @@ export function ShopsReport() {
                                 header: "Date/Time",
                                 accessor: (r: any) => (
                                     <div className="font-mono leading-tight">
-                                        <div className="font-black text-[11px]">{format(new Date(r.date), "dd MMM yyyy")}</div>
-                                        <div className="text-[9px] text-muted-foreground">{format(new Date(r.date), "HH:mm")}</div>
+                                        <div className="font-semibold text-xs">{format(new Date(r.date), "dd MMM yyyy")}</div>
+                                        <div className="text-xs text-muted-foreground">{format(new Date(r.date), "HH:mm")}</div>
                                     </div>
                                 )
                             },
@@ -635,8 +652,8 @@ export function ShopsReport() {
                                 header: "Promotion & Reward",
                                 accessor: (r: any) => (
                                     <div className="flex flex-col">
-                                        <span className="text-[11px] font-black text-primary uppercase tracking-tighter">{r.promotionName}</span>
-                                        <Badge variant="outline" className="text-[9px] h-4 mt-1 border-amber-200 bg-amber-50 text-amber-700 font-black uppercase tracking-widest w-fit">
+                                        <span className="text-xs font-semibold text-primary uppercase tracking-tighter">{r.promotionName}</span>
+                                        <Badge variant="outline" className="h-4 mt-1 border-amber-200 bg-amber-50 text-amber-700 w-fit text-eyebrow uppercase tracking-eyebrow">
                                             🎁 {r.prize}
                                         </Badge>
                                     </div>
@@ -646,8 +663,8 @@ export function ShopsReport() {
                                 header: "Trigger Product",
                                 accessor: (r: any) => (
                                     <div className="flex flex-col">
-                                        <span className="text-[11px] font-bold text-slate-700">{r.productName}</span>
-                                        <span className="text-[9px] font-mono text-muted-foreground">Qty: {r.redeemedQuantity}</span>
+                                        <span className="text-xs font-bold text-slate-700">{r.productName}</span>
+                                        <span className="text-xs font-mono text-muted-foreground">{t("Qty:")} {r.redeemedQuantity}</span>
                                     </div>
                                 )
                             },
@@ -655,10 +672,10 @@ export function ShopsReport() {
                                 header: "Beneficiary",
                                 accessor: (r: any) => (
                                     <div className="flex flex-col">
-                                        <span className="text-[11px] font-black text-slate-800">{r.customerName}</span>
+                                        <span className="text-xs font-semibold text-slate-800">{r.customerName}</span>
                                         <div className="flex items-center gap-1 mt-0.5">
                                             <Store className="h-3 w-3 text-muted-foreground opacity-50" />
-                                            <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">{shops?.find(s => s._id === r.shopId)?.name || 'Branch'}</span>
+                                            <span className="text-muted-foreground tracking-tighter text-eyebrow uppercase tracking-eyebrow">{shops?.find(s => s._id === r.shopId)?.name || 'Branch'}</span>
                                         </div>
                                     </div>
                                 )
@@ -666,7 +683,7 @@ export function ShopsReport() {
                             {
                                 header: "Operator",
                                 accessor: "operatorName",
-                                className: "text-right text-[10px] font-bold text-muted-foreground uppercase tracking-widest"
+                                className: "text-right text-muted-foreground text-eyebrow uppercase tracking-eyebrow"
                             }
                         ]}
                     />
@@ -681,45 +698,45 @@ export function ShopsReport() {
                             {viewType === "sale" ? "Sale Details" : "Loan Details"}
                         </SheetTitle>
                         <SheetDescription>
-                            Complete information about this {viewType} record.
+                            {t("Complete information about this")} {viewType} {t("record.")}
                         </SheetDescription>
                     </SheetHeader>
                     {viewType === "sale" && saleWithDetails ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Date/Time</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Date/Time")}</span>
                                     <span className="font-semibold">{format(new Date(saleWithDetails._creationTime), "dd MMM yyyy HH:mm:ss")}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Total Amount")}</span>
                                     <span className="font-bold text-lg text-emerald-600">{currency} {saleWithDetails.total.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Branch</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Branch")}</span>
                                     <span className="font-semibold">{saleWithDetails.shop?.name || "Main Warehouse"}</span>
                                 </div>
                             </div>
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Sold By</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Sold By")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     {saleWithDetails.user ? (
                                         <>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Name</span>
+                                                <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                                 <span className="font-semibold capitalize">{saleWithDetails.user.first_name} {saleWithDetails.user.last_name}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Email</span>
+                                                <span className="text-sm text-muted-foreground">{t("Email")}</span>
                                                 <span className="font-semibold text-sm">{saleWithDetails.user.email}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Role</span>
+                                                <span className="text-sm text-muted-foreground">{t("Role")}</span>
                                                 <Badge className="capitalize">{saleWithDetails.user.roles?.[0] || "N/A"}</Badge>
                                             </div>
                                         </>
                                     ) : (
-                                        <div className="text-sm text-muted-foreground">User information not available</div>
+                                        <div className="text-sm text-muted-foreground">{t("User information not available")}</div>
                                     )}
                                 </div>
                             </div>
@@ -728,23 +745,23 @@ export function ShopsReport() {
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Date</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Date")}</span>
                                     <span className="font-semibold">{format(new Date(loanWithDetails.date), "dd MMM yyyy")}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Total Amount")}</span>
                                     <span className="font-bold text-lg text-emerald-600">{currency} {loanWithDetails.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Balance Due</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Balance Due")}</span>
                                     <span className="font-bold text-lg text-destructive">{currency} {loanWithDetails.balance.toLocaleString()}</span>
                                 </div>
                             </div>
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Customer Information</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Customer Information")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                         <span className="font-semibold">{loanWithDetails.customer?.name || loanWithDetails.manualCustomerName || "N/A"}</span>
                                     </div>
                                 </div>

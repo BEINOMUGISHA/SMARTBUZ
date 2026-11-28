@@ -4,6 +4,8 @@
  * SMART_BUZ — Service Jobs (Repair, laundry, cleaning, alterations)
  *
  * A job-ticket board for the trades that sell work rather than goods.
+ *
+ * A job can be opened, amended, inspected and removed from here.
  */
 
 import { useState } from "react";
@@ -13,20 +15,29 @@ import { useAuth } from "@/context/auth-context";
 import {
     VerticalPageHeader,
     StatusBadge,
+    SearchBox,
     LoadingState,
     EmptyState,
     FormDialog,
+    EditFormDialog,
+    ConfirmDeleteDialog,
+    RecordDetail,
+    RecordActions,
     CreateButton,
-    RecordList,
     ugx,
     shortDate,
+    toFormValues,
+    type FormField,
 } from "@/components/vertical/ui-kit";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { reportError } from "@/components/error-feedback";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Scissors, Plus } from "lucide-react";
+import { Scissors } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 const JOB_STATUSES = [
     { value: "all", label: "All" },
@@ -37,11 +48,27 @@ const JOB_STATUSES = [
     { value: "cancelled", label: "Cancelled" },
 ];
 
+const JOB_STATUS_OPTIONS = JOB_STATUSES.filter((s) => s.value !== "all").map((s) => ({
+    value: s.value,
+    label: s.label,
+}));
+
+const PRIORITY_OPTIONS = [
+    { value: "low", label: "Low" },
+    { value: "normal", label: "Normal" },
+    { value: "high", label: "High" },
+];
+
 export default function ServiceTicketsPage() {
-    const { currency } = useCurrency();
+    
+    const tr = useT();const { currency } = useCurrency();
     const { user } = useAuth();
     const [status, setStatus] = useState("all");
     const [createOpen, setCreateOpen] = useState(false);
+    const [search, setSearch] = useState("");
+    const [detailRow, setDetailRow] = useState<any>(null);
+    const [editRow, setEditRow] = useState<any>(null);
+    const [deleteRow, setDeleteRow] = useState<any>(null);
 
     const tickets = useQuery(api.verticals.operations.listServiceTickets, {
         status: status === "all" ? undefined : status,
@@ -50,6 +77,48 @@ export default function ServiceTicketsPage() {
 
     const createTicket = useMutation(api.verticals.operations.createServiceTicket);
     const updateTicket = useMutation(api.verticals.operations.updateServiceTicket);
+    const deleteTicket = useMutation(api.verticals.operations.deleteServiceTicket);
+
+    const createFields: FormField[] = [
+        { name: "customerName", label: "Customer name", required: true },
+        {
+            name: "customerPhone",
+            label: "Phone",
+            type: "tel",
+            placeholder: "0772 123 456",
+        },
+        { name: "serviceType", label: "Service type", required: true, full: true },
+        { name: "description", label: "Job description", type: "textarea", full: true },
+        {
+            name: "estimatedCost",
+            label: `Estimated cost (${currency})`,
+            type: "number",
+            min: 0,
+        },
+        {
+            name: "priority",
+            label: "Priority",
+            type: "select",
+            options: PRIORITY_OPTIONS,
+        },
+        { name: "dueDate", label: "Due date", type: "date" },
+    ];
+
+    const editFields: FormField[] = [
+        ...createFields,
+        {
+            name: "finalCost",
+            label: `Final cost (${currency})`,
+            type: "number",
+            min: 0,
+        },
+        {
+            name: "assignedToName",
+            label: "Assigned to",
+            placeholder: "Who is doing the job",
+        },
+        { name: "status", label: "Status", type: "select", options: JOB_STATUS_OPTIONS },
+    ];
 
     const handleCreate = async (values: Record<string, string>) => {
         if (!user) return;
@@ -68,6 +137,42 @@ export default function ServiceTicketsPage() {
         toast.success("Job ticket created");
     };
 
+    const handleEdit = async (values: Record<string, string>) => {
+        if (!user || !editRow) return;
+        try {
+            await updateTicket({
+                id: editRow._id,
+                customerName: values.customerName,
+                customerPhone: values.customerPhone || undefined,
+                serviceType: values.serviceType,
+                description: values.description || undefined,
+                estimatedCost: values.estimatedCost
+                    ? Number(values.estimatedCost)
+                    : undefined,
+                finalCost: values.finalCost ? Number(values.finalCost) : undefined,
+                assignedToName: values.assignedToName || undefined,
+                priority: values.priority || undefined,
+                dueDate: values.dueDate || undefined,
+                status: values.status || undefined,
+            });
+            toast.success("Job updated");
+        } catch (err) {
+            reportError(err, "Could not update the job.");
+            throw err;
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!user || !deleteRow) return;
+        try {
+            await deleteTicket({ id: deleteRow._id, userId: user._id });
+            toast.success("Job ticket deleted");
+        } catch (err) {
+            reportError(err, "Could not delete the job.");
+            throw err;
+        }
+    };
+
     const advance = async (id: string, next: string) => {
         if (!user) return;
         try {
@@ -84,13 +189,119 @@ export default function ServiceTicketsPage() {
         ready: "delivered",
     };
 
+    const columns: DataTableColumn<any>[] = [
+        {
+            id: "ticket",
+            header: "Ticket",
+            accessor: (t: any) => t.ticketNumber ?? "",
+            cell: (t: any) => (
+                <div className="min-w-0">
+                    <p className="font-mono text-xs font-semibold text-muted-foreground">
+                        {t.ticketNumber}
+                    </p>
+                    <p className="truncate font-medium text-foreground">{t.customerName}</p>
+                </div>
+            ),
+        },
+        {
+            id: "service",
+            header: "Service",
+            accessor: (t: any) => t.serviceType ?? "",
+            cell: (t: any) => (
+                <div className="min-w-0">
+                    <p className="truncate">{t.serviceType}</p>
+                    {t.customerPhone ? (
+                        <p className="text-xs text-muted-foreground">{t.customerPhone}</p>
+                    ) : null}
+                </div>
+            ),
+            hideBelow: "sm",
+        },
+        {
+            id: "priority",
+            header: "Priority",
+            accessor: (t: any) => t.priority ?? "",
+            cell: (t: any) =>
+                t.priority === "high" ? (
+                    <Badge variant="destructive">{tr("High priority")}</Badge>
+                ) : (
+                    <span className="text-muted-foreground capitalize">
+                        {t.priority ?? "normal"}
+                    </span>
+                ),
+        },
+        {
+            id: "cost",
+            header: "Cost",
+            accessor: (t: any) => t.finalCost ?? t.estimatedCost ?? 0,
+            align: "right",
+            cell: (t: any) => (
+                <div className="space-y-0.5">
+                    <p className="tabular-nums">{ugx(t.finalCost ?? t.estimatedCost ?? 0)}</p>
+                    <p className="text-eyebrow text-muted-foreground">
+                        {t.finalCost ? "final" : "estimate"}
+                    </p>
+                </div>
+            ),
+        },
+        {
+            id: "status",
+            header: "Status",
+            accessor: (t: any) => t.status ?? "",
+            cell: (t: any) => (
+                <div className="space-y-1">
+                    <StatusBadge status={t.status ?? "received"} />
+                    <p className="text-xs text-muted-foreground">
+                        {tr("Received")} {shortDate(t.receivedDate)}
+                        {t.dueDate ? ` · due ${shortDate(t.dueDate)}` : ""}
+                    </p>
+                </div>
+            ),
+        },
+        {
+            id: "actions",
+            header: "Actions",
+            align: "right",
+            width: "13rem",
+            cell: (t: any) => (
+                <div className="flex items-center justify-end gap-1">
+                    {nextStatus[t.status] ? (
+                        <Button
+                            size="sm"
+                            onClick={() =>
+                                advance(t._id, nextStatus[t.status]!)
+                            }
+                        >
+                            {nextStatus[t.status]!.replace("_", " ")}
+                        </Button>
+                    ) : null}
+                    <RecordActions
+                        onView={() => setDetailRow(t)}
+                        onEdit={() => setEditRow(t)}
+                        onDelete={() => setDeleteRow(t)}
+                        label={tr("Actions for {0}", {
+            0: t.ticketNumber,
+        })}
+                    />
+                </div>
+            ),
+        },
+    ];
+
     return (
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={Scissors}
-                title="Service Jobs"
-                description="Track every repair, wash or visit from intake to hand-over."
-                actions={<CreateButton onClick={() => setCreateOpen(true)} label="New job" />}
+                title={tr("Service Jobs")}
+                description={tr("Track every repair, wash or visit from intake to hand-over.")}
+                actions={<CreateButton onClick={() => setCreateOpen(true)} label={tr("New job")} />}
+            />
+
+            <SearchBox
+                value={search}
+                onChange={setSearch}
+                placeholder={tr("Search ticket, customer or service…")}
+                className="sm:max-w-sm"
             />
 
             <Tabs value={status} onValueChange={setStatus}>
@@ -101,7 +312,7 @@ export default function ServiceTicketsPage() {
                             value={s.value}
                             className="rounded-lg text-sm font-bold"
                         >
-                            {s.label}
+                            {tr(s.label)}
                         </TabsTrigger>
                     ))}
                 </TabsList>
@@ -109,65 +320,19 @@ export default function ServiceTicketsPage() {
                 <TabsContent value={status} className="mt-4">
                     {!tickets ? (
                         <LoadingState />
-                    ) : tickets.length === 0 ? (
-                        <EmptyState
-                            title="No jobs here"
-                            hint="Create a job ticket when a customer brings work in. Jobs move from received → in progress → ready → delivered."
-                        />
                     ) : (
-                        <RecordList
-                            records={tickets}
-                            renderItem={(t: any) => (
-                                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-mono text-xs font-bold text-muted-foreground">
-                                                {t.ticketNumber}
-                                            </p>
-                                            <StatusBadge status={t.status} />
-                                            {t.priority === "high" && (
-                                                <Badge variant="destructive" className="text-[10px]">
-                                                    High priority
-                                                </Badge>
-                                            )}
-                                        </div>
-                                        <p className="mt-1 font-black">{t.customerName}</p>
-                                        <p className="text-sm text-muted-foreground">
-                                            {t.serviceType}
-                                            {t.customerPhone ? ` · ${t.customerPhone}` : ""}
-                                        </p>
-                                        {t.description && (
-                                            <p className="mt-1 text-xs italic text-muted-foreground">
-                                                {t.description}
-                                            </p>
-                                        )}
-                                        <p className="mt-1 text-[10px] text-muted-foreground">
-                                            Received {shortDate(t.receivedDate)}
-                                            {t.dueDate ? ` · due ${shortDate(t.dueDate)}` : ""}
-                                        </p>
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-3">
-                                        <div className="text-right">
-                                            <p className="text-sm font-black tabular-nums">
-                                                {ugx(t.finalCost ?? t.estimatedCost ?? 0)}
-                                            </p>
-                                            <p className="text-[10px] text-muted-foreground">
-                                                {t.finalCost ? "final" : "estimate"}
-                                            </p>
-                                        </div>
-                                        {nextStatus[t.status] && (
-                                            <Button
-                                                size="sm"
-                                                onClick={() =>
-                                                    advance(t._id, nextStatus[t.status]!)
-                                                }
-                                            >
-                                                {nextStatus[t.status]!.replace("_", " ")}
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
+                        <DataTable
+                            data={tickets}
+                            columns={columns}
+                            getRowId={(row: any) => row._id}
+                            searchTerm={search}
+                            defaultSort={{ id: "ticket", direction: "desc" }}
+                            emptyTitle={tr("No jobs here")}
+                            emptyHint={tr("Create a job ticket when a customer brings work in. Jobs move from received → in progress → ready → delivered.")}
+                            ariaLabel="Service jobs"
+                            caption={tr("{0} job ticket(s).", {
+            0: tickets.length,
+        })}
                         />
                     )}
                 </TabsContent>
@@ -176,37 +341,54 @@ export default function ServiceTicketsPage() {
             <FormDialog
                 open={createOpen}
                 onOpenChange={setCreateOpen}
-                title="New service job"
+                title={tr("New service job")}
                 submitLabel="Create job"
-                fields={[
-                    { name: "customerName", label: "Customer name", required: true },
-                    {
-                        name: "customerPhone",
-                        label: "Phone",
-                        type: "tel",
-                        placeholder: "0772 123 456",
-                    },
-                    { name: "serviceType", label: "Service type", required: true, full: true },
-                    { name: "description", label: "Job description", type: "textarea", full: true },
-                    {
-                        name: "estimatedCost",
-                        label: `Estimated cost (${currency})`,
-                        type: "number",
-                        min: 0,
-                    },
-                    {
-                        name: "priority",
-                        label: "Priority",
-                        type: "select",
-                        options: [
-                            { value: "low", label: "Low" },
-                            { value: "normal", label: "Normal" },
-                            { value: "high", label: "High" },
-                        ],
-                    },
-                    { name: "dueDate", label: "Due date", type: "date" },
-                ]}
+                fields={createFields}
                 onSubmit={handleCreate}
+            />
+
+            <EditFormDialog
+                key={editRow?._id ?? "none"}
+                open={Boolean(editRow)}
+                onOpenChange={(v) => !v && setEditRow(null)}
+                title={tr("Edit service job")}
+                fields={editFields}
+                record={toFormValues(editRow, editFields)}
+                onSubmit={handleEdit}
+            />
+
+            <RecordDetail
+                open={Boolean(detailRow)}
+                onOpenChange={(v) => !v && setDetailRow(null)}
+                title={detailRow?.ticketNumber ?? "Job"}
+                description={detailRow?.customerName}
+                status={detailRow?.status}
+                rows={[
+                    { label: "Ticket", value: detailRow?.ticketNumber ?? "—" },
+                    { label: "Customer", value: detailRow?.customerName ?? "—" },
+                    { label: "Phone", value: detailRow?.customerPhone ?? "—" },
+                    { label: "Service", value: detailRow?.serviceType ?? "—" },
+                    { label: "Priority", value: detailRow?.priority ?? "—" },
+                    { label: "Assigned to", value: detailRow?.assignedToName ?? "—" },
+                    { label: "Estimate", value: detailRow?.estimatedCost ? ugx(detailRow.estimatedCost) : "—" },
+                    { label: "Final cost", value: detailRow?.finalCost ? ugx(detailRow.finalCost) : "—" },
+                    { label: "Received", value: shortDate(detailRow?.receivedDate) },
+                    { label: "Due", value: shortDate(detailRow?.dueDate) },
+                    { label: "Delivered", value: shortDate(detailRow?.deliveredDate) },
+                    { label: "Description", value: detailRow?.description ?? "—" },
+                ]}
+            />
+
+            <ConfirmDeleteDialog
+                open={Boolean(deleteRow)}
+                onOpenChange={(v) => !v && setDeleteRow(null)}
+                entityName="job ticket"
+                description={
+                    deleteRow
+                        ? `This removes the job ticket ${deleteRow.ticketNumber} permanently. A ticket that is on a recurring charge cannot be deleted.`
+                        : undefined
+                }
+                onConfirm={handleDelete}
             />
         </div>
     );

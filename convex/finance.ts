@@ -220,12 +220,14 @@ export const openShift = mutation({
     }
 
     const now = new Date().toISOString();
+    const sessionNumber = await nextSessionNumber(ctx, tenant.businessId, now);
     const shiftId = await ctx.db.insert("cashShifts", {
       businessId: tenant.businessId,
       branchId: args.branchId,
       shopId: args.shopId,
       userId: tenant.user._id,
       userName: displayName(tenant.user),
+      sessionNumber,
       status: "open",
       openedAt: now,
       openingFloat: money(args.openingFloat),
@@ -259,6 +261,37 @@ export const openShift = mutation({
     return shiftId;
   },
 });
+
+/**
+ * The reference for a shift: `SH-241112-03`.
+ *
+ * It is numbered per business per day, so the reference reads in the order
+ * the shifts were worked, and it is short enough to write on a note. The
+ * number is counted from the shifts that already exist for that business on
+ * that day, so two shifts can never carry the same reference.
+ */
+async function nextSessionNumber(
+  ctx: any,
+  businessId: BusinessId,
+  openedAt: string
+): Promise<string> {
+  const day = openedAt.slice(0, 10);
+  const dayStart = `${day}T00:00:00.000Z`;
+  const dayEnd = `${day}T23:59:59.999Z`;
+
+  const thatDay = await ctx.db
+    .query("cashShifts")
+    .withIndex("by_businessId_openedAt", (q: any) =>
+      q
+        .eq("businessId", businessId)
+        .gte("openedAt", dayStart)
+        .lte("openedAt", dayEnd)
+    )
+    .collect();
+
+  const sequence = thatDay.length + 1;
+  return `SH-${day.replace(/-/g, "").slice(2)}-${String(sequence).padStart(2, "0")}`;
+}
 
 /**
  * Close a shift.

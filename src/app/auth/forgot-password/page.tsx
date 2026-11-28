@@ -1,4 +1,5 @@
-﻿"use client";
+"use client";
+
 
 import { useState } from "react";
 import Image from "next/image";
@@ -9,9 +10,11 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
 
 export default function ForgotPasswordPage() {
-    const [email, setEmail] = useState("");
+    
+    const t = useT();const [email, setEmail] = useState("");
     const [loading, setLoading] = useState(false);
     const [submitted, setSubmitted] = useState(false);
 
@@ -57,14 +60,13 @@ export default function ForgotPasswordPage() {
                             <Mail className="h-8 w-8" />
                         </div>
                     </div>
-                    <h1 className="text-3xl font-bold">Check your email</h1>
+                    <h1 className="text-3xl font-bold">{t("Check your email")}</h1>
                     <p className="text-muted-foreground">
-                        We've sent a password reset code to <span className="font-semibold text-foreground">{email}</span>.
-                        Please enter the code on the next page to reset your password.
+                        {t("We've sent a password reset code to")} <span className="font-semibold text-foreground">{email}</span>{t(". Please enter the code on the next page to reset your password.")}
                     </p>
                     <div className="pt-4">
                         <Link href={`/auth/reset-password?email=${encodeURIComponent(email)}`}>
-                            <Button className="w-full h-12 text-lg">Enter Reset Code</Button>
+                            <Button className="w-full h-12 text-lg">{t("Enter Reset Code")}</Button>
                         </Link>
                     </div>
                 </div>
@@ -78,7 +80,7 @@ export default function ForgotPasswordPage() {
             <div className="hidden bg-muted lg:block relative">
                 <Image
                     src="/images/pos-hero.jpg"
-                    alt="Forgot Password Background"
+                    alt={t("Forgot Password Background")}
                     fill
                     className="object-cover"
                     priority
@@ -89,13 +91,13 @@ export default function ForgotPasswordPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                         </svg>
                     </div>
-                    <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">Recover Your <br />Account</h2>
+                    <h2 className="text-5xl font-extrabold mb-6 text-center leading-tight">{t("Recover Your")} <br />{t("Account")}</h2>
                     <p className="text-xl text-center max-w-md opacity-90 font-medium">
-                        Don't worry, we'll help you get back into your POS system in no time.
+                        {t("Don't worry, we'll help you get back into your POS system in no time.")}
                     </p>
                 </div>
                 <div className="absolute bottom-8 left-0 right-0 text-center text-white/60 text-sm">
-                    SMARTBUZ Support Team â€¢ Secure Recovery
+                    {t("SMARTBUZ Support Team • Secure Recovery")}
                 </div>
             </div>
 
@@ -111,15 +113,15 @@ export default function ForgotPasswordPage() {
                         <div className="w-full text-left mb-6">
                             <Link href="/auth/login" className="inline-flex items-center text-sm font-bold text-muted-foreground hover:text-primary transition-colors group">
                                 <ArrowLeft className="mr-2 h-4 w-4 transform group-hover:-translate-x-1 transition-transform" />
-                                Back to Sign In
+                                {t("Back to Sign In")}
                             </Link>
                         </div>
 
 
                         <div className="space-y-3">
-                            <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl lg:text-5xl">Forgot Password</h1>
+                            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl lg:text-5xl">{t("Forgot Password")}</h1>
                             <p className="text-sm sm:text-base text-muted-foreground font-medium max-w-xs mx-auto">
-                                We'll send a 6-digit code to your email
+                                {t("We'll send a 6-digit code to your email")}
                             </p>
                         </div>
                     </div>
@@ -128,13 +130,13 @@ export default function ForgotPasswordPage() {
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="space-y-5">
                                 <div className="space-y-2.5">
-                                    <Label htmlFor="email" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">Registered Email</Label>
+                                    <Label htmlFor="email" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">{t("Registered Email")}</Label>
                                     <div className="relative group">
                                         <Input
                                             id="email"
                                             type="email"
                                             required
-                                            placeholder="admin@pos.com"
+                                            placeholder={t("admin@pos.com")}
                                             className="h-14 pl-4 pr-4 border-muted-foreground/20 focus:border-primary focus:ring-primary/20 transition-all rounded-xl text-lg"
                                             value={email}
                                             onChange={(e) => setEmail(e.target.value)}
@@ -156,7 +158,7 @@ export default function ForgotPasswordPage() {
 
                     <div className="pt-4 text-center">
                         <p className="text-sm font-medium text-muted-foreground/60">
-                            Need help? Contact SMARTBUZ IT Support
+                            {t("Need help? Contact SMARTBUZ IT Support")}
                         </p>
                     </div>
                 </div>

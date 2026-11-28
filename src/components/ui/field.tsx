@@ -1,4 +1,6 @@
-"use client"
+"use client";
+
+import { useT } from "@/i18n/provider";
 
 import { useMemo } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -191,7 +193,8 @@ function FieldError({
 }: React.ComponentProps<"div"> & {
   errors?: Array<{ message?: string } | undefined>
 }) {
-  const content = useMemo(() => {
+  
+    const t = useT();const content = useMemo(() => {
     if (children) {
       return children
     }
@@ -212,7 +215,7 @@ function FieldError({
       <ul className="ml-4 flex list-disc flex-col gap-1">
         {uniqueErrors.map(
           (error, index) =>
-            error?.message && <li key={index}>{error.message}</li>
+            error?.message && <li key={index}>{t(error.message)}</li>
         )}
       </ul>
     )

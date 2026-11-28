@@ -58,6 +58,10 @@ export interface ActiveCategory {
 
 export function useActiveCategory(role?: string | null): ActiveCategory {
     const active = useQuery(api.businesses.getActive, {});
+    // The industry packages this business has switched on. Each one brings
+    // its own screens, so the menu follows what the business has chosen
+    // to trade in, not only what its vertical was set up as.
+    const enabledPackages = useQuery(api.packages.manage.listEnabledPackages, {});
     const profile = (active as ActiveCategory["profile"]) ?? null;
     const backendRole = (active as { role?: string } | undefined)?.role ?? null;
 
@@ -81,9 +85,30 @@ export function useActiveCategory(role?: string | null): ActiveCategory {
         });
     }, [profile]);
 
+    const packageModules = useMemo(() => {
+        const ids = new Set<string>();
+
+        // The business's own choice of screens, made on the settings
+        // screen. It is a choice on top of the vertical, not a replacement
+        // for it: a hotel that also runs a clinic keeps the front desk.
+        for (const moduleId of profile?.modules ?? []) ids.add(moduleId);
+
+        // And the screens the industry packages it has switched on bring.
+        for (const pkg of enabledPackages ?? []) {
+            for (const moduleId of pkg.modules) ids.add(moduleId);
+        }
+
+        return Array.from(ids);
+    }, [enabledPackages, profile?.modules]);
+
     const navigation = useMemo(
-        () => buildNavigation(category, effectiveRole ? [effectiveRole] : []),
-        [category, effectiveRole]
+        () =>
+            buildNavigation(
+                category,
+                effectiveRole ? [effectiveRole] : [],
+                packageModules
+            ),
+        [category, effectiveRole, packageModules]
     );
 
     const accent = useMemo(() => accentFor(category), [category]);

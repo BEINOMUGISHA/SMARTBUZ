@@ -24,9 +24,13 @@ export const viewport: Viewport = {
 import { SessionProvider } from "@/context/session-context";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
+import { ThemeProvider } from "@/components/theme-provider";
+import { cookies } from "next/headers";
+import { I18nProvider } from "@/i18n/provider";
+import { DEFAULT_LOCALE, isLocaleCode, LOCALE_COOKIE } from "@/i18n/locales";
 
 /**
- * The root layout carries the session and nothing else.
+ * The root layout carries the session and the language, and nothing else.
  *
  * The Convex client and the auth context used to live here, which meant the
  * sign-in route downloaded 24 KB gzipped of Convex client in order to let a
@@ -36,22 +40,34 @@ import { ServiceWorkerRegistration } from "@/components/service-worker-registrat
  *
  * The session itself stays here: it is a cookie, it is needed by every
  * route, and it costs nothing.
+ *
+ * The language is read from a cookie for the same reason the session is:
+ * the page has to be painted in the language the reader chose, and the
+ * server is the only thing that knows what to paint.
  */
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const store = await cookies();
+  const stored = store.get(LOCALE_COOKIE)?.value;
+  const locale = isLocaleCode(stored) ? stored : DEFAULT_LOCALE;
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body
         className="font-sans antialiased"
       >
-        <SessionProvider>
-          <ServiceWorkerRegistration />
-          {children}
-          <Toaster />
-        </SessionProvider>
+        <ThemeProvider>
+          <I18nProvider locale={locale}>
+            <SessionProvider>
+              <ServiceWorkerRegistration />
+              {children}
+              <Toaster />
+            </SessionProvider>
+          </I18nProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

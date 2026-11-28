@@ -38,6 +38,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { StatCard } from "@/components/app/page-shell";
 import {
     Table,
     TableBody,
@@ -57,7 +58,8 @@ import {
 } from "recharts";
 
 export default function DashboardPage() {
-    const { user, activeBusiness, can } = useAuth();
+    
+    const t = useT();const { user, activeBusiness, can } = useAuth();
 
     // The permissions are reported by the backend for the active business.
     // They decide what to *show* here; the backend enforces them regardless.
@@ -130,8 +132,8 @@ export default function DashboardPage() {
         return (
             <div className="flex h-[60vh] flex-col items-center justify-center gap-4 text-center">
                 <Store className="h-16 w-16 text-muted-foreground opacity-20" />
-                <h2 className="text-xl font-bold">No Shop Assigned</h2>
-                <p className="text-muted-foreground">You are currently not assigned to any shop branch.<br />Please contact an administrator.</p>
+                <h2 className="text-xl font-bold">{t("No Shop Assigned")}</h2>
+                <p className="text-muted-foreground">{t("You are currently not assigned to any shop branch.")}<br />{t("Please contact an administrator.")}</p>
             </div>
         )
     }
@@ -139,21 +141,37 @@ export default function DashboardPage() {
     return (
         <div className="space-y-6 lg:space-y-8">
             {/* Header / Welcome Section */}
-            <div className="flex flex-col gap-6 bg-card/50 p-4 lg:p-6 rounded-3xl border shadow-sm sticky top-0 z-30 backdrop-blur-md">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                            <Badge variant="outline" className={cn("border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest", accent.text)}>
-                                {isAdmin ? "Global Administrator" : `Sales Agent: ${myShop?.name}`}
+            <div className="flex flex-col gap-4 border-b border-border/60 pb-5">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                    <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                                variant="outline"
+                                className={cn(
+                                    "border-primary/20 bg-primary/5 px-2 py-0.5 text-eyebrow uppercase tracking-eyebrow",
+                                    accent.text
+                                )}
+                            >
+                                {isAdmin
+                                    ? "Global Administrator"
+                                    : `Sales Agent: ${myShop?.name}`}
                             </Badge>
-                            <Badge variant="outline" className={cn("px-2 py-0.5 text-[10px] font-black uppercase tracking-widest", accent.badge)}>
+                            <Badge
+                                variant="outline"
+                                className={cn(
+                                    "px-2 py-0.5 text-eyebrow uppercase tracking-eyebrow",
+                                    accent.badge
+                                )}
+                            >
                                 {category?.name}
                             </Badge>
                         </div>
-                        <h1 className="text-2xl font-black tracking-tight text-foreground md:text-3xl">
-                            {needsSetup ? "Welcome to SMART_BUZ" : `${category?.name ?? "Business"} Overview`}
+                        <h1 className="text-page-title text-foreground">
+                            {needsSetup
+                                ? "Welcome to SMART_BUZ"
+                                : `${category?.name ?? "Business"} Overview`}
                         </h1>
-                        <p className="text-xs font-medium text-muted-foreground md:text-sm">
+                        <p className="text-sm text-muted-foreground">
                             {needsSetup
                                 ? "Tell us what kind of business you run and we'll tailor the whole system for it."
                                 : `Analytics from ${format(date.from, "MMM dd")} — ${format(date.to, "MMM dd, yyyy")}`}
@@ -163,8 +181,8 @@ export default function DashboardPage() {
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                         {/* Range Control */}
                         <div className="flex flex-col gap-1.5 flex-1 sm:flex-none">
-                            <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1">
-                                Filter by Date Range
+                            <label className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground ml-1">
+                                {t("Filter by Date Range")}
                             </label>
                             <Popover>
                                 <PopoverTrigger asChild>
@@ -172,7 +190,7 @@ export default function DashboardPage() {
                                         id="date"
                                         variant={"outline"}
                                         className={cn(
-                                            "h-10 justify-start text-left font-bold transition-all border-2 w-full sm:w-[240px] border-sidebar-border bg-card shadow-sm text-xs"
+                                            "h-10 justify-start text-left font-medium transition-all w-full sm:w-[240px] bg-card shadow-sm text-xs"
                                         )}
                                     >
                                         <CalendarIcon className="mr-2 h-3.5 w-3.5 text-primary" />
@@ -201,20 +219,20 @@ export default function DashboardPage() {
             <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-emerald-950 via-slate-900 to-primary text-white shadow-xl min-h-[140px] flex items-center p-6 lg:p-8">
                 <Image
                     src="/images/pos-hero.jpg"
-                    alt="POS Hero"
+                    alt={t("POS Hero")}
                     fill
                     className="object-cover opacity-25 mix-blend-overlay pointer-events-none"
                     priority
                 />
                 <div className="relative z-10 max-w-xl space-y-2">
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-bold text-emerald-300 border border-white/15">
-                        <Sparkles className="h-3.5 w-3.5" /> Next-Gen Multi-Niche POS
+                        <Sparkles className="h-3.5 w-3.5" /> {t("Next-Gen Multi-Niche POS")}
                     </div>
-                    <h2 className="text-xl lg:text-2xl font-black tracking-tight">
-                        Welcome back, {user?.first_name || "Manager"}
+                    <h2 className="text-xl lg:text-2xl font-semibold tracking-tight">
+                        {t("Welcome back,")} {user?.first_name || "Manager"}
                     </h2>
                     <p className="text-xs lg:text-sm text-white/80 line-clamp-2">
-                        Real-time point-of-sale, intelligent inventory tracking, automated commissions, and multi-branch synchronization.
+                        {t("Real-time point-of-sale, intelligent inventory tracking, automated commissions, and multi-branch synchronization.")}
                     </p>
                 </div>
             </div>
@@ -227,16 +245,15 @@ export default function DashboardPage() {
                             <Store className="h-7 w-7" />
                         </div>
                         <div className="flex-1 space-y-1">
-                            <h3 className="text-xl font-black tracking-tight">
-                                Tailor SMART_BUZ to your trade
+                            <h3 className="text-xl font-semibold tracking-tight">
+                                {t("Tailor SMART_BUZ to your trade")}
                             </h3>
                             <p className="text-sm text-muted-foreground">
-                                Pick your business type and we&apos;ll set up the right modules,
-                                VAT handling, receipt format and starter stock for it.
+                                {t("Pick your business type and we&apos;ll set up the right modules, VAT handling, receipt format and starter stock for it.")}
                             </p>
                         </div>
                         <Button size="lg" className="shrink-0" asChild>
-                            <Link href="/setup">Choose my business</Link>
+                            <Link href="/setup">{t("Choose my business")}</Link>
                         </Button>
                     </div>
                 </div>
@@ -258,9 +275,9 @@ export default function DashboardPage() {
                     <Card>
                         <CardContent className="flex flex-col items-center gap-2 p-10 text-center">
                             <AlertTriangle className="h-10 w-10 text-muted-foreground opacity-30" />
-                            <p className="font-bold">No dashboard for your role</p>
+                            <p className="font-bold">{t("No dashboard for your role")}</p>
                             <p className="text-sm text-muted-foreground">
-                                Ask an administrator if you need to see the business figures.
+                                {t("Ask an administrator if you need to see the business figures.")}
                             </p>
                         </CardContent>
                     </Card>
@@ -279,31 +296,37 @@ export default function DashboardPage() {
  * cannot disagree.
  */
 function TodayPanel({ dashboard }: { dashboard: any }) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const chart = dashboard.chartData ?? [];
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
-                    title="Today's sales"
+                    title={t("Today's sales")}
                     value={`${currency} ${(dashboard.today?.revenue ?? 0).toLocaleString()}`}
                     icon={TrendingUp}
                     iconClassName="text-emerald-600 dark:text-emerald-400"
-                    description={`${dashboard.today?.transactions ?? 0} transaction(s)`}
+                    description={t("{0} transaction(s)", {
+            0: dashboard.today?.transactions ?? 0,
+        })}
                 />
                 <KpiCard
-                    title="Gross profit"
+                    title={t("Gross profit")}
                     value={`${currency} ${(dashboard.today?.grossProfit ?? 0).toLocaleString()}`}
                     icon={ShoppingCart}
                     iconClassName="text-emerald-600 dark:text-emerald-400"
-                    description={`Cost of goods sold ${currency} ${Math.max(
+                    description={t("Cost of goods sold {0} {1}", {
+            0: currency,
+            1: Math.max(
                         0,
                         (dashboard.today?.revenue ?? 0) - (dashboard.today?.grossProfit ?? 0)
-                    ).toLocaleString()}`}
+                    ).toLocaleString(),
+        })}
                 />
                 <KpiCard
-                    title="Net profit"
+                    title={t("Net profit")}
                     value={`${currency} ${(dashboard.today?.netProfit ?? 0).toLocaleString()}`}
                     icon={TrendingUp}
                     iconClassName={
@@ -311,12 +334,15 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                             ? "text-emerald-600 dark:text-emerald-400"
                             : "text-destructive"
                     }
-                    description={`Running costs ${currency} ${(
+                    description={t("Running costs {0} {1}", {
+            0: currency,
+            1: (
                         dashboard.today?.operatingExpenses ?? 0
-                    ).toLocaleString()}`}
+                    ).toLocaleString(),
+        })}
                 />
                 <KpiCard
-                    title="Owed to you"
+                    title={t("Owed to you")}
                     value={`${currency} ${(dashboard.balances?.receivables ?? 0).toLocaleString()}`}
                     icon={CreditCard}
                     iconClassName={
@@ -324,9 +350,12 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                             ? "text-amber-600 dark:text-amber-400"
                             : "text-muted-foreground"
                     }
-                    description={`Suppliers are owed ${currency} ${(
+                    description={t("Suppliers are owed {0} {1}", {
+            0: currency,
+            1: (
                         dashboard.balances?.payables ?? 0
-                    ).toLocaleString()}`}
+                    ).toLocaleString(),
+        })}
                 />
             </div>
 
@@ -335,14 +364,14 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
                             <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                            The last fortnight
+                            {t("The last fortnight")}
                         </CardTitle>
-                        <CardDescription>Revenue and gross profit, day by day</CardDescription>
+                        <CardDescription>{t("Revenue and gross profit, day by day")}</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {chart.length === 0 ? (
                             <p className="py-10 text-center text-sm text-muted-foreground">
-                                Nothing sold yet.
+                                {t("Nothing sold yet.")}
                             </p>
                         ) : (
                             <div className="h-[240px] w-full">
@@ -393,12 +422,12 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-base">Best sellers today</CardTitle>
+                        <CardTitle className="text-base">{t("Best sellers today")}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {(dashboard.bestSellers ?? []).length === 0 ? (
                             <p className="py-8 text-center text-sm text-muted-foreground">
-                                Nothing sold yet today.
+                                {t("Nothing sold yet today.")}
                             </p>
                         ) : (
                             <ul className="divide-y">
@@ -411,10 +440,10 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                                             {product.name}
                                         </span>
                                         <span className="shrink-0 text-right">
-                                            <span className="font-black tabular-nums">
+                                            <span className="font-semibold tabular-nums">
                                                 {product.quantity}
                                             </span>
-                                            <span className="block text-[10px] text-muted-foreground">
+                                            <span className="block text-xs text-muted-foreground">
                                                 {currency} {product.revenue.toLocaleString()}
                                             </span>
                                         </span>
@@ -431,13 +460,13 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
                             <AlertTriangle className="h-4 w-4 text-amber-600" />
-                            Running out
+                            {t("Running out")}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {(dashboard.lowStock ?? []).length === 0 ? (
                             <p className="py-8 text-center text-sm text-muted-foreground">
-                                Nothing is running low.
+                                {t("Nothing is running low.")}
                             </p>
                         ) : (
                             <ul className="divide-y">
@@ -451,7 +480,7 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                                         </span>
                                         <Badge
                                             variant="outline"
-                                            className="shrink-0 border-amber-300 text-[10px] font-bold text-amber-700"
+                                            className="shrink-0 border-amber-300 text-xs font-bold text-amber-700"
                                         >
                                             {stock.qty} left
                                         </Badge>
@@ -466,13 +495,13 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
                             <History className="h-4 w-4 text-muted-foreground" />
-                            Recent transactions
+                            {t("Recent transactions")}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {(dashboard.recentTransactions ?? []).length === 0 ? (
                             <p className="py-8 text-center text-sm text-muted-foreground">
-                                No sales yet today.
+                                {t("No sales yet today.")}
                             </p>
                         ) : (
                             <ul className="divide-y">
@@ -482,15 +511,15 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
                                         className="flex items-center justify-between py-2 text-sm"
                                     >
                                         <span className="min-w-0">
-                                            <span className="block truncate font-mono text-[11px] font-bold text-muted-foreground">
+                                            <span className="block truncate font-mono text-xs font-bold text-muted-foreground">
                                                 {sale.invoiceNumber ?? "—"}
                                             </span>
-                                            <span className="text-[11px] text-muted-foreground">
+                                            <span className="text-xs text-muted-foreground">
                                                 {sale.paymentMode}
                                                 {sale.isCredit ? " · on credit" : ""}
                                             </span>
                                         </span>
-                                        <span className="shrink-0 font-black tabular-nums">
+                                        <span className="shrink-0 font-semibold tabular-nums">
                                             {currency} {sale.total.toLocaleString()}
                                         </span>
                                     </li>
@@ -505,7 +534,8 @@ function TodayPanel({ dashboard }: { dashboard: any }) {
 }
 
 function AdminDashboard({ stats }: { stats: any }) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const lowStock = useQuery(api.dashboard.getGlobalLowStock, {});
 
     return (
@@ -513,34 +543,34 @@ function AdminDashboard({ stats }: { stats: any }) {
             {/* KPI Cards Grid */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
-                    title="Gross Revenue"
+                    title={t("Gross Revenue")}
                     value={`${currency} ${stats.totalRevenue.toLocaleString()}`}
                     icon={CreditCard}
-                    description="Total sales in selected period"
+                    description={t("Total sales in selected period")}
                     className="bg-primary hover:scale-[1.02] transition-transform text-primary-foreground border-none"
                     iconClassName="text-primary-foreground/40"
                 />
                 <KpiCard
-                    title="Active Orders"
+                    title={t("Active Orders")}
                     value={stats.totalOrders.toLocaleString()}
                     icon={ShoppingCart}
-                    description="Successfully processed"
+                    description={t("Successfully processed")}
                     className="bg-card hover:border-sidebar-primary/30 transition-colors"
                     iconClassName="text-blue-500"
                 />
                 <KpiCard
-                    title="Client Base"
+                    title={t("Client Base")}
                     value={stats.totalCustomers.toLocaleString()}
                     icon={Users}
-                    description="Total registered distributors"
+                    description={t("Total registered distributors")}
                     className="bg-card hover:border-sidebar-primary/30 transition-colors"
                     iconClassName="text-purple-500"
                 />
                 <KpiCard
-                    title="Low Stock Alert"
+                    title={t("Low Stock Alert")}
                     value={stats.lowStockCount.toLocaleString()}
                     icon={AlertTriangle}
-                    description="Items below HQ threshold"
+                    description={t("Items below HQ threshold")}
                     trend={stats.lowStockCount > 0 ? "Check restock list" : "Healthy"}
                     trendUp={stats.lowStockCount === 0}
                     className="bg-card hover:border-sidebar-primary/30 transition-colors"
@@ -553,8 +583,8 @@ function AdminDashboard({ stats }: { stats: any }) {
                 <Card className="lg:col-span-4 shadow-sm border-sidebar-border/50">
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
-                            <CardTitle>Global Performance</CardTitle>
-                            <CardDescription>Visualizing revenue distribution</CardDescription>
+                            <CardTitle>{t("Global Performance")}</CardTitle>
+                            <CardDescription>{t("Visualizing revenue distribution")}</CardDescription>
                         </div>
                         <TrendingUp className="h-5 w-5 text-muted-foreground opacity-50" />
                     </CardHeader>
@@ -564,7 +594,7 @@ function AdminDashboard({ stats }: { stats: any }) {
                                 <div className="h-full flex items-center justify-center rounded-xl bg-muted/20 border-2 border-dashed border-muted group overflow-hidden">
                                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                         <TrendingUp className="h-10 w-10 opacity-40 animate-pulse text-primary" />
-                                        <span className="text-sm font-bold uppercase tracking-widest text-primary/60">No data for selected range</span>
+                                        <span className="text-sm font-bold uppercase tracking-widest text-primary/60">{t("No data for selected range")}</span>
                                     </div>
                                 </div>
                             ) : (
@@ -595,8 +625,8 @@ function AdminDashboard({ stats }: { stats: any }) {
                                                 if (active && payload && payload.length) {
                                                     return (
                                                         <div className="bg-background border rounded-lg shadow-xl p-3 border-primary/20">
-                                                            <p className="text-xs font-black text-muted-foreground uppercase">{format(new Date(payload[0].payload.date), "MMMM d, yyyy")}</p>
-                                                            <p className="text-lg font-black text-primary">{currency} {Number(payload[0].value).toLocaleString()}</p>
+                                                            <p className="text-xs font-semibold text-muted-foreground uppercase">{format(new Date(payload[0].payload.date), "MMMM d, yyyy")}</p>
+                                                            <p className="text-lg font-semibold text-primary">{currency} {Number(payload[0].value).toLocaleString()}</p>
                                                         </div>
                                                     );
                                                 }
@@ -624,9 +654,9 @@ function AdminDashboard({ stats }: { stats: any }) {
                         <div>
                             <CardTitle className="flex items-center gap-2">
                                 <AlertTriangle className="h-4 w-4 text-orange-500" />
-                                Critical Low Stock
+                                {t("Critical Low Stock")}
                             </CardTitle>
-                            <CardDescription>Top 10 HQ restock priorities</CardDescription>
+                            <CardDescription>{t("Top 10 HQ restock priorities")}</CardDescription>
                         </div>
                         <PackageSearch className="h-4 w-4 text-muted-foreground opacity-30" />
                     </CardHeader>
@@ -635,7 +665,7 @@ function AdminDashboard({ stats }: { stats: any }) {
                             {!lowStock ? (
                                 Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)
                             ) : lowStock.length === 0 ? (
-                                <p className="text-sm text-muted-foreground text-center py-8">All stock levels are healthy</p>
+                                <p className="text-sm text-muted-foreground text-center py-8">{t("All stock levels are healthy")}</p>
                             ) : (
                                 <Table>
                                     <TableBody>
@@ -645,7 +675,7 @@ function AdminDashboard({ stats }: { stats: any }) {
                                                     {item.name}
                                                 </TableCell>
                                                 <TableCell className="text-right py-1">
-                                                    <Badge variant={item.qty <= 5 ? "destructive" : "secondary"} className="font-black">
+                                                    <Badge variant={item.qty <= 5 ? "destructive" : "secondary"} className="font-semibold">
                                                         {item.qty} left
                                                     </Badge>
                                                 </TableCell>
@@ -662,13 +692,13 @@ function AdminDashboard({ stats }: { stats: any }) {
             {/* Recent Sales List */}
             <Card className="shadow-sm border-sidebar-border/50">
                 <CardHeader>
-                    <CardTitle>Global Recent Sales</CardTitle>
-                    <CardDescription>Latest transactions across all branches</CardDescription>
+                    <CardTitle>{t("Global Recent Sales")}</CardTitle>
+                    <CardDescription>{t("Latest transactions across all branches")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                         {stats.recentSales.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-8 col-span-full font-bold uppercase tracking-widest opacity-20">No recent transactions in this range</p>
+                            <p className="text-sm text-muted-foreground text-center py-8 col-span-full font-bold uppercase tracking-widest opacity-20">{t("No recent transactions in this range")}</p>
                         ) : (
                             stats.recentSales.map((sale: any) => (
                                 <div key={sale._id} className="flex items-center justify-between p-3 rounded-xl hover:bg-muted/50 border bg-card/30 border-sidebar-border/20 transition-all hover:shadow-md">
@@ -677,11 +707,11 @@ function AdminDashboard({ stats }: { stats: any }) {
                                             <ArrowUpRight className="h-5 w-5" />
                                         </div>
                                         <div className="space-y-0.5">
-                                            <p className="text-sm font-black leading-none">{sale.customerName}</p>
-                                            <p className="text-[10px] text-muted-foreground font-mono">{format(new Date(sale.date), "MMM d, h:mm a")}</p>
+                                            <p className="text-sm font-semibold leading-none">{sale.customerName}</p>
+                                            <p className="text-xs text-muted-foreground font-mono">{format(new Date(sale.date), "MMM d, h:mm a")}</p>
                                         </div>
                                     </div>
-                                    <div className="font-black text-sm text-primary">
+                                    <div className="font-semibold text-sm text-primary">
                                         + {sale.amount.toLocaleString()}
                                     </div>
                                 </div>
@@ -695,42 +725,45 @@ function AdminDashboard({ stats }: { stats: any }) {
 }
 
 function SalesDashboard({ stats, myShop }: { stats: any, myShop: any }) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* KPI Cards Grid */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
-                    title="My Shop Revenue"
+                    title={t("My Shop Revenue")}
                     value={`${currency} ${stats.totalRevenue.toLocaleString()}`}
                     icon={CreditCard}
-                    description="Total sales from your assigned branch"
+                    description={t("Total sales from your assigned branch")}
                     className="bg-orange-500 hover:scale-[1.02] transition-transform text-white border-none"
                     iconClassName="text-white/40"
                 />
                 <KpiCard
-                    title="Shop Orders"
+                    title={t("Shop Orders")}
                     value={stats.totalOrders.toLocaleString()}
                     icon={ShoppingCart}
-                    description="Orders processed by you"
+                    description={t("Orders processed by you")}
                     className="bg-card"
                     iconClassName="text-blue-500"
                 />
                 <KpiCard
-                    title="Shop Stock Alerts"
+                    title={t("Shop Stock Alerts")}
                     value={stats.lowStockCount.toLocaleString()}
                     icon={AlertTriangle}
-                    description="Items low in your local branch"
+                    description={t("Items low in your local branch")}
                     trend={stats.lowStockCount > 10 ? "Restock soon" : "Healthy"}
                     trendUp={stats.lowStockCount < 10}
                     className="bg-card"
                     iconClassName={stats.lowStockCount > 5 ? "text-orange-500" : "text-green-500"}
                 />
                 <KpiCard
-                    title="Shop Performance"
+                    title={t("Shop Performance")}
                     value="Active"
                     icon={TrendingUp}
-                    description={`Connected to ${myShop?.name}`}
+                    description={t("Connected to {0}", {
+            0: myShop?.name,
+        })}
                     className="bg-card"
                     iconClassName="text-primary"
                 />
@@ -739,24 +772,24 @@ function SalesDashboard({ stats, myShop }: { stats: any, myShop: any }) {
             {/* Sales Specific Content */}
             <Card className="shadow-sm border-sidebar-border/50">
                 <CardHeader>
-                    <CardTitle>Your Recent Transactions</CardTitle>
-                    <CardDescription>Manage your daily sales history</CardDescription>
+                    <CardTitle>{t("Your Recent Transactions")}</CardTitle>
+                    <CardDescription>{t("Manage your daily sales history")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="rounded-xl border border-sidebar-border/30 overflow-hidden">
                         <Table>
                             <TableHeader className="bg-muted/30">
                                 <TableRow>
-                                    <TableHead className="font-bold">Customer</TableHead>
-                                    <TableHead className="font-bold">Time</TableHead>
-                                    <TableHead className="text-right font-bold">Total ({currency})</TableHead>
+                                    <TableHead className="font-bold">{t("Customer")}</TableHead>
+                                    <TableHead className="font-bold">{t("Time")}</TableHead>
+                                    <TableHead className="text-right font-bold">{t("Total (")}{currency})</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {stats.recentSales.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={3} className="h-32 text-center text-muted-foreground font-bold uppercase tracking-widest opacity-20">
-                                            No sales recorded in this period
+                                            {t("No sales recorded in this period")}
                                         </TableCell>
                                     </TableRow>
                                 ) : (
@@ -766,7 +799,7 @@ function SalesDashboard({ stats, myShop }: { stats: any, myShop: any }) {
                                             <TableCell className="text-xs text-muted-foreground font-mono">
                                                 {format(new Date(sale.date), "HH:mm")}
                                             </TableCell>
-                                            <TableCell className="text-right font-black text-primary">
+                                            <TableCell className="text-right font-semibold text-primary">
                                                 {sale.amount.toLocaleString()}
                                             </TableCell>
                                         </TableRow>
@@ -782,8 +815,17 @@ function SalesDashboard({ stats, myShop }: { stats: any, myShop: any }) {
 }
 
 import { Store } from "lucide-react";
+import { useT } from "@/i18n/provider";
 import { useCurrency } from "@/hooks/use-currency"; // Added missing import
 
+/**
+ * The dashboard's KPI card.
+ *
+ * It is now the shared `StatCard` from the page shell, so the numbers on the
+ * home screen are laid out exactly like the numbers on every other screen.
+ * The one card that is filled with the brand colour keeps its own treatment
+ * so the day's revenue still stands out from the rest.
+ */
 function KpiCard({
     title,
     value,
@@ -803,37 +845,45 @@ function KpiCard({
     className?: string;
     iconClassName?: string;
 }) {
+    
+    const t = useT();const highlighted = Boolean(
+        className?.includes("text-primary-foreground")
+    );
+
+    if (highlighted) {
+        return (
+            <Card
+                className={`shadow-sm overflow-hidden relative border-none bg-primary text-primary-foreground ${className ?? ""}`}
+            >
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+                    <CardTitle className="text-eyebrow uppercase tracking-eyebrow text-primary-foreground/90">
+                        {title}
+                    </CardTitle>
+                    <Icon className={`size-4 ${iconClassName ?? ""}`} />
+                </CardHeader>
+                <CardContent className="relative z-10">
+                    <div className="text-stat tabular-nums">{value}</div>
+                    <p className="mt-1 text-xs text-primary-foreground/80">
+                        {description}
+                    </p>
+                    {trend ? (
+                        <div className="mt-2 flex items-center gap-1 text-xs font-medium text-primary-foreground">
+                            {trend}
+                        </div>
+                    ) : null}
+                </CardContent>
+            </Card>
+        );
+    }
+
     return (
-        <Card className={`shadow-sm border-sidebar-border/50 overflow-hidden relative ${className}`}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                <CardTitle className={`text-sm font-medium ${className?.includes('text-primary-foreground') ? 'text-primary-foreground/90' : 'text-muted-foreground'}`}>
-                    {title}
-                </CardTitle>
-                <Icon className={`h-4 w-4 ${iconClassName}`} />
-            </CardHeader>
-            <CardContent className="relative z-10">
-                <div className="text-2xl font-bold tracking-tight">{value}</div>
-                <p className={`text-xs mt-1 ${className?.includes('text-primary-foreground') ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                    {description}
-                </p>
-                {trend && (
-                    <div className={`absolute bottom-4 right-4 text-xs font-medium flex items-center gap-1 
-                        ${className?.includes('text-primary-foreground')
-                            ? 'text-primary-foreground'
-                            : trendUp ? 'text-green-600' : 'text-red-500'
-                        }`}
-                    >
-                        {trend}
-                    </div>
-                )}
-            </CardContent>
-            {/* Background decoration for plain cards */}
-            {!className?.includes('bg-gradient') && (
-                <div className="absolute -right-6 -bottom-6 opacity-[0.03]">
-                    <Icon className="h-32 w-32" />
-                </div>
-            )}
-        </Card>
+        <StatCard
+            label={title}
+            value={value}
+            hint={description}
+            icon={Icon}
+            tone={trendUp === false ? "danger" : "default"}
+        />
     );
 }
 

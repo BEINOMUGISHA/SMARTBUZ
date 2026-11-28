@@ -1163,6 +1163,12 @@ export const getInvoice = query({
  * The stock goes back out, the supplier's account is credited, and the
  * order and invoice lines record how much has been returned so the same
  * goods cannot be returned twice.
+ *
+ * The credit is worked out here, not in the browser. How much may be
+ * returned is limited by what was actually received on the order line, and
+ * what it is worth is the price this business paid — so a tampered client
+ * can neither return goods it never bought nor price them at its own
+ * convenience.
  */
 export const createPurchaseReturn = mutation({
   args: {
@@ -1176,7 +1182,14 @@ export const createPurchaseReturn = mutation({
         name: v.string(),
         productCode: v.optional(v.string()),
         quantity: v.number(),
-        unitCost: v.number(),
+        /**
+         * The price the browser thinks the goods cost.
+         *
+         * The credit is priced by the server, from the price this business
+         * actually paid, so this figure is not used. It is still accepted so
+         * an older caller does not break.
+         */
+        unitCost: v.optional(v.number()),
       })
     ),
     notes: v.optional(v.string()),
@@ -1234,9 +1247,10 @@ export const createPurchaseReturn = mutation({
       }
 
       // The order line must have been received first.
+      let line: PurchaseLine | undefined;
       if (order) {
         const lines = order.items as PurchaseLine[];
-        const line = lines.find(
+        line = lines.find(
           (l) =>
             (l.stockId && l.stockId === item.stockId) ||
             l.name === item.name
@@ -1257,6 +1271,14 @@ export const createPurchaseReturn = mutation({
         }
       }
 
+      // The credit is priced here, on the server, from the price this
+      // business actually paid — the order line when the return is against
+      // an order, the product's own last purchase price otherwise. The
+      // browser's figure is never used: a tampered client could otherwise
+      // credit itself a million for a tin of milk.
+      const unitCost = line ? line.unitCost : stock.purchasePrice;
+      const name = line?.name ?? stock.name;
+
       await ctx.db.patch(stock._id, { qty: stock.qty - item.quantity });
 
       await ctx.db.insert("stockLedger", {
@@ -1273,13 +1295,13 @@ export const createPurchaseReturn = mutation({
 
       returnItems.push({
         stockId: item.stockId,
-        name: item.name,
-        productCode: item.productCode ?? stock.productCode,
+        name,
+        productCode: stock.productCode,
         quantity: item.quantity,
-        unitCost: item.unitCost,
+        unitCost,
       });
 
-      total += item.quantity * item.unitCost;
+      total += item.quantity * unitCost;
     }
 
     const returnNumber = await nextNumber(ctx, businessId, "purchase_return", "PR");
@@ -1383,6 +1405,8 @@ export const createPurchaseReturn = mutation({
 export const listPurchaseReturns = query({
   args: {
     supplierId: v.optional(v.id("suppliers")),
+    /** The returns made against one purchase order. */
+    purchaseOrderId: v.optional(v.id("purchaseOrders")),
     limit: v.optional(v.number()),
     businessId: v.optional(v.id("businesses")),
   },
@@ -1399,6 +1423,11 @@ export const listPurchaseReturns = query({
     let filtered = returns;
     if (args.supplierId) {
       filtered = filtered.filter((r) => r.supplierId === args.supplierId);
+    }
+    if (args.purchaseOrderId) {
+      filtered = filtered.filter(
+        (r) => r.purchaseOrderId === args.purchaseOrderId
+      );
     }
 
     filtered.sort((a, b) => b.date.localeCompare(a.date));
@@ -1474,6 +1503,17 @@ export const getCostHistory = query({
       byStock.set(key, list);
     }
 
+    // The price that applies now: the cost of the most recent purchase of
+    // each product. The rows are in date order, newest first, so the first
+    // row seen for a product is the one that holds today.
+    const currentCostByStock: Record<string, number> = {};
+    for (const row of filtered) {
+      const key = row.stockId as string;
+      if (currentCostByStock[key] === undefined) {
+        currentCostByStock[key] = row.unitCost;
+      }
+    }
+
     return {
       page: filtered.slice(0, limit),
       totalCount: filtered.length,
@@ -1483,6 +1523,7 @@ export const getCostHistory = query({
           costs.reduce((sum, c) => sum + c, 0) / costs.length,
         ])
       ),
+      currentCostByStock,
     };
   },
 });

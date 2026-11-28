@@ -1330,3 +1330,123 @@ export async function applySale(
         clientTotal: offline && totalDiffers ? args.total : undefined,
     };
 }
+
+/* ───────────────────────── refunds ───────────────────────── */
+
+/** A line an operator wants money back for. */
+export interface RefundLineRequest {
+    stockId: Id<"stocks">;
+    quantity: number;
+}
+
+/** One line of a refund, priced by the server. */
+export interface RefundQuoteLine {
+    stockId: Id<"stocks">;
+    name: string;
+    productCode?: string;
+    quantity: number;
+    amount: number;
+}
+
+/**
+ * What a refund is worth, worked out on the server.
+ *
+ * The browser never sends an amount. It asks what a set of lines would
+ * cost, and the server answers from the prices that were actually charged
+ * on the sale, so the figure the operator confirms is the figure the
+ * refund will actually make.
+ */
+export interface RefundQuote {
+    lines: RefundQuoteLine[];
+    /** What this refund is worth. */
+    refundAmount: number;
+    /** What the sale will have been refunded in total once this goes through. */
+    totalRefunded: number;
+    /** Whether this refund empties the sale. */
+    fullyRefunded: boolean;
+}
+
+/**
+ * How much of a sold line is still refundable.
+ *
+ * A line can be refunded in parts, and a second refund of the same line
+ * continues where the first one stopped.
+ */
+export function refundableQuantity(
+    sale: Doc<"sales">,
+    stockId: Id<"stocks">
+): number {
+    const sold = sale.items.find((i) => i.stockId === stockId);
+    if (!sold) return 0;
+    const already = (sale.refundedItems ?? [])
+        .filter((i) => i.stockId === stockId)
+        .reduce((sum, i) => sum + i.quantity, 0);
+    return Math.max(0, sold.quantity - already);
+}
+
+/**
+ * Price a refund, without making it.
+ *
+ * This is the same arithmetic the refund itself uses: the price charged on
+ * the sale, multiplied by the quantity being refunded, with the same
+ * "you may only refund what is left" rule. It exists so the operator can be
+ * shown a real amount before they authorise it — the amount they see is the
+ * amount the refund will make.
+ */
+export function quoteRefundLines(
+    sale: Doc<"sales">,
+    requested: RefundLineRequest[]
+): RefundQuote {
+    const alreadyRefunded = new Map<string, number>();
+    for (const item of sale.refundedItems ?? []) {
+        alreadyRefunded.set(
+            item.stockId,
+            (alreadyRefunded.get(item.stockId) ?? 0) + item.quantity
+        );
+    }
+
+    const lines: RefundQuoteLine[] = [];
+    let refundAmount = 0;
+
+    for (const line of requested) {
+        if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
+            throw new ConvexError("Refund quantities must be positive.");
+        }
+
+        const soldLine = sale.items.find((i) => i.stockId === line.stockId);
+        if (!soldLine) {
+            throw new ConvexError(
+                "Forbidden: that product was not on this sale."
+            );
+        }
+
+        const already = alreadyRefunded.get(line.stockId) ?? 0;
+        if (already + line.quantity > soldLine.quantity) {
+            throw new ConvexError(
+                `Cannot refund ${line.quantity} of ${soldLine.name} - only ${
+                    soldLine.quantity - already
+                } remain on this sale.`
+            );
+        }
+
+        const amount = soldLine.price * line.quantity;
+        refundAmount += amount;
+
+        lines.push({
+            stockId: line.stockId,
+            name: soldLine.name,
+            productCode: soldLine.productCode,
+            quantity: line.quantity,
+            amount,
+        });
+    }
+
+    const totalRefunded = (sale.refundAmount ?? 0) + refundAmount;
+
+    return {
+        lines,
+        refundAmount,
+        totalRefunded,
+        fullyRefunded: totalRefunded >= sale.total,
+    };
+}

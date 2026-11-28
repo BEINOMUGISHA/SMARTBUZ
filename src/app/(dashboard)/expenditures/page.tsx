@@ -1,17 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
+/**
+ * SMART_BUZ — Expenditures.
+ *
+ * What the business spends money on. The screen is built from the shared
+ * shell — header, figures, one table — so it sits next to the finance
+ * screens instead of beside a different product.
+ *
+ * The figure the operator cares about is the total *for the period they
+ * chose*, so the totals are read from the server's own statistics for that
+ * same window rather than added up on the screen.
+ */
+
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
 import { useAuth } from "@/context/auth-context";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+} from "@/components/ui/sheet";
 import {
     Dialog,
     DialogContent,
@@ -20,21 +37,28 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-} from "@/components/ui/sheet";
-import { Loader2, Plus, Trash2, Pencil, Search, Calendar, FileSpreadsheet, FileText, Eye } from "lucide-react";
+import { Plus, Search, Calendar, Wallet, Receipt, Tags, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth, endOfDay, startOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/date-range-picker";
-import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
 import { describeError } from "@/components/error-feedback";
 import { useCurrency } from "@/hooks/use-currency";
+import {
+    PageContainer,
+    PageHeader,
+    StatGrid,
+    StatCard,
+    SectionCard,
+    Toolbar,
+    ToolbarGroup,
+    CountBadge,
+} from "@/components/app/page-shell";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTableExport } from "@/components/app/data-table-export";
+import { ConfirmDeleteDialog, RecordActions } from "@/components/vertical/ui-kit";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useT } from "@/i18n/provider";
 
 type ExpenseForm = {
     amount: string;
@@ -58,7 +82,8 @@ const EXPENSE_TYPES = [
 ];
 
 export default function ExpendituresPage() {
-    const { currency } = useCurrency();
+    
+    const tr = useT();const { currency } = useCurrency();
     const { user } = useAuth();
     const [dateMode, setDateMode] = useState<"audit" | "range">("audit");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
@@ -81,6 +106,9 @@ export default function ExpendituresPage() {
         date: new Date().toISOString().split("T")[0],
     });
 
+    // Deletion is confirmed, not assumed.
+    const [pendingDeleteId, setPendingDeleteId] = useState<Id<"expenses"> | null>(null);
+
     // View Details state
     const [viewingExpenseId, setViewingExpenseId] = useState<Id<"expenses"> | null>(null);
     const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
@@ -99,18 +127,26 @@ export default function ExpendituresPage() {
     const updateExpense = useMutation(api.expenses.update);
     const removeExpense = useMutation(api.expenses.remove);
 
-    // Filter expenses
-    const filteredExpenses = (expenses || []).filter((e) => {
-        const matchesSearch = searchTerm === "" || 
-            e.expense.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            e.receivedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            e.type.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesType = filterType === "All" || e.type === filterType;
-        return matchesSearch && matchesType;
-    });
+    // The search box is local, so the typing does not wait for the server.
+    const debouncedSearch = useDebouncedValue(searchTerm, 200);
+
+    const filteredExpenses = useMemo(() => {
+        const rows = expenses || [];
+        const term = debouncedSearch.trim().toLowerCase();
+        return rows.filter((e: any) => {
+            const matchesSearch =
+                term === "" ||
+                e.expense.toLowerCase().includes(term) ||
+                e.receivedBy.toLowerCase().includes(term) ||
+                e.type.toLowerCase().includes(term);
+            const matchesType = filterType === "All" || e.type === filterType;
+            return matchesSearch && matchesType;
+        });
+    }, [expenses, debouncedSearch, filterType]);
 
     const totalAmount = stats?.total || 0;
     const totalCount = stats?.count || 0;
+    const categoryCount = Object.keys(stats?.byType || {}).length;
 
     const handleSave = async () => {
         if (!user) return;
@@ -158,13 +194,12 @@ export default function ExpendituresPage() {
         }
     };
 
-    const handleDelete = async (id: Id<"expenses">) => {
-        if (!user) return;
-        if (!confirm("Are you sure you want to delete this expense?")) return;
-
+    const handleDelete = async () => {
+        if (!user || !pendingDeleteId) return;
         try {
-            await removeExpense({ id, userId: user._id });
+            await removeExpense({ id: pendingDeleteId, userId: user._id });
             toast.success("Expense deleted successfully");
+            setPendingDeleteId(null);
         } catch (error) {
             console.error(error);
             toast.error(describeError(error, "The expense could not be deleted."));
@@ -215,227 +250,228 @@ export default function ExpendituresPage() {
         setEditingExpense(null);
     };
 
-    // Export handlers
-    const handleExportExcel = () => {
-        const columns = [
-            { header: "Date", accessor: (e: any) => format(new Date(e.date), "MMM dd, yyyy") },
-            { header: "Expense", accessor: "expense" },
-            { header: "Type", accessor: "type" },
-            { header: "Received By", accessor: "receivedBy" },
-            { header: `Amount (${currency})`, accessor: (e: any) => e.amount.toLocaleString() },
-        ];
-        exportToExcel(filteredExpenses, columns, `Expenditures_${format(new Date(), "yyyy-MM-dd")}`);
-    };
+    const columns: DataTableColumn<any>[] = [
+        {
+            id: "date",
+            header: "Date",
+            accessor: (row) => row.date,
+            cell: (row) => (
+                <span className="font-medium tabular-nums">
+                    {format(new Date(row.date), "MMM dd, yyyy")}
+                </span>
+            ),
+        },
+        {
+            id: "expense",
+            header: "Expense",
+            accessor: (row) => row.expense,
+            cell: (row) => <span className="font-medium">{row.expense}</span>,
+        },
+        {
+            id: "type",
+            header: "Type",
+            accessor: (row) => row.type,
+            cell: (row) => <Badge variant="neutral">{row.type}</Badge>,
+        },
+        {
+            id: "receivedBy",
+            header: "Received by",
+            accessor: (row) => row.receivedBy,
+            hideBelow: "sm",
+        },
+        {
+            id: "amount",
+            header: `Amount (${currency})`,
+            accessor: (row) => row.amount,
+            align: "right",
+            cell: (row) => (
+                <span className="font-semibold tabular-nums">
+                    {row.amount.toLocaleString()}
+                </span>
+            ),
+        },
+        {
+            id: "actions",
+            header: "",
+            sortable: false,
+            align: "right",
+            excludeFromSearch: true,
+            cell: (row) => (
+                <div className="flex justify-end">
+                    <RecordActions
+                        label={tr("Actions for {0}", {
+            0: row.expense,
+        })}
+                        onView={() => openViewSheet(row._id)}
+                        onEdit={() => openEditDialog(row)}
+                        onDelete={() => setPendingDeleteId(row._id)}
+                    />
+                </div>
+            ),
+        },
+    ];
 
-    const handleExportPDF = () => {
-        const columns = [
-            { header: "Date", accessor: (e: any) => format(new Date(e.date), "MMM dd, yyyy") },
-            { header: "Expense", accessor: "expense" },
-            { header: "Type", accessor: "type" },
-            { header: "Received By", accessor: "receivedBy" },
-            { header: `Amount (${currency})`, accessor: (e: any) => e.amount.toLocaleString() },
-        ];
-        exportToPDF(filteredExpenses, columns, "Expenditures Report", `Expenditures_${format(new Date(), "yyyy-MM-dd")}`);
-    };
+    const periodLabel =
+        dateMode === "audit"
+            ? selectedDate
+                ? format(selectedDate, "dd MMM yyyy")
+                : "today"
+            : date?.from
+              ? `${format(date.from, "dd MMM yyyy")} – ${date.to ? format(date.to, "dd MMM yyyy") : "now"}`
+              : "this month";
 
     return (
-        <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
-            <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-black tracking-tight">Expenditures</h1>
-                <p className="text-muted-foreground">Track and manage all business expenses.</p>
-            </div>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-emerald-700 uppercase tracking-wider">Total Expenditure</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-emerald-600">{currency} {totalAmount.toLocaleString()}</div>
-                        <p className="text-[10px] text-emerald-600/70 mt-1">Total amount spent</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-blue-700 uppercase tracking-wider">Total Transactions</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-blue-600">{totalCount}</div>
-                        <p className="text-[10px] text-blue-600/70 mt-1">Number of expense entries</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-purple-700 uppercase tracking-wider">Categories</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-purple-600">{Object.keys(stats?.byType || {}).length}</div>
-                        <p className="text-[10px] text-purple-600/70 mt-1">Expense types used</p>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Filters */}
-            <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date Mode:</Label>
-                    <Select value={dateMode} onValueChange={(v: any) => setDateMode(v)}>
-                        <SelectTrigger className="w-[140px] h-9">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="audit">Audit Date</SelectItem>
-                            <SelectItem value="range">Date Range</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                {dateMode === "audit" ? (
-                    <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <Input
-                            type="date"
-                            value={selectedDate ? selectedDate.toISOString().split("T")[0] : ""}
-                            onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : undefined)}
-                            className="w-[160px] h-9"
+        <PageContainer>
+            <PageHeader
+                eyebrow="Finance"
+                title={tr("Expenditures")}
+                description={tr("Every payment the business makes, what it was for and who received it.")}
+                icon={Wallet}
+                badge={<CountBadge tone="neutral">{totalCount}</CountBadge>}
+                actions={
+                    <>
+                        <DataTableExport
+                            title={tr("Expenditures")}
+                            subtitle={periodLabel}
+                            rows={filteredExpenses}
+                            columns={columns}
                         />
-                    </div>
-                ) : (
-                    <DatePickerWithRange date={date} setDate={setDate} />
-                )}
+                        <Button onClick={openAddDialog}>
+                            <Plus className="mr-2 size-4" /> {tr("Add expense")}
+                        </Button>
+                    </>
+                }
+            />
 
-                <div className="flex items-center gap-2">
-                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Type:</Label>
-                    <Select value={filterType} onValueChange={setFilterType}>
-                        <SelectTrigger className="w-[180px] h-9">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="All">All Types</SelectItem>
-                            {EXPENSE_TYPES.map((t) => (
-                                <SelectItem key={t} value={t}>{t}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
+            <StatGrid columns={3}>
+                <StatCard
+                    label={tr("Total expenditure")}
+                    value={`${currency} ${totalAmount.toLocaleString()}`}
+                    hint={tr("Spent in the period selected above")}
+                    icon={Wallet}
+                    tone="danger"
+                    isLoading={stats === undefined}
+                />
+                <StatCard
+                    label={tr("Transactions")}
+                    value={totalCount}
+                    hint={tr("Payment entries in the period")}
+                    icon={Receipt}
+                    tone="info"
+                    isLoading={stats === undefined}
+                />
+                <StatCard
+                    label={tr("Categories")}
+                    value={categoryCount}
+                    hint={tr("Different types of expense used")}
+                    icon={Tags}
+                    tone="default"
+                    isLoading={stats === undefined}
+                />
+            </StatGrid>
 
-                <div className="flex-1 min-w-[200px]">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Search expenses..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 h-9"
-                        />
-                    </div>
-                </div>
+            <SectionCard
+                title={tr("Expense entries")}
+                description={tr("Showing {0} of {1} entries for {2}.", {
+            0: filteredExpenses.length,
+            1: expenses?.length ?? 0,
+            2: periodLabel,
+        })}
+                padded={false}
+            >
+                <div className="border-b border-border/60 p-4 sm:p-5">
+                    <Toolbar>
+                        <ToolbarGroup>
+                            <Select value={dateMode} onValueChange={(v: any) => setDateMode(v)}>
+                                <SelectTrigger className="h-9 w-[150px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="audit">{tr("Audit date")}</SelectItem>
+                                    <SelectItem value="range">{tr("Date range")}</SelectItem>
+                                </SelectContent>
+                            </Select>
 
-                <div className="flex items-center gap-2 ml-auto">
-                    <Button variant="outline" size="sm" onClick={handleExportExcel}>
-                        <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleExportPDF}>
-                        <FileText className="h-4 w-4 mr-2" /> PDF
-                    </Button>
-                    <Button onClick={openAddDialog}>
-                        <Plus className="h-4 w-4 mr-2" /> Add Expense
-                    </Button>
-                </div>
-            </div>
+                            {dateMode === "audit" ? (
+                                <div className="flex items-center gap-2">
+                                    <Calendar className="size-4 text-muted-foreground" />
+                                    <Input
+                                        type="date"
+                                        value={selectedDate ? selectedDate.toISOString().split("T")[0] : ""}
+                                        onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : undefined)}
+                                        className="h-9 w-[160px]"
+                                    />
+                                </div>
+                            ) : (
+                                <DatePickerWithRange date={date} setDate={setDate} />
+                            )}
 
-            {/* Table */}
-            <Card>
-                <CardContent className="p-0">
-                    {expenses === undefined ? (
-                        <div className="flex items-center justify-center h-full">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            <Select value={filterType} onValueChange={setFilterType}>
+                                <SelectTrigger className="h-9 w-[180px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="All">{tr("All types")}</SelectItem>
+                                    {EXPENSE_TYPES.map((t) => (
+                                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </ToolbarGroup>
+
+                        <div className="relative sm:w-72">
+                            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                placeholder={tr("Search expenses…")}
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="h-9 pl-10"
+                            />
                         </div>
-                    ) : filteredExpenses.length === 0 ? (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                            No expenses found for the selected criteria.
-                        </div>
-                    ) : (
-                        <Table>
-                            <TableHeader className="sticky top-0 bg-background z-10">
-                                <TableRow>
-                                    <TableHead className="w-[150px]">Date</TableHead>
-                                    <TableHead>Expense</TableHead>
-                                    <TableHead>Type</TableHead>
-                                    <TableHead>Received By</TableHead>
-                                    <TableHead className="text-right">Amount ({currency})</TableHead>
-                                    <TableHead className="w-[150px] text-center">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredExpenses.map((expense) => (
-                                    <TableRow key={expense._id} className="hover:bg-muted/5">
-                                        <TableCell className="font-mono text-xs">
-                                            <div className="font-semibold">{format(new Date(expense.date), "MMM dd, yyyy")}</div>
-                                        </TableCell>
-                                        <TableCell className="font-medium">{expense.expense}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline">{expense.type}</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-sm">{expense.receivedBy}</TableCell>
-                                        <TableCell className="text-right font-bold">
-                                            {expense.amount.toLocaleString()}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center justify-center gap-1">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => openViewSheet(expense._id)}
-                                                >
-                                                    <Eye className="h-4 w-4 text-green-600" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => openEditDialog(expense)}
-                                                >
-                                                    <Pencil className="h-4 w-4 text-blue-600" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => handleDelete(expense._id)}
-                                                >
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
-            </Card>
+                    </Toolbar>
+                </div>
+
+                <DataTable
+                    data={filteredExpenses}
+                    columns={columns}
+                    getRowId={(row) => row._id}
+                    isLoading={expenses === undefined}
+                    isEmpty={expenses !== undefined && filteredExpenses.length === 0}
+                    emptyTitle={tr("No expenses for this period")}
+                    emptyHint={tr("Change the date or the type filter, or record what the business has paid for.")}
+                    emptyAction={
+                        <Button variant="outline" size="sm" onClick={openAddDialog}>
+                            <Plus className="mr-2 size-4" /> {tr("Add expense")}
+                        </Button>
+                    }
+                    pageSize={25}
+                    defaultSort={{ id: "date", direction: "desc" }}
+                    ariaLabel="Expenditures"
+                    className="px-4 pb-5 sm:px-5"
+                />
+            </SectionCard>
 
             {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader>
-                        <DialogTitle>{editingExpense ? "Edit Expense" : "Add New Expense"}</DialogTitle>
+                        <DialogTitle>{editingExpense ? "Edit expense" : "Add new expense"}</DialogTitle>
                         <DialogDescription>
                             {editingExpense ? "Update the expense details below." : "Enter the expense details below."}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label htmlFor="expense">Expense Description *</Label>
+                            <Label htmlFor="expense">{tr("Expense description *")}</Label>
                             <Input
                                 id="expense"
-                                placeholder="e.g., Office rent for January"
+                                placeholder={tr("e.g., Office rent for January")}
                                 value={formData.expense}
                                 onChange={(e) => setFormData({ ...formData, expense: e.target.value })}
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="amount">Amount ({currency}) *</Label>
+                            <Label htmlFor="amount">{tr("Amount (")}{currency}) *</Label>
                             <Input
                                 id="amount"
                                 type="number"
@@ -445,7 +481,7 @@ export default function ExpendituresPage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="type">Expense Type</Label>
+                            <Label htmlFor="type">{tr("Expense type")}</Label>
                             <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
                                 <SelectTrigger>
                                     <SelectValue />
@@ -458,10 +494,10 @@ export default function ExpendituresPage() {
                             </Select>
                             {formData.type === "Others" && (
                                 <div className="mt-2">
-                                    <Label htmlFor="customType">Specify Type *</Label>
+                                    <Label htmlFor="customType">{tr("Specify type *")}</Label>
                                     <Input
                                         id="customType"
-                                        placeholder="e.g., Travel, Entertainment, etc."
+                                        placeholder={tr("e.g., Travel, Entertainment, etc.")}
                                         value={customType}
                                         onChange={(e) => setCustomType(e.target.value)}
                                     />
@@ -469,16 +505,16 @@ export default function ExpendituresPage() {
                             )}
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="receivedBy">Received By *</Label>
+                            <Label htmlFor="receivedBy">{tr("Received by *")}</Label>
                             <Input
                                 id="receivedBy"
-                                placeholder="e.g., John Doe"
+                                placeholder={tr("e.g., John Doe")}
                                 value={formData.receivedBy}
                                 onChange={(e) => setFormData({ ...formData, receivedBy: e.target.value })}
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="date">Date</Label>
+                            <Label htmlFor="date">{tr("Date")}</Label>
                             <Input
                                 id="date"
                                 type="date"
@@ -489,80 +525,89 @@ export default function ExpendituresPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                            Cancel
+                            {tr("Cancel")}
                         </Button>
                         <Button onClick={handleSave}>
-                            {editingExpense ? "Update" : "Add"} Expense
+                            {editingExpense ? "Update" : "Add"} expense
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
+            {/* Deletion is confirmed, and the confirmation names the thing. */}
+            <ConfirmDeleteDialog
+                open={pendingDeleteId !== null}
+                onOpenChange={(v) => !v && setPendingDeleteId(null)}
+                onConfirm={handleDelete}
+                entityName="expense"
+                description={tr("The payment record will be removed from the books. This cannot be undone.")}
+            />
+
             {/* View Details Sheet */}
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[500px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Expense Details</SheetTitle>
+                        <SheetTitle>{tr("Expense details")}</SheetTitle>
                         <SheetDescription>
-                            Complete information about this expense record.
+                            {tr("Complete information about this expense record.")}
                         </SheetDescription>
                     </SheetHeader>
                     {expenseWithUser ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Date</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{tr("Date")}</span>
                                     <span className="font-semibold">{format(new Date(expenseWithUser.date), "MMM dd, yyyy")}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Expense Description</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{tr("Expense description")}</span>
                                     <span className="font-semibold">{expenseWithUser.expense}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Type</span>
-                                    <Badge variant="outline">{expenseWithUser.type}</Badge>
+                                    <span className="text-sm font-medium text-muted-foreground">{tr("Type")}</span>
+                                    <Badge variant="neutral">{expenseWithUser.type}</Badge>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Amount</span>
-                                    <span className="font-bold text-lg text-emerald-600">{currency} {expenseWithUser.amount.toLocaleString()}</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{tr("Amount")}</span>
+                                    <span className="font-bold text-lg text-danger">{currency} {expenseWithUser.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Received By</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{tr("Received by")}</span>
                                     <span className="font-semibold">{expenseWithUser.receivedBy}</span>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Recorded By</h3>
+                                <h3 className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">{tr("Recorded by")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     {expenseWithUser.user ? (
                                         <>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Name</span>
+                                                <span className="text-sm text-muted-foreground">{tr("Name")}</span>
                                                 <span className="font-semibold capitalize">{expenseWithUser.user.first_name} {expenseWithUser.user.last_name}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Email</span>
+                                                <span className="text-sm text-muted-foreground">{tr("Email")}</span>
                                                 <span className="font-semibold text-sm">{expenseWithUser.user.email}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Role</span>
+                                                <span className="text-sm text-muted-foreground">{tr("Role")}</span>
                                                 <Badge className="capitalize">{expenseWithUser.user.roles?.[0] || "N/A"}</Badge>
                                             </div>
                                         </>
                                     ) : (
-                                        <div className="text-sm text-muted-foreground">User information not available</div>
+                                        <div className="text-sm text-muted-foreground">{tr("User information not available")}</div>
                                     )}
                                 </div>
                             </div>
                         </div>
                     ) : (
                         <div className="flex items-center justify-center py-12">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            <Loader2 className="size-8 animate-spin text-muted-foreground" />
                         </div>
                     )}
                 </SheetContent>
             </Sheet>
-        </div>
+        </PageContainer>
     );
 }

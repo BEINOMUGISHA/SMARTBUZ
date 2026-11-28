@@ -75,6 +75,7 @@ import {
     Camera,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useT } from "@/i18n/provider";
 
 /** Icon map — the catalog stores an icon name, we map it to a component. */
 const ICONS: Record<string, LucideIcon> = {
@@ -118,7 +119,8 @@ const ICONS: Record<string, LucideIcon> = {
 };
 
 export default function SetupPage() {
-    const router = useRouter();
+    
+    const t = useT();const router = useRouter();
     const { user } = useAuth();
     const existingProfile = useQuery(api.businesses.getActive, {});
     const plans = useQuery(api.plans.list, {});
@@ -242,12 +244,11 @@ export default function SetupPage() {
                     <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 shadow-lg">
                         <Store className="h-7 w-7 text-white" />
                     </div>
-                    <h1 className="text-3xl font-black tracking-tight md:text-4xl">
-                        Set up your business
+                    <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+                        {t("Set up your business")}
                     </h1>
                     <p className="mx-auto max-w-xl text-sm text-muted-foreground md:text-base">
-                        Choose the trade you are in. SMART_BUZ will tailor your
-                        interface, modules, VAT handling and receipts for it.
+                        {t("Choose the trade you are in. SMART_BUZ will tailor your interface, modules, VAT handling and receipts for it.")}
                     </p>
                 </div>
 
@@ -291,9 +292,9 @@ export default function SetupPage() {
                         {CATEGORY_SECTORS.map((sector) => (
                             <div key={sector.id} className="space-y-3">
                                 <div>
-                                    <h2 className="text-lg font-black">{sector.name}</h2>
+                                    <h2 className="text-lg font-semibold">{sector.name}</h2>
                                     <p className="text-xs text-muted-foreground">
-                                        {sector.description}
+                                        {t(sector.description)}
                                     </p>
                                 </div>
                                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -332,11 +333,11 @@ export default function SetupPage() {
                                                         <Icon className="h-5 w-5" />
                                                     </div>
                                                     <div className="min-w-0 flex-1">
-                                                        <p className="text-sm font-black leading-tight">
+                                                        <p className="text-sm font-semibold leading-tight">
                                                             {c.name}
                                                         </p>
-                                                        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                                                            {c.description}
+                                                        <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted-foreground">
+                                                            {t(c.description)}
                                                         </p>
                                                     </div>
                                                     {isSelected && (
@@ -356,11 +357,9 @@ export default function SetupPage() {
                 {step === 2 && (
                     <div className="space-y-6">
                         <div className="text-center">
-                            <h2 className="text-xl font-black">Choose your plan</h2>
+                            <h2 className="text-xl font-semibold">{t("Choose your plan")}</h2>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Every plan starts with a free trial. You can change or
-                                cancel it at any time, and what you have already used is
-                                never taken away.
+                                {t("Every plan starts with a free trial. You can change or cancel it at any time, and what you have already used is never taken away.")}
                             </p>
                         </div>
 
@@ -373,10 +372,10 @@ export default function SetupPage() {
 
                         <div className="flex justify-between gap-3">
                             <Button variant="outline" onClick={() => setStep(1)}>
-                                Back
+                                {t("Back")}
                             </Button>
                             <Button onClick={() => setStep(3)} disabled={!planKey}>
-                                Continue <ChevronRight className="ml-2 h-4 w-4" />
+                                {t("Continue")} <ChevronRight className="ml-2 h-4 w-4" />
                             </Button>
                         </div>
                     </div>
@@ -394,16 +393,16 @@ export default function SetupPage() {
                                     })()}
                                 </div>
                                 <div>
-                                    <h2 className="text-xl font-black">{category.name}</h2>
+                                    <h2 className="text-xl font-semibold">{category.name}</h2>
                                     <p className="text-xs text-muted-foreground">
-                                        {category.description}
+                                        {t(category.description)}
                                     </p>
                                 </div>
                             </div>
 
                             <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="bizName">Business name</Label>
+                                    <Label htmlFor="bizName">{t("Business name")}</Label>
                                     <Input
                                         id="bizName"
                                         value={businessName}
@@ -413,7 +412,7 @@ export default function SetupPage() {
                                 </div>
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label htmlFor="bizPhone">Phone</Label>
+                                        <Label htmlFor="bizPhone">{t("Phone")}</Label>
                                         <Input
                                             id="bizPhone"
                                             value={businessPhone}
@@ -422,7 +421,7 @@ export default function SetupPage() {
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="float">Opening cash float ({currency})</Label>
+                                        <Label htmlFor="float">{t("Opening cash float (")}{currency})</Label>
                                         <Input
                                             id="float"
                                             type="number"
@@ -433,10 +432,10 @@ export default function SetupPage() {
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="bizCurrency">Currency</Label>
+                                    <Label htmlFor="bizCurrency">{t("Currency")}</Label>
                                     <Select value={currency} onValueChange={setCurrency}>
                                         <SelectTrigger id="bizCurrency">
-                                            <SelectValue placeholder="Currency" />
+                                            <SelectValue placeholder={t("Currency")} />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {SUPPORTED_CURRENCIES.map((code) => (
@@ -444,17 +443,17 @@ export default function SetupPage() {
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <p className="text-[10px] text-muted-foreground">
-                                        Every figure this business records and shows will be in this currency.
+                                    <p className="text-xs text-muted-foreground">
+                                        {t("Every figure this business records and shows will be in this currency.")}
                                     </p>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="bizAddress">Business address</Label>
+                                    <Label htmlFor="bizAddress">{t("Business address")}</Label>
                                     <Input
                                         id="bizAddress"
                                         value={businessAddress}
                                         onChange={(e) => setBusinessAddress(e.target.value)}
-                                        placeholder="Kampala, Uganda"
+                                        placeholder={t("Kampala, Uganda")}
                                     />
                                 </div>
                             </div>
@@ -468,14 +467,13 @@ export default function SetupPage() {
                                         className="mt-1 h-4 w-4 rounded border-input accent-primary"
                                     />
                                     <div>
-                                        <p className="text-sm font-black">
-                                            Add starter {category.terminology.item.toLowerCase()}s
+                                        <p className="text-sm font-semibold">
+                                            {t("Add starter")} {category.terminology.item.toLowerCase()}s
                                         </p>
                                         <p className="text-xs text-muted-foreground">
                                             {category.sampleProducts.length} common{" "}
                                             {category.terminology.item.toLowerCase()}s for a{" "}
-                                            {category.name.toLowerCase()} so you can start
-                                            selling straight away. You can edit them later.
+                                            {category.name.toLowerCase()} {t("so you can start selling straight away. You can edit them later.")}
                                         </p>
                                     </div>
                                 </label>
@@ -483,10 +481,10 @@ export default function SetupPage() {
 
                             <div className="flex justify-between gap-3">
                                 <Button variant="outline" onClick={() => setStep(2)}>
-                                    Back
+                                    {t("Back")}
                                 </Button>
                                 <Button onClick={() => setStep(4)} disabled={!category}>
-                                    Continue <ChevronRight className="ml-2 h-4 w-4" />
+                                    {t("Continue")} <ChevronRight className="ml-2 h-4 w-4" />
                                 </Button>
                             </div>
                         </CardContent>
@@ -497,28 +495,28 @@ export default function SetupPage() {
                 {step === 4 && category && (
                     <Card className="mx-auto max-w-2xl">
                         <CardContent className="space-y-6 p-6">
-                            <h2 className="text-xl font-black">Confirm your setup</h2>
+                            <h2 className="text-xl font-semibold">{t("Confirm your setup")}</h2>
 
                             <div className="space-y-3 rounded-xl bg-muted/50 p-4 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Business</span>
+                                    <span className="text-muted-foreground">{t("Business")}</span>
                                     <span className="font-bold">
                                         {businessName.trim() || category.name}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Trade</span>
+                                    <span className="text-muted-foreground">{t("Trade")}</span>
                                     <span className="font-bold">{category.name}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Units</span>
+                                    <span className="text-muted-foreground">{t("Units")}</span>
                                     <span className="font-bold">
                                         {category.units.default}
                                         {category.units.allowFractional && " (fractional allowed)"}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">VAT</span>
+                                    <span className="text-muted-foreground">{t("VAT")}</span>
                                     <span className="font-bold">
                                         {category.tax.enabled
                                             ? `${category.tax.rate}%${category.tax.inclusive ? " (inclusive)" : ""}`
@@ -526,11 +524,11 @@ export default function SetupPage() {
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Modules</span>
+                                    <span className="text-muted-foreground">{t("Modules")}</span>
                                     <span className="font-bold">{category.modules.length} enabled</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Plan</span>
+                                    <span className="text-muted-foreground">{t("Plan")}</span>
                                     <span className="font-bold">
                                         {chosenPlan?.name ?? planKey ?? "—"}
                                         {chosenPlan ? ` • ${chosenPlan.trialDays}-day trial` : ""}
@@ -538,7 +536,7 @@ export default function SetupPage() {
                                 </div>
                                 {seedProducts && (
                                     <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Starter stock</span>
+                                        <span className="text-muted-foreground">{t("Starter stock")}</span>
                                         <span className="font-bold">
                                             {category.sampleProducts.length} items
                                         </span>
@@ -548,24 +546,22 @@ export default function SetupPage() {
 
                             <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
                                 <p className="text-xs font-bold text-amber-700 dark:text-amber-400">
-                                    {category.tax.note}
+                                    {t(category.tax.note)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    SMART_BUZ applies URA&apos;s 18% standard rate. Exempt and
-                                    zero-rated items must be marked per product so your
-                                    VAT split stays accurate on every receipt.
+                                    {t("SMART_BUZ applies URA&apos;s 18% standard rate. Exempt and zero-rated items must be marked per product so your VAT split stays accurate on every receipt.")}
                                 </p>
                             </div>
 
                             <div className="flex justify-between gap-3">
                                 <Button variant="outline" onClick={() => setStep(3)}>
-                                    Back
+                                    {t("Back")}
                                 </Button>
                                 <Button onClick={handleCreate} disabled={saving}>
                                     {saving ? (
                                         <>
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Setting up...
+                                            {t("Setting up...")}
                                         </>
                                     ) : (
                                         "Finish setup"

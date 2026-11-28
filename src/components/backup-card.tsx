@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { AlertTriangle, Download, Loader2, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n/provider";
 import {
     Card,
     CardContent,
@@ -30,7 +31,8 @@ interface BackupCardProps {
 }
 
 export function BackupCard({ businessId, businessName }: BackupCardProps) {
-    const fileInput = useRef<HTMLInputElement>(null);
+    
+    const t = useT();const fileInput = useRef<HTMLInputElement>(null);
     const [isRestoring, setIsRestoring] = useState(false);
 
     const startBackup = () => {
@@ -80,9 +82,9 @@ export function BackupCard({ businessId, businessName }: BackupCardProps) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-xl font-bold">Backup &amp; Restore</CardTitle>
+                <CardTitle className="text-xl font-bold">{t("Backup &amp; Restore")}</CardTitle>
                 <CardDescription className="font-medium text-muted-foreground">
-                    Take {businessName}&apos;s data out as a file, and put a file back into it.
+                    {t("Take")} {businessName}{t("&apos;s data out as a file, and put a file back into it.")}
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -90,9 +92,7 @@ export function BackupCard({ businessId, businessName }: BackupCardProps) {
                     <div className="flex items-start gap-2">
                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                         <p>
-                            A restore adds the rows in the file to this business. It does not
-                            remove anything, and it does not overwrite a row that is already
-                            here — so restore into a business you are happy to add to.
+                            {t("A restore adds the rows in the file to this business. It does not remove anything, and it does not overwrite a row that is already here — so restore into a business you are happy to add to.")}
                         </p>
                     </div>
                 </div>
@@ -111,7 +111,7 @@ export function BackupCard({ businessId, businessName }: BackupCardProps) {
             <CardFooter className="gap-2">
                 <Button onClick={startBackup}>
                     <Download className="mr-2 h-4 w-4" />
-                    Download a backup
+                    {t("Download a backup")}
                 </Button>
                 <Button
                     variant="outline"
@@ -123,7 +123,7 @@ export function BackupCard({ businessId, businessName }: BackupCardProps) {
                     ) : (
                         <Upload className="mr-2 h-4 w-4" />
                     )}
-                    Restore from a file
+                    {t("Restore from a file")}
                 </Button>
             </CardFooter>
         </Card>

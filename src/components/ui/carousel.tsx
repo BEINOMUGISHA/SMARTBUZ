@@ -1,4 +1,6 @@
-"use client"
+"use client";
+
+import { useT } from "@/i18n/provider";
 
 import * as React from "react"
 import useEmblaCarousel, {
@@ -177,7 +179,8 @@ function CarouselPrevious({
   size = "icon",
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { orientation, scrollPrev, canScrollPrev } = useCarousel()
+  
+    const t = useT();const { orientation, scrollPrev, canScrollPrev } = useCarousel()
 
   return (
     <Button
@@ -196,7 +199,7 @@ function CarouselPrevious({
       {...props}
     >
       <ArrowLeft />
-      <span className="sr-only">Previous slide</span>
+      <span className="sr-only">{t("Previous slide")}</span>
     </Button>
   )
 }
@@ -207,7 +210,8 @@ function CarouselNext({
   size = "icon",
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { orientation, scrollNext, canScrollNext } = useCarousel()
+  
+    const t = useT();const { orientation, scrollNext, canScrollNext } = useCarousel()
 
   return (
     <Button
@@ -226,7 +230,7 @@ function CarouselNext({
       {...props}
     >
       <ArrowRight />
-      <span className="sr-only">Next slide</span>
+      <span className="sr-only">{t("Next slide")}</span>
     </Button>
   )
 }

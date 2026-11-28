@@ -3,6 +3,49 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ── The type scale ────────────────────────────────────────────────────
+   Every screen used to pick its own heading sizes and weights, and the
+   product ended up with 429 uses of `font-black` and 128 labels set in
+   8–10px capitals. That reads as a template, not as a tool a person
+   trusts with their day's takings.
+
+   These tokens are the vocabulary instead. A page title is `text-page-title`,
+   a section heading is `text-section-title`, and a field label is
+   `text-eyebrow`. Nothing else needs to invent a size. */
+@theme {
+  --text-eyebrow: 0.6875rem;
+  --text-eyebrow--line-height: 1rem;
+  --text-eyebrow--font-weight: 600;
+  --tracking-eyebrow: 0.055em;
+
+  --text-page-title: 1.5rem;
+  --text-page-title--line-height: 2rem;
+  --text-page-title--font-weight: 650;
+  --text-page-title--letter-spacing: -0.021em;
+
+  --text-section-title: 0.9375rem;
+  --text-section-title--line-height: 1.375rem;
+  --text-section-title--font-weight: 600;
+  --text-section-title--letter-spacing: -0.008em;
+
+  --text-stat: 1.75rem;
+  --text-stat--line-height: 2.125rem;
+  --text-stat--font-weight: 650;
+  --text-stat--letter-spacing: -0.024em;
+
+  /* ── Layering ──────────────────────────────────────────────────────
+     Arbitrary z-index values (`z-[100]`, `z-50`, `z-40`, `z-30`) were
+     scattered across the shell and never agreed with each other. */
+  --z-content: 10;
+  --z-sticky: 20;
+  --z-header: 30;
+  --z-sidebar: 40;
+  --z-dropdown: 50;
+  --z-overlay: 60;
+  --z-modal: 70;
+  --z-toast: 80;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -37,6 +80,11 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-success: var(--status-success);
+  --color-warning: var(--status-warning);
+  --color-danger: var(--status-danger);
+  --color-info: var(--status-info);
+  --color-neutral: var(--status-neutral);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -90,6 +138,17 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.58 0.19 155);
+
+  /* ── Status palette ────────────────────────────────────────────────
+     One place for the four states a record can be in. Before this the
+     product carried three different status palettes (the vertical kit,
+     the category map and the report tables), so the same "pending" was
+     three different colours depending on the screen. */
+  --status-success: oklch(0.46 0.12 155);
+  --status-warning: oklch(0.52 0.13 70);
+  --status-danger: oklch(0.52 0.19 27);
+  --status-info: oklch(0.48 0.14 250);
+  --status-neutral: oklch(0.45 0 0);
 }
 
 .dark {
@@ -132,6 +191,14 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.65 0.20 155);
+
+  /* The dark status colours are lighter, because a dark background needs a
+     lighter foreground to stay readable at the same contrast. */
+  --status-success: oklch(0.75 0.15 155);
+  --status-warning: oklch(0.80 0.14 80);
+  --status-danger: oklch(0.72 0.17 25);
+  --status-info: oklch(0.73 0.13 250);
+  --status-neutral: oklch(0.72 0 0);
 }
 
 @layer base {
@@ -191,10 +258,10 @@
 
 @media print {
   @page {
-    size: A5;
-    margin: 5mm;
+    size: A4;
+    margin: 12mm;
   }
-  
+
   body {
     background: white;
     color: black;
@@ -206,5 +273,17 @@
 
   .print-shrink {
     zoom: 0.9;
+  }
+}
+
+/* The thermal receipt prints on its own paper. It used to fight the global
+   `@page { size: A5 }` rule above, so the receipt was clipped when it was
+   printed from the browser. It now sets its own page size, and the global
+   rule above stays out of its way. */
+@media print {
+  body.printing-receipt,
+  body.printing-receipt * {
+    background: white !important;
+    color: black !important;
   }
 }

@@ -55,6 +55,7 @@ import {
     type PriceChangeNotice,
 } from "@/lib/price-change";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 // Types
 type CartItem = {
     stockId: Id<"stocks">;
@@ -110,18 +111,19 @@ type SalePayload = {
 };
 
 export default function SalesPage() {
-    return (
+    
+    const t = useT();return (
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
             <SalesHeader />
             <Tabs defaultValue="regular" className="flex-1 flex flex-col">
                 <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 h-auto p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-sm rounded-xl">
-                    <TabsTrigger value="regular" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Regular Sales</TabsTrigger>
-                    <TabsTrigger value="hp" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">HP Sales</TabsTrigger>
-                    <TabsTrigger value="swap" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-blue-600">Product Swap</TabsTrigger>
-                    <TabsTrigger value="promotions" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">Promotions</TabsTrigger>
-                    <TabsTrigger value="restock" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-destructive">Restock</TabsTrigger>
-                    <TabsTrigger value="mysales" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all">My Sales</TabsTrigger>
-                    <TabsTrigger value="loans" className="py-2.5 font-bold uppercase text-[10px] tracking-widest rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-orange-600">Loans</TabsTrigger>
+                    <TabsTrigger value="regular" className="py-2.5 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-eyebrow uppercase tracking-eyebrow">{t("Regular Sales")}</TabsTrigger>
+                    <TabsTrigger value="hp" className="py-2.5 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-eyebrow uppercase tracking-eyebrow">{t("HP Sales")}</TabsTrigger>
+                    <TabsTrigger value="swap" className="py-2.5 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-blue-600 text-eyebrow uppercase tracking-eyebrow">{t("Product Swap")}</TabsTrigger>
+                    <TabsTrigger value="promotions" className="py-2.5 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-eyebrow uppercase tracking-eyebrow">{t("Promotions")}</TabsTrigger>
+                    <TabsTrigger value="restock" className="py-2.5 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-destructive text-eyebrow uppercase tracking-eyebrow">{t("Restock")}</TabsTrigger>
+                    <TabsTrigger value="mysales" className="py-2.5 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-eyebrow uppercase tracking-eyebrow">{t("My Sales")}</TabsTrigger>
+                    <TabsTrigger value="loans" className="py-2.5 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all text-orange-600 text-eyebrow uppercase tracking-eyebrow">{t("Loans")}</TabsTrigger>
                 </TabsList>
 
                 <div className="flex-1 mt-4 overflow-hidden">
@@ -154,18 +156,19 @@ export default function SalesPage() {
 }
 
 function SalesHeader() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const shopData = useQuery(api.stocks.getShopStock, { email: user?.email || undefined });
     const shopName = shopData?.shop?.name;
     const isShopUser = !!shopData?.shop;
 
     return (
         <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-3">
                 {isShopUser ? (
                     <>
                         <Store className="h-8 w-8 text-primary" />
-                        {shopName} <span className="text-muted-foreground font-normal text-lg">| Sales Terminal</span>
+                        {shopName} <span className="text-muted-foreground font-normal text-lg">{t("| Sales Terminal")}</span>
                     </>
                 ) : (
                     "Sales Terminal"
@@ -181,7 +184,8 @@ function SalesHeader() {
 }
 
 function SalesInterface({ isHp }: { isHp: boolean }) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const { user, activeBusiness } = useAuth();
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -1017,11 +1021,11 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     <div className="relative">
                         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="Search by code or name..."
+                            placeholder={t("Search by code or name...")}
                             className="pl-9 h-12 text-lg"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            aria-label="Search products by name or product code"
+                            aria-label={t("Search products by name or product code")}
                             autoFocus
                         />
                     </div>
@@ -1035,7 +1039,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     <PackageOpen className="h-7 w-7 text-muted-foreground/60" />
                                 </div>
                                 <div>
-                                    <p className="font-medium">No products found</p>
+                                    <p className="font-medium">{t("No products found")}</p>
                                     <p className="mt-1 text-sm text-muted-foreground">
                                         {search
                                             ? `Nothing matches "${search}". Try a different name or product code.`
@@ -1044,7 +1048,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 </div>
                                 {search && (
                                     <Button variant="outline" size="sm" className="rounded-lg" onClick={() => setSearch("")}>
-                                        Clear search
+                                        {t("Clear search")}
                                     </Button>
                                 )}
                             </div>
@@ -1054,11 +1058,11 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     <Table>
                                         <TableHeader className="sticky top-0 bg-background z-10">
                                             <TableRow>
-                                                <TableHead className="w-[100px]">Code</TableHead>
-                                                <TableHead>Product Name</TableHead>
-                                                <TableHead className="text-right">Price</TableHead>
-                                                <TableHead className="text-right">PV / BV</TableHead>
-                                                <TableHead className="text-center">Stock</TableHead>
+                                                <TableHead className="w-[100px]">{t("Code")}</TableHead>
+                                                <TableHead>{t("Product Name")}</TableHead>
+                                                <TableHead className="text-right">{t("Price")}</TableHead>
+                                                <TableHead className="text-right">{t("PV / BV")}</TableHead>
+                                                <TableHead className="text-center">{t("Stock")}</TableHead>
                                                 <TableHead></TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -1085,8 +1089,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                                 <span>{stock.name}</span>
                                                                 {/* PROMO BADGE */}
                                                                 {(!isHp && promoData) && (
-                                                                    <Badge variant="secondary" className="w-fit mt-1 bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200 text-[10px] px-1 py-0 h-5">
-                                                                        PROMO: {promoData.promotionName}
+                                                                    <Badge variant="secondary" className="w-fit mt-1 bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200 text-xs px-1 py-0 h-5">
+                                                                        {t("PROMO:")} {promoData.promotionName}
                                                                     </Badge>
                                                                 )}
                                                             </div>
@@ -1101,7 +1105,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                                     {virtualQty}
                                                                 </span>
                                                                 {cartItem && (
-                                                                    <span className="text-[10px] font-medium text-primary mt-1 tabular-nums">
+                                                                    <span className="text-xs font-medium text-primary mt-1 tabular-nums">
                                                                         {cartItem.qty} in cart
                                                                     </span>
                                                                 )}
@@ -1112,7 +1116,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                                 size="sm"
                                                                 className="h-8 rounded-lg font-bold transition-transform active:scale-95"
                                                                 variant={virtualQty > 0 ? "secondary" : "destructive"}
-                                                                aria-label={`Add ${stock.name} to the cart`}
+                                                                aria-label={t("Add {0} to the cart", {
+            0: stock.name,
+        })}
                                                                 onClick={() => addToCart(stock)}
                                                             >
                                                                 {virtualQty > 0 ? "Add" : "Sell Negative"}
@@ -1128,7 +1134,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 {/* Pagination Footer */}
                                 <div className="flex flex-col sm:flex-row items-center justify-between border-t bg-muted/20 px-4 py-4 gap-4 mt-auto">
                                     <div className="flex items-center space-x-2">
-                                        <p className="text-xs font-medium">Rows</p>
+                                        <p className="text-xs font-medium">{t("Rows")}</p>
                                         <Select
                                             value={`${rowsPerPage}`}
                                             onValueChange={(value) => {
@@ -1185,7 +1191,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                     <Card className="flex-1 flex flex-col overflow-hidden border shadow-sm">
                         <CardHeader className="bg-muted/30 pb-4">
                             <CardTitle className="flex items-center gap-2">
-                                <ShoppingCart className="h-5 w-5" /> Current Order
+                                <ShoppingCart className="h-5 w-5" /> {t("Current Order")}
                             </CardTitle>
                         </CardHeader>
 
@@ -1214,11 +1220,11 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                             <div className="flex items-center gap-2">
                                                 <div className="bg-white/20 p-1.5 rounded-full"><Package className="h-4 w-4" /></div>
                                                 <div className="flex flex-col">
-                                                    <span className="text-xs font-bold uppercase tracking-wider">Promotion Unlocked!</span>
+                                                    <span className="text-xs font-bold uppercase tracking-wider">{t("Promotion Unlocked!")}</span>
                                                     <span className="text-sm font-medium leading-none">{p.name}: {p.prize}</span>
                                                 </div>
                                             </div>
-                                            <div className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold">
+                                            <div className="bg-white/20 px-2 py-0.5 rounded text-xs font-mono font-bold">
                                                 {p.triggerType === "TotalPV" ? `${totalPV} PV` : `${totalBV} BV`} / {p.threshold}
                                             </div>
                                         </div>
@@ -1233,10 +1239,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
                                         <ShoppingCart className="h-7 w-7 opacity-40" />
                                     </div>
-                                    <p className="font-medium text-foreground">No items in this sale yet</p>
+                                    <p className="font-medium text-foreground">{t("No items in this sale yet")}</p>
                                     <p className="text-xs mt-1 max-w-[240px]">
-                                        Search for a product on the left and press Add. Tap Add again
-                                        to increase the quantity.
+                                        {t("Search for a product on the left and press Add. Tap Add again to increase the quantity.")}
                                     </p>
                                 </div>
                             ) : (
@@ -1245,9 +1250,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                         <TableHeader className="sticky top-0 bg-background z-10">
                                             <TableRow>
                                                 <TableHead className="w-[45%]">{overridesEnabled ? "Item & Price" : "Item"}</TableHead>
-                                                <TableHead className="w-[20%] text-center">Qty</TableHead>
-                                                <TableHead className="text-right">Total</TableHead>
-                                                <TableHead className="w-[10%]"><span className="sr-only">Actions</span></TableHead>
+                                                <TableHead className="w-[20%] text-center">{t("Qty")}</TableHead>
+                                                <TableHead className="text-right">{t("Total")}</TableHead>
+                                                <TableHead className="w-[10%]"><span className="sr-only">{t("Actions")}</span></TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -1266,18 +1271,20 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                                             className="h-8 w-24 text-xs tabular-nums"
                                                                             value={priceDrafts[item.stockId] ?? String(item.price)}
                                                                             inputMode="numeric"
-                                                                            aria-label={`Price for ${item.name} in shillings`}
+                                                                            aria-label={t("Price for {0} in shillings", {
+            0: item.name,
+        })}
                                                                             onChange={(e) => handlePriceDraft(item.stockId, e.target.value)}
                                                                             onBlur={() => commitPriceDraft(item.stockId)}
                                                                         />
                                                                         {isOverridden && (
-                                                                            <span className="absolute -top-1.5 -right-1 rounded bg-amber-100 px-1 text-[9px] font-bold text-amber-800 border border-amber-200">
-                                                                                OVERRIDE
+                                                                            <span className="absolute -top-1.5 -right-1 rounded bg-amber-100 px-1 text-xs font-bold text-amber-800 border border-amber-200">
+                                                                                {t("OVERRIDE")}
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                     {isOverridden && (
-                                                                        <span className="text-[10px] text-muted-foreground line-through tabular-nums">
+                                                                        <span className="text-xs text-muted-foreground line-through tabular-nums">
                                                                             {listPrice.toLocaleString()}
                                                                         </span>
                                                                     )}
@@ -1285,7 +1292,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                             ) : (
                                                                 <div className="text-xs text-muted-foreground tabular-nums">
                                                                     {item.price.toLocaleString()}{" "}
-                                                                    <span className="text-[10px] uppercase tracking-wide">{currency}</span>
+                                                                    <span className="tracking-wide text-eyebrow uppercase tracking-eyebrow">{currency}</span>
                                                                 </div>
                                                             )}
                                                         </TableCell>
@@ -1295,7 +1302,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                                     variant="outline"
                                                                     size="icon"
                                                                     className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
-                                                                    aria-label={`Decrease quantity of ${item.name}`}
+                                                                    aria-label={t("Decrease quantity of {0}", {
+            0: item.name,
+        })}
                                                                     onClick={() => updateQty(item.stockId, -1)}
                                                                 >
                                                                     <Minus className="h-3.5 w-3.5" />
@@ -1305,7 +1314,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                                     variant="outline"
                                                                     size="icon"
                                                                     className="h-8 w-8 rounded-lg active:scale-95 transition-transform"
-                                                                    aria-label={`Increase quantity of ${item.name}`}
+                                                                    aria-label={t("Increase quantity of {0}", {
+            0: item.name,
+        })}
                                                                     onClick={() => updateQty(item.stockId, 1)}
                                                                 >
                                                                     <Plus className="h-3.5 w-3.5" />
@@ -1320,7 +1331,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                                 variant="ghost"
                                                                 size="icon"
                                                                 className="h-8 w-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10 active:scale-95 transition-transform"
-                                                                aria-label={`Remove ${item.name} from the cart`}
+                                                                aria-label={t("Remove {0} from the cart", {
+            0: item.name,
+        })}
                                                                 onClick={() => removeFromCart(item.stockId)}
                                                             >
                                                                 <Trash2 className="h-4 w-4" />
@@ -1340,9 +1353,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                             <TableRow className="border-none">
                                                                 <TableCell colSpan={4} className="p-0">
                                                                     <div className="w-full px-2 pb-2">
-                                                                        <div className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 p-2 rounded-md border border-emerald-200 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1">
+                                                                        <div className="text-xs text-emerald-700 font-semibold bg-emerald-50 p-2 rounded-md border border-emerald-200 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1">
                                                                             <Sparkles className="h-3.5 w-3.5" />
-                                                                            Promotion won: {Math.floor(item.qty / promoData.requiredQty)}x {promoData.prize}
+                                                                            {t("Promotion won:")} {Math.floor(item.qty / promoData.requiredQty)}x {promoData.prize}
                                                                         </div>
                                                                     </div>
                                                                 </TableCell>
@@ -1359,20 +1372,20 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                         <div className="grid gap-3 p-4 border-t bg-muted/30">
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                        <Label htmlFor="client-type" className="text-xs">Client Type</Label>
+                                        <Label htmlFor="client-type" className="text-xs">{t("Client Type")}</Label>
                                         <Select value={clientType} onValueChange={setClientType}>
                                             <SelectTrigger id="client-type" className="h-8">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="Non-Member">Non-Member</SelectItem>
-                                                <SelectItem value="Member">Member</SelectItem>
-                                                <SelectItem value="HP Client">HP Client</SelectItem>
+                                                <SelectItem value="Non-Member">{t("Non-Member")}</SelectItem>
+                                                <SelectItem value="Member">{t("Member")}</SelectItem>
+                                                <SelectItem value="HP Client">{t("HP Client")}</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-1">
-                                        <Label className="text-xs">Customer</Label>
+                                        <Label className="text-xs">{t("Customer")}</Label>
                                         <DistributorSearch
                                             customers={customers || []}
                                             selectedId={selectedCustomerId}
@@ -1389,7 +1402,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                 <div className="space-y-3 pt-2 border-t mt-2">
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                            <Label htmlFor="payment-method" className="text-xs">Payment Method</Label>
+                                            <Label htmlFor="payment-method" className="text-xs">{t("Payment Method")}</Label>
                                             <Select
                                                 value={paymentMethod}
                                                 onValueChange={(v) => {
@@ -1408,18 +1421,18 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="None">None</SelectItem>
-                                                    <SelectItem value="Cash">Cash</SelectItem>
-                                                    <SelectItem value="Mobile Money">Mobile Money</SelectItem>
-                                                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                                                    <SelectItem value="Bonus Transfer">Bonus Transfer</SelectItem>
-                                                    <SelectItem value="Loan">Loan</SelectItem>
+                                                    <SelectItem value="None">{t("None")}</SelectItem>
+                                                    <SelectItem value="Cash">{t("Cash")}</SelectItem>
+                                                    <SelectItem value="Mobile Money">{t("Mobile Money")}</SelectItem>
+                                                    <SelectItem value="Bank Transfer">{t("Bank Transfer")}</SelectItem>
+                                                    <SelectItem value="Bonus Transfer">{t("Bonus Transfer")}</SelectItem>
+                                                    <SelectItem value="Loan">{t("Loan")}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
 
                                         <div className="space-y-1">
-                                            <Label htmlFor="delivery-status" className="text-xs">Delivery Status</Label>
+                                            <Label htmlFor="delivery-status" className="text-xs">{t("Delivery Status")}</Label>
                                             <Select
                                                 value={deliveryStatus}
                                                 onValueChange={(v) => setDeliveryStatus(v as "Taken" | "Pending")}
@@ -1428,8 +1441,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="Taken">Fully Delivered</SelectItem>
-                                                    <SelectItem value="Pending">Paid But Not Taken</SelectItem>
+                                                    <SelectItem value="Taken">{t("Fully Delivered")}</SelectItem>
+                                                    <SelectItem value="Pending">{t("Paid But Not Taken")}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -1458,12 +1471,12 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                             className="w-full h-8 text-xs font-bold gap-1.5 border-amber-400 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 animate-in fade-in"
                                         >
                                             <Smartphone className="h-3.5 w-3.5 text-amber-500" />
-                                            <span>Send USSD MoMo Prompt (MTN / Airtel)</span>
+                                            <span>{t("Send USSD MoMo Prompt (MTN / Airtel)")}</span>
                                         </Button>
                                     )}
 
                                     <div className="flex items-center justify-between bg-background p-2 px-3 rounded-lg border h-9 mt-6">
-                                        <Label htmlFor="loan-toggle" className="text-xs font-medium cursor-pointer">Loan Sale?</Label>
+                                        <Label htmlFor="loan-toggle" className="text-xs font-medium cursor-pointer">{t("Loan Sale?")}</Label>
                                         <Switch
                                             id="loan-toggle"
                                             checked={isLoan}
@@ -1477,9 +1490,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     </div>
 
                                     <div className="flex items-center justify-between bg-indigo-50/50 p-2 px-3 rounded-lg border border-indigo-100 h-9">
-                                        <Label htmlFor="package-toggle" className="text-[10px] font-black uppercase text-indigo-700 cursor-pointer flex items-center gap-2">
+                                        <Label htmlFor="package-toggle" className="text-indigo-700 cursor-pointer flex items-center gap-2 text-eyebrow uppercase tracking-eyebrow">
                                             <Package className="h-3.5 w-3.5" />
-                                            Package Sale?
+                                            {t("Package Sale?")}
                                         </Label>
                                         <Switch
                                             id="package-toggle"
@@ -1491,7 +1504,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     {isPackageSale && (
                                         <div className="space-y-1 p-3 bg-indigo-50 border border-indigo-100 rounded-lg animate-in fade-in slide-in-from-top-1">
                                             <Label className="text-xs font-bold text-indigo-700">
-                                                Select Package Type
+                                                {t("Select Package Type")}
                                             </Label>
                                             <Select
                                                 value={packageType}
@@ -1501,9 +1514,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="Bronze">Bronze Package</SelectItem>
-                                                    <SelectItem value="Silver">Silver Package</SelectItem>
-                                                    <SelectItem value="Gold">Gold Package</SelectItem>
+                                                    <SelectItem value="Bronze">{t("Bronze Package")}</SelectItem>
+                                                    <SelectItem value="Silver">{t("Silver Package")}</SelectItem>
+                                                    <SelectItem value="Gold">{t("Gold Package")}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -1513,9 +1526,9 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                             {(clientType === "HP Client" || (clientType === "Non-Member" && selectedCustomerId === "walk-in") || (isLoan && selectedCustomerId === "walk-in")) && (
                                 <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
                                     <div className="space-y-1">
-                                        <Label className="text-xs">Customer/Walk-in Name (Optional)</Label>
+                                        <Label className="text-xs">{t("Customer/Walk-in Name (Optional)")}</Label>
                                         <Input
-                                            placeholder="Type customer name..."
+                                            placeholder={t("Type customer name...")}
                                             className="h-8 shadow-sm border-primary/20"
                                             value={manualName}
                                             onChange={(e) => setManualName(e.target.value)}
@@ -1523,18 +1536,18 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                            <Label className="text-xs">Customer Phone</Label>
+                                            <Label className="text-xs">{t("Customer Phone")}</Label>
                                             <Input
-                                                placeholder="Phone number..."
+                                                placeholder={t("Phone number...")}
                                                 className="h-8 shadow-sm border-primary/20"
                                                 value={customerPhone}
                                                 onChange={(e) => setCustomerPhone(e.target.value)}
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className="text-xs">Customer Location</Label>
+                                            <Label className="text-xs">{t("Customer Location")}</Label>
                                             <Input
-                                                placeholder="Current location..."
+                                                placeholder={t("Current location...")}
                                                 className="h-8 shadow-sm border-primary/20"
                                                 value={customerLocation}
                                                 onChange={(e) => setCustomerLocation(e.target.value)}
@@ -1549,7 +1562,7 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     <div className={`space-y-1 p-2 rounded-md border ${formErrors.paymentDate ? "bg-destructive/5 border-destructive" : "bg-orange-50 border-orange-100"}`}>
                                         <Label className={`text-xs font-medium flex items-center gap-2 ${formErrors.paymentDate ? "text-destructive" : "text-orange-700"}`}>
                                             <CalendarIcon className="h-3 w-3" />
-                                            Due Date
+                                            {t("Due Date")}
                                         </Label>
                                         <Input
                                             type="date"
@@ -1566,10 +1579,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     <div className="space-y-1 p-2 rounded-md border bg-blue-50 border-blue-100">
                                         <Label className="text-xs font-medium flex items-center gap-2 text-blue-700">
                                             <Banknote className="h-3 w-3" />
-                                            Initial Deposit
+                                            {t("Initial Deposit")}
                                         </Label>
                                         <Input
-                                            placeholder="Amount"
+                                            placeholder={t("Amount")}
                                             value={initialDeposit}
                                             onChange={(e) => setInitialDeposit(e.target.value)}
                                             className="h-8 bg-white border-blue-200 focus-visible:ring-blue-500"
@@ -1589,11 +1602,11 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 
                         <div className="space-y-1">
                             <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>Total PV / BV</span>
+                                <span>{t("Total PV / BV")}</span>
                                 <span className="font-mono tabular-nums">{totalPV} / {totalBV}</span>
                             </div>
                             <div className="flex justify-between items-baseline border-t pt-2 mt-2">
-                                <span className="text-base font-semibold">Total Amount</span>
+                                <span className="text-base font-semibold">{t("Total Amount")}</span>
                                 <span
                                     className="text-2xl font-bold text-primary tabular-nums"
                                     aria-live="polite"
@@ -1636,11 +1649,10 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
             >
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>The price has changed</DialogTitle>
+                        <DialogTitle>{t("The price has changed")}</DialogTitle>
                         <DialogDescription>
-                            The price of {pendingPriceChange?.notice.changes.length === 1 ? "a product" : "some products"}
-                            {" "}changed while this sale was being rung up. Check the new price with the customer
-                            before charging it.
+                            {t("The price of")} {pendingPriceChange?.notice.changes.length === 1 ? "a product" : "some products"}
+                            {" "}{t("changed while this sale was being rung up. Check the new price with the customer before charging it.")}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -1657,23 +1669,23 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
                                     </p>
                                 </div>
                                 <div className="ml-3 text-right">
-                                    <p className="text-sm font-black text-orange-700">
+                                    <p className="text-sm font-semibold text-orange-700">
                                         {change.chargedPrice.toLocaleString()}
                                     </p>
-                                    <p className="text-[10px] uppercase text-muted-foreground">new price</p>
+                                    <p className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">new price</p>
                                 </div>
                             </div>
                         ))}
                         <p className="pt-1 text-xs text-muted-foreground">
-                            New total: {currency} {pendingPriceChange?.notice.total.toLocaleString()}
+                            {t("New total:")} {currency} {pendingPriceChange?.notice.total.toLocaleString()}
                         </p>
                     </div>
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setPendingPriceChange(null)}>
-                            Cancel the sale
+                            {t("Cancel the sale")}
                         </Button>
-                        <Button onClick={acceptPriceChange}>Charge the new price</Button>
+                        <Button onClick={acceptPriceChange}>{t("Charge the new price")}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -1695,7 +1707,8 @@ function SalesInterface({ isHp }: { isHp: boolean }) {
 }
 
 function RestockView() {
-    const { user } = useAuth();
+    
+    const t = useT();const { user } = useAuth();
     const { currency } = useCurrency();
     const [hpFilter, setHpFilter] = useState<"regular" | "hp">("regular");
     const [currentPage, setCurrentPage] = useState(1);
@@ -1718,8 +1731,8 @@ function RestockView() {
             <div className="flex items-center justify-between">
                 <Tabs value={hpFilter} onValueChange={(v) => { setHpFilter(v as any); setCurrentPage(1); }} className="w-[300px]">
                     <TabsList className="grid w-full grid-cols-2 rounded-lg border shadow-sm">
-                        <TabsTrigger value="regular" className="text-xs uppercase tracking-wider font-bold">Regular Stock</TabsTrigger>
-                        <TabsTrigger value="hp" className="text-xs uppercase tracking-wider font-bold text-primary">HP Stock</TabsTrigger>
+                        <TabsTrigger value="regular" className="text-xs uppercase tracking-wider font-bold">{t("Regular Stock")}</TabsTrigger>
+                        <TabsTrigger value="hp" className="text-xs uppercase tracking-wider font-bold text-primary">{t("HP Stock")}</TabsTrigger>
                     </TabsList>
                 </Tabs>
 
@@ -1756,12 +1769,12 @@ function RestockView() {
                         }}
                     >
                         <Download className="h-4 w-4" />
-                        Download PDF
+                        {t("Download PDF")}
                     </Button>
 
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg border border-destructive/20 animate-pulse">
                         <Package className="h-4 w-4" />
-                        <span className="text-xs font-bold uppercase tracking-tighter">Items Needing Restock</span>
+                        <span className="text-xs font-bold uppercase tracking-tighter">{t("Items Needing Restock")}</span>
                         <Badge variant="destructive" className="h-5 min-w-[20px] px-1 flex justify-center">{totalCount}</Badge>
                     </div>
                 </div>
@@ -1771,11 +1784,11 @@ function RestockView() {
                 <Table>
                     <TableHeader className="bg-muted/50">
                         <TableRow>
-                            <TableHead className="font-bold">Product Code</TableHead>
-                            <TableHead className="font-bold">Product Name</TableHead>
-                            <TableHead className="text-right font-bold">Price</TableHead>
-                            <TableHead className="text-center font-bold">Current Qty</TableHead>
-                            <TableHead className="text-right font-bold">Status</TableHead>
+                            <TableHead className="font-bold">{t("Product Code")}</TableHead>
+                            <TableHead className="font-bold">{t("Product Name")}</TableHead>
+                            <TableHead className="text-right font-bold">{t("Price")}</TableHead>
+                            <TableHead className="text-center font-bold">{t("Current Qty")}</TableHead>
+                            <TableHead className="text-right font-bold">{t("Status")}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1790,7 +1803,7 @@ function RestockView() {
                                 <TableCell colSpan={5} className="h-40 text-center text-muted-foreground">
                                     <div className="flex flex-col items-center gap-2 opacity-50">
                                         <Check className="h-8 w-8 text-green-500" />
-                                        <p className="font-medium">All products are currently in stock!</p>
+                                        <p className="font-medium">{t("All products are currently in stock!")}</p>
                                     </div>
                                 </TableCell>
                             </TableRow>
@@ -1806,7 +1819,7 @@ function RestockView() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Badge variant="destructive" className="uppercase text-[10px] tracking-tighter font-black shadow-sm">OUT OF STOCK</Badge>
+                                        <Badge variant="destructive" className="tracking-tighter shadow-sm text-eyebrow uppercase tracking-eyebrow">{t("OUT OF STOCK")}</Badge>
                                     </TableCell>
                                 </TableRow>
                             ))
@@ -1816,7 +1829,7 @@ function RestockView() {
 
                 <div className="mt-auto border-t bg-muted/20 px-4 py-3 flex items-center justify-between">
                     <p className="text-xs text-muted-foreground font-medium">
-                        Showing {items.length} out of {totalCount} items
+                        {t("Showing")} {items.length} out of {totalCount} items
                     </p>
                     <div className="flex items-center gap-2">
                         <Button
@@ -1824,19 +1837,19 @@ function RestockView() {
                             size="sm"
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             disabled={currentPage === 1}
-                            className="h-8 text-[10px] uppercase font-bold"
+                            className="h-8 text-eyebrow uppercase tracking-eyebrow"
                         >
-                            Previous
+                            {t("Previous")}
                         </Button>
-                        <span className="text-xs font-bold px-2">Page {currentPage} of {totalPages || 1}</span>
+                        <span className="text-xs font-bold px-2">{t("Page")} {currentPage} of {totalPages || 1}</span>
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             disabled={currentPage >= totalPages || totalPages === 0}
-                            className="h-8 text-[10px] uppercase font-bold"
+                            className="h-8 text-eyebrow uppercase tracking-eyebrow"
                         >
-                            Next
+                            {t("Next")}
                         </Button>
                     </div>
                 </div>
@@ -1853,7 +1866,8 @@ interface DistributorSearchProps {
 }
 
 function DistributorSearch({ selectedId, onSelect, customers, error }: DistributorSearchProps) {
-    const [open, setOpen] = useState(false);
+    
+    const t = useT();const [open, setOpen] = useState(false);
     const selectedCustomer = customers.find(c => c._id === selectedId);
 
     return (
@@ -1871,7 +1885,7 @@ function DistributorSearch({ selectedId, onSelect, customers, error }: Distribut
                     <span className="truncate">
                         {selectedId === "walk-in" ? (
                             <span className="flex items-center text-muted-foreground">
-                                <User className="mr-2 h-3 w-3" /> Walk-in Client
+                                <User className="mr-2 h-3 w-3" /> {t("Walk-in Client")}
                             </span>
                         ) : selectedCustomer?.name}
                     </span>
@@ -1880,9 +1894,9 @@ function DistributorSearch({ selectedId, onSelect, customers, error }: Distribut
             </PopoverTrigger>
             <PopoverContent className="w-[300px] p-0" align="start">
                 <Command>
-                    <CommandInput placeholder="Search name or ID..." />
+                    <CommandInput placeholder={t("Search name or ID...")} />
                     <CommandList>
-                        <CommandEmpty>No customer found.</CommandEmpty>
+                        <CommandEmpty>{t("No customer found.")}</CommandEmpty>
                         <CommandGroup>
                             <CommandItem
                                 value="walk-in"
@@ -1898,7 +1912,7 @@ function DistributorSearch({ selectedId, onSelect, customers, error }: Distribut
                                     )}
                                 />
                                 <User className="mr-2 h-3 w-3 text-muted-foreground" />
-                                Walk-in Client
+                                {t("Walk-in Client")}
                             </CommandItem>
                             {customers.map((customer) => (
                                 <CommandItem
@@ -1918,8 +1932,8 @@ function DistributorSearch({ selectedId, onSelect, customers, error }: Distribut
                                     <div className="flex flex-col">
                                         <span>{customer.name}</span>
                                         {customer.distributorId && (
-                                            <span className="text-[10px] text-muted-foreground">
-                                                ID: {customer.distributorId}
+                                            <span className="text-xs text-muted-foreground">
+                                                {t("ID:")} {customer.distributorId}
                                             </span>
                                         )}
                                     </div>
@@ -1959,7 +1973,8 @@ function ProductListSkeleton() {
 }
 
 function SwapView() {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const { user } = useAuth();
     const activeProfile = useQuery(api.businesses.getActive, {});
     const [search, setSearch] = useState("");
@@ -2063,7 +2078,7 @@ function SwapView() {
                 <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Search products to swap..."
+                        placeholder={t("Search products to swap...")}
                         className="pl-9 h-12"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -2074,9 +2089,9 @@ function SwapView() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Product</TableHead>
-                                <TableHead className="text-right">Price</TableHead>
-                                <TableHead className="text-center">Action</TableHead>
+                                <TableHead>{t("Product")}</TableHead>
+                                <TableHead className="text-right">{t("Price")}</TableHead>
+                                <TableHead className="text-center">{t("Action")}</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -2085,26 +2100,26 @@ function SwapView() {
                                     <TableCell>
                                         <div className="flex flex-col">
                                             <span className="font-medium">{stock.name}</span>
-                                            <span className="text-[10px] text-muted-foreground">{stock.productCode}</span>
+                                            <span className="text-xs text-muted-foreground">{stock.productCode}</span>
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right font-mono">{stock.price.toLocaleString()}</TableCell>
                                     <TableCell className="text-center">
                                         <div className="flex gap-2 justify-center">
-                                            <Button size="sm" variant="outline" className="h-7 text-[10px] bg-red-50 text-red-700 border-red-200" onClick={() => {
+                                            <Button size="sm" variant="outline" className="h-7 text-xs bg-red-50 text-red-700 border-red-200" onClick={() => {
                                                 setReturnedItems(prev => {
                                                     const exists = prev.find(i => i.stockId === (stock._id || stock.stockId));
                                                     if (exists) return prev.map(i => i.stockId === (stock._id || stock.stockId) ? { ...i, qty: i.qty + 1 } : i);
                                                     return [...prev, { stockId: (stock._id || stock.stockId), name: stock.name, productCode: stock.productCode, price: stock.price, qty: 1, maxQty: 999, pv: 0, bv: 0 }];
                                                 });
-                                            }}>Return (In)</Button>
-                                            <Button size="sm" variant="outline" className="h-7 text-[10px] bg-green-50 text-green-700 border-green-200" onClick={() => {
+                                            }}>{t("Return (In)")}</Button>
+                                            <Button size="sm" variant="outline" className="h-7 text-xs bg-green-50 text-green-700 border-green-200" onClick={() => {
                                                 setTakenItems(prev => {
                                                     const exists = prev.find(i => i.stockId === (stock._id || stock.stockId));
                                                     if (exists) return prev.map(i => i.stockId === (stock._id || stock.stockId) ? { ...i, qty: i.qty + 1 } : i);
                                                     return [...prev, { stockId: (stock._id || stock.stockId), name: stock.name, productCode: stock.productCode, price: stock.price, qty: 1, maxQty: 999, pv: 0, bv: 0 }];
                                                 });
-                                            }}>Take (Out)</Button>
+                                            }}>{t("Take (Out)")}</Button>
                                         </div>
                                     </TableCell>
                                 </TableRow>
@@ -2118,13 +2133,13 @@ function SwapView() {
                 <Card className="flex-1 flex flex-col border-2 shadow-md overflow-hidden">
                     <CardHeader className="bg-blue-50 py-3">
                         <CardTitle className="text-sm flex items-center gap-2">
-                            Product Swap Details
+                            {t("Product Swap Details")}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
                         <div className="space-y-2">
-                            <h4 className="text-[10px] font-bold uppercase text-red-600 bg-red-50 px-2 py-0.5 rounded w-fit">Items being Returned (Stock IN)</h4>
-                            {returnedItems.length === 0 && <p className="text-xs text-muted-foreground italic">None</p>}
+                            <h4 className="text-red-600 bg-red-50 px-2 py-0.5 rounded w-fit text-eyebrow uppercase tracking-eyebrow">{t("Items being Returned (Stock IN)")}</h4>
+                            {returnedItems.length === 0 && <p className="text-xs text-muted-foreground italic">{t("None")}</p>}
                             {returnedItems.map(item => (
                                 <div key={item.stockId} className="flex justify-between items-center text-xs border-b pb-1">
                                     <span className="flex-1 truncate">{item.name}</span>
@@ -2137,8 +2152,8 @@ function SwapView() {
                         </div>
 
                         <div className="space-y-2 pt-4 border-t border-dashed">
-                            <h4 className="text-[10px] font-bold uppercase text-green-600 bg-green-50 px-2 py-0.5 rounded w-fit">Items being Taken (Stock OUT)</h4>
-                            {takenItems.length === 0 && <p className="text-xs text-muted-foreground italic">None</p>}
+                            <h4 className="text-green-600 bg-green-50 px-2 py-0.5 rounded w-fit text-eyebrow uppercase tracking-eyebrow">{t("Items being Taken (Stock OUT)")}</h4>
+                            {takenItems.length === 0 && <p className="text-xs text-muted-foreground italic">{t("None")}</p>}
                             {takenItems.map(item => (
                                 <div key={item.stockId} className="flex justify-between items-center text-xs border-b pb-1">
                                     <span className="flex-1 truncate">{item.name}</span>
@@ -2153,12 +2168,12 @@ function SwapView() {
                         <div className="space-y-3 pt-4 border-t">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Customer Phone</Label>
+                                    <Label className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">{t("Customer Phone")}</Label>
                                     <Input placeholder="07..." className="h-8 text-xs" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Location</Label>
-                                    <Input placeholder="Kampala..." className="h-8 text-xs" value={customerLocation} onChange={(e) => setCustomerLocation(e.target.value)} />
+                                    <Label className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">{t("Location")}</Label>
+                                    <Input placeholder={t("Kampala...")} className="h-8 text-xs" value={customerLocation} onChange={(e) => setCustomerLocation(e.target.value)} />
                                 </div>
                             </div>
                         </div>
@@ -2166,21 +2181,21 @@ function SwapView() {
                     <CardFooter className="bg-muted/50 p-4 flex flex-col gap-3 mt-auto">
                         <div className="w-full space-y-1">
                             <div className="flex justify-between text-xs font-bold text-red-600">
-                                <span>Total Return Value</span>
+                                <span>{t("Total Return Value")}</span>
                                 <span>{currency} {totalReturn.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-xs font-bold text-green-600 border-b pb-1">
-                                <span>Total Taken Value</span>
+                                <span>{t("Total Taken Value")}</span>
                                 <span>{currency} {totalTake.toLocaleString()}</span>
                             </div>
-                            <div className="flex justify-between text-sm font-black pt-1">
-                                <span>Balance Difference</span>
+                            <div className="flex justify-between text-sm font-semibold pt-1">
+                                <span>{t("Balance Difference")}</span>
                                 <span className={diff >= 0 ? "text-primary" : "text-destructive"}>{currency} {diff.toLocaleString()}</span>
                             </div>
                         </div>
                         <Button className="w-full bg-blue-600 hover:bg-blue-700 font-bold" onClick={handleSwap} disabled={isLoading || (returnedItems.length === 0 && takenItems.length === 0)}>
                             {isLoading ? <Loader2 className="animate-spin mr-2" /> : <Plus className="mr-2 h-4 w-4" />}
-                            Process Product Swap
+                            {t("Process Product Swap")}
                         </Button>
                     </CardFooter>
                 </Card>

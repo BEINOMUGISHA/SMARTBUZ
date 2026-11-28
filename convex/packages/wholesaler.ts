@@ -49,6 +49,7 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requirePermission, requireTenant } from "../tenancy";
+import { assertScreenAvailable } from "./manage";
 
 /* ────────────────────────────────────────────────────────────────────────
  * Price resolution
@@ -306,6 +307,7 @@ export const createPriceList = mutation({
             throw new ConvexError(
                 'A price list is either a "tier" or a "customer" list.'
             );
+        await assertScreenAvailable(ctx, businessId, ["pricing"]);
         }
 
         if (!args.name.trim()) {
@@ -371,6 +373,7 @@ export const setPriceListEntry = mutation({
             throw new ConvexError(
                 "Forbidden: that price list belongs to another business."
             );
+        await assertScreenAvailable(ctx, businessId, ["pricing"]);
         }
 
         const stock = await ctx.db.get(args.stockId);

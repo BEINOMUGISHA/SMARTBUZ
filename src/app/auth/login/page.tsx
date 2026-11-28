@@ -12,9 +12,12 @@ import { Eye, EyeOff, Package2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
+import { useT } from "@/i18n/provider";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  
+    const t = useT();const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -79,7 +82,7 @@ export default function LoginPage() {
       <div className="hidden bg-muted lg:block relative overflow-hidden">
         <Image
           src="/images/cashier-retail-hero.jpg"
-          alt="Retail Commerce in Uganda"
+          alt={t("Retail Commerce in Uganda")}
           fill
           sizes="(min-width: 1024px) 50vw, 100vw"
           className="object-cover object-center transform scale-105 transition-transform duration-1000"
@@ -87,49 +90,54 @@ export default function LoginPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/60 flex flex-col justify-between p-12 text-white">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-black tracking-wider uppercase">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-semibold tracking-wider uppercase">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              SMARTBUZ Commerce
+              {t("SMARTBUZ Commerce")}
             </div>
-            <div className="text-[11px] font-mono font-bold text-white/70">
-              KAMPALA • EAST AFRICA
+            <div className="text-xs font-mono font-bold text-white/70">
+              {t("KAMPALA • EAST AFRICA")}
             </div>
           </div>
 
           <div className="space-y-4 max-w-lg">
-            <h2 className="text-4xl xl:text-5xl font-black tracking-tight leading-tight text-white drop-shadow-md">
-              Run Your Business <br />
-              <span className="text-emerald-400">Smarter, Faster.</span>
+            <h2 className="text-4xl xl:text-5xl font-semibold tracking-tight leading-tight text-white drop-shadow-md">
+              {t("Run Your Business")} <br />
+              <span className="text-emerald-400">{t("Smarter, Faster.")}</span>
             </h2>
             <p className="text-base text-white/90 font-medium leading-relaxed drop-shadow-sm">
-              Point of sale, real-time multi-branch stock tracking, instant Mobile Money payments, and automated URA VAT tax receipts.
+              {t("Point of sale, real-time multi-branch stock tracking, instant Mobile Money payments, and automated URA VAT tax receipts.")}
             </p>
 
             <div className="grid grid-cols-2 gap-3 pt-4 border-t border-white/15 text-xs font-bold">
               <div className="flex items-center gap-2">
-                <span className="text-emerald-400 font-black">✓</span> MTN & Airtel MoMo
+                <span className="text-emerald-400 font-semibold">✓</span> {t("MTN & Airtel MoMo")}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-emerald-400 font-black">✓</span> Multi-Branch Sync
+                <span className="text-emerald-400 font-semibold">✓</span> {t("Multi-Branch Sync")}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-emerald-400 font-black">✓</span> Offline Draft Queue
+                <span className="text-emerald-400 font-semibold">✓</span> {t("Offline Draft Queue")}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-emerald-400 font-black">✓</span> A5 & Thermal Invoicing
+                <span className="text-emerald-400 font-semibold">✓</span> {t("A5 & Thermal Invoicing")}
               </div>
             </div>
           </div>
 
           <div className="pt-6 border-t border-white/10 flex items-center justify-between text-xs text-white/70">
-            <span>Official POS for Retail, Wholesale & MLM</span>
-            <span className="font-semibold text-white/90">Trusted in Uganda 🇺🇬</span>
+            <span>{t("Official POS for Retail, Wholesale & MLM")}</span>
+            <span className="font-semibold text-white/90">{t("Trusted in Uganda 🇺🇬")}</span>
           </div>
         </div>
       </div>
 
       {/* Right side: Login Form */}
       <div className="flex items-center justify-center py-12 px-6 sm:px-12 lg:px-8 bg-background relative overflow-hidden">
+        {/* The language, for a person who does not read the page yet. */}
+        <div className="absolute top-4 right-4 z-20">
+          <LanguageSwitcher showLabel />
+        </div>
+
         {/* Subtle decorative elements for mobile */}
         <div className="absolute top-[-10%] right-[-10%] w-64 h-64 bg-primary/5 rounded-full blur-3xl lg:hidden" />
         <div className="absolute bottom-[-10%] left-[-10%] w-64 h-64 bg-secondary/10 rounded-full blur-3xl lg:hidden" />
@@ -137,9 +145,9 @@ export default function LoginPage() {
         <div className="w-full max-w-[420px] space-y-10 relative z-10">
           <div className="flex flex-col items-center text-center">
             <div className="space-y-3">
-              <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl lg:text-5xl">Welcome Back</h1>
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl lg:text-5xl">{t("Welcome Back")}</h1>
               <p className="text-sm sm:text-base text-muted-foreground font-medium max-w-xs mx-auto">
-                Please enter your credentials to sign in
+                {t("Please enter your credentials to sign in")}
               </p>
             </div>
           </div>
@@ -148,7 +156,7 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-5">
                 <div className="space-y-2.5">
-                  <Label htmlFor="email" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">Email Address</Label>
+                  <Label htmlFor="email" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">{t("Email Address")}</Label>
                   <div className="relative group">
                     <Input
                       id="email"
@@ -156,7 +164,7 @@ export default function LoginPage() {
                       type="email"
                       autoComplete="email"
                       required
-                      placeholder="admin@pos.com"
+                      placeholder={t("admin@pos.com")}
                       className="h-14 pl-4 pr-4 border-muted-foreground/20 focus:border-primary focus:ring-primary/20 transition-all rounded-xl text-lg"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -165,7 +173,7 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="password" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">Password</Label>
+                    <Label htmlFor="password" className="text-sm font-bold uppercase tracking-wider text-muted-foreground/80">{t("Password")}</Label>
                   </div>
                   <div className="relative group">
                     <Input
@@ -208,7 +216,7 @@ export default function LoginPage() {
                     className="h-5 w-5 rounded-md border-muted-foreground/30 text-primary focus:ring-primary/20 accent-primary cursor-pointer"
                   />
                   <Label htmlFor="remember-me" className="text-sm font-medium text-muted-foreground cursor-pointer select-none">
-                    Keep me signed in
+                    {t("Keep me signed in")}
                   </Label>
                 </div>
               </div>
@@ -225,10 +233,10 @@ export default function LoginPage() {
               {needsVerification && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
                   <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-                    Your email address has not been verified yet.
+                    {t("Your email address has not been verified yet.")}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Open the link we emailed you, or ask for a new code.
+                    {t("Open the link we emailed you, or ask for a new code.")}
                   </p>
                   <Button
                     type="button"
@@ -246,11 +254,11 @@ export default function LoginPage() {
 
             <div className="space-y-3 pt-2 text-center">
               <Link href="/auth/register" className="inline-flex items-center justify-center text-sm font-bold text-primary hover:text-primary/80 transition-colors">
-                Create a new account
+                {t("Create a new account")}
               </Link>
               <div>
                 <Link href="/auth/forgot-password" className="inline-flex items-center justify-center text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-                  Forgot your password?
+                  {t("Forgot your password?")}
                 </Link>
               </div>
             </div>
@@ -258,7 +266,7 @@ export default function LoginPage() {
 
           <div className="pt-4 text-center">
             <p className="text-sm font-medium text-muted-foreground/60">
-              &copy; {new Date().getFullYear()} SMART_BUZ • Smart Business Operations
+              {t("&copy;")} {new Date().getFullYear()} {t("SMART_BUZ • Smart Business Operations")}
             </p>
           </div>
         </div>

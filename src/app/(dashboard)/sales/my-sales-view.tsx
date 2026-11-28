@@ -4,17 +4,16 @@ import { useState, useEffect } from "react";
 import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useAuth } from "@/context/auth-context";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { StatCard, StatGrid } from "@/components/app/page-shell";
+import { StatusBadge } from "@/components/vertical/ui-kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
     Loader2,
-    ChevronLeft,
-    ChevronRight,
     Check,
     ChevronsUpDown,
     Search,
@@ -22,9 +21,10 @@ import {
     FileSpreadsheet,
     FileText,
     Printer,
-    Pencil
+    Pencil,
+    Undo2
 } from "lucide-react";
-import { exportToExcel, exportToPDF, extractTextFromReact } from "@/lib/export-utils";
+import { exportExcel, exportPdf, extractTextFromReact, toExportColumns } from "@/lib/export";
 import { startOfMonth, endOfMonth, endOfDay, format, startOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/date-range-picker";
@@ -48,8 +48,9 @@ import { Id } from "../../../../convex/_generated/dataModel";
 
 import { ReceiptModal } from "@/components/ReceiptModal";
 import { ReceiptData } from "@/components/ReceiptTemplate";
-import { EditSaleSheet } from "./edit-sale-sheet";
+import { EditSaleSheet, RefundSaleDialog, isSaleFullyRefunded } from "./edit-sale-sheet";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 /**
  * One line of a sale whose price had moved between the basket being filled
@@ -71,8 +72,9 @@ type SaleRowWithPriceChanges = {
 };
 
 export function MySalesView() {
-    const { currency } = useCurrency();
-    const { user } = useAuth();
+    
+    const t = useT();const { currency } = useCurrency();
+    const { user, can } = useAuth();
     const [dateMode, setDateMode] = useState<"audit" | "range">("audit");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
     // Default to current month for range
@@ -94,6 +96,10 @@ export function MySalesView() {
     // Edit Sale State
     const [editingSale, setEditingSale] = useState<any | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
+
+    // Refund State
+    const [refundingSale, setRefundingSale] = useState<any | null>(null);
+    const [isRefundOpen, setIsRefundOpen] = useState(false);
 
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
@@ -210,6 +216,22 @@ export function MySalesView() {
         }
     };
 
+    /**
+     * Move through the list.
+     *
+     * The rows come from the server a page at a time, so a page that has
+     * not been read yet is asked for before it is shown.
+     */
+    const handlePageChange = (page: number) => {
+        if (page > currentPage) {
+            const nextPageIndex = (page - 1) * rowsPerPage;
+            if (nextPageIndex >= loadedCount && status === "CanLoadMore") {
+                loadMore(rowsPerPage);
+            }
+        }
+        setCurrentPage(page);
+    };
+
     // Formatting helper
     const fmt = (n: number) => n?.toLocaleString() ?? "0";
 
@@ -225,7 +247,7 @@ export function MySalesView() {
                 <div className="flex flex-col gap-1">
                     <Badge variant={s.clientType === "HP Client" ? "secondary" : "outline"}>{s.clientType}</Badge>
                     {s.packageType && (
-                        <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px]">
+                        <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-xs">
                             {s.packageType}
                         </Badge>
                     )}
@@ -236,7 +258,7 @@ export function MySalesView() {
         {
             header: "Delivery",
             accessor: (s: any) => (
-                <Badge variant={s.deliveryStatus === "Pending" ? "destructive" : "default"} className="text-[10px]">
+                <Badge variant={s.deliveryStatus === "Pending" ? "destructive" : "default"} className="text-xs">
                     {s.deliveryStatus === "Pending" ? "Pending" : "Taken"}
                 </Badge>
             ),
@@ -248,10 +270,10 @@ export function MySalesView() {
                 <div className="flex flex-col gap-0.5">
                     <span className="font-semibold">{s.customer?.name || s.manualCustomerName || "Walk-in"}</span>
                     {(s.customer?.phone || s.customerPhone) && (
-                        <span className="text-[10px] text-muted-foreground">{s.customer?.phone || s.customerPhone}</span>
+                        <span className="text-xs text-muted-foreground">{s.customer?.phone || s.customerPhone}</span>
                     )}
                     {(s.customer?.location || s.customerLocation) && (
-                        <span className="text-[10px] text-muted-foreground italic">@ {s.customer?.location || s.customerLocation}</span>
+                        <span className="text-xs text-muted-foreground italic">@ {s.customer?.location || s.customerLocation}</span>
                     )}
                 </div>
             )
@@ -273,7 +295,7 @@ export function MySalesView() {
                     return <span className="text-muted-foreground text-xs">—</span>;
                 }
                 return (
-                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-[10px]">
+                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
                         {changes.length} line{changes.length === 1 ? "" : "s"} re-priced
                     </Badge>
                 );
@@ -300,6 +322,18 @@ export function MySalesView() {
             exportValue: (s: any) => s.total.toLocaleString()
         },
         {
+            // What has been handed back on this sale. A report that hid it
+            // would not reconcile against the drawer.
+            header: "Refunded",
+            accessor: (s: any) => s.refundAmount ?? 0,
+            exportValue: (s: any) =>
+                (s.refundAmount ?? 0) > 0
+                    ? `${(s.refundAmount ?? 0).toLocaleString()}${
+                          isSaleFullyRefunded(s) ? " (fully refunded)" : " (partly refunded)"
+                      }`
+                    : ""
+        },
+        {
             header: "Type",
             accessor: (s: any) => (
                 <Badge variant={s.transactionType === "Swap" ? "secondary" : "outline"} className={s.transactionType === "Swap" ? "bg-purple-50 text-purple-700 border-purple-200" : ""}>
@@ -312,6 +346,355 @@ export function MySalesView() {
             header: "Payment",
             accessor: (s: any) => s.paymentMode || "Cash"
         }
+    ];
+
+    /**
+     * The columns of the sales list.
+     *
+     * The list is the operator's picture of the till: what was sold, who it
+     * was sold to, and — because a refund changes what the business has —
+     * how much of it has been handed back.
+     */
+    const saleColumns: DataTableColumn<any>[] = [
+        {
+            id: "date",
+            header: "Date",
+            accessor: (s: any) => new Date(s._creationTime).toISOString(),
+            cell: (s: any) => (
+                <div className="font-mono text-xs">
+                    <div className="font-semibold">
+                        {new Date(s._creationTime).toLocaleDateString()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                        {new Date(s._creationTime).toLocaleTimeString()}
+                    </div>
+                </div>
+            ),
+        },
+        {
+            id: "client",
+            header: "Client",
+            accessor: (s: any) => s.clientType ?? "",
+            cell: (s: any) => (
+                <div className="flex flex-col items-start gap-1">
+                    <div className="flex flex-wrap gap-1">
+                        <Badge
+                            variant={
+                                s.clientType === "HP Client" ? "secondary" : "outline"
+                            }
+                        >
+                            {s.clientType}
+                        </Badge>
+                        <Badge
+                            variant={s.paymentMode === "Loan" ? "destructive" : "outline"}
+                            className="h-5"
+                        >
+                            {s.paymentMode || "Cash"}
+                        </Badge>
+                    </div>
+
+                    {s.manualCustomerName ? (
+                        <div className="text-xs font-medium text-blue-600">
+                            {t("Cust:")} {s.manualCustomerName}
+                        </div>
+                    ) : null}
+
+                    {s.paymentDueDate ? (
+                        <Badge
+                            variant="outline"
+                            className="border-orange-200 text-orange-700 bg-orange-50"
+                        >
+                            {t("Due:")} {new Date(s.paymentDueDate).toLocaleDateString()}
+                        </Badge>
+                    ) : null}
+                </div>
+            ),
+        },
+        {
+            id: "items",
+            header: "Items (Qty x Name [PV/BV])",
+            accessor: (s: any) =>
+                (s.items ?? [])
+                    .map((i: any) => `${i.quantity}x ${i.name}`)
+                    .join(", "),
+            cell: (s: any) => (
+                <div className="flex max-w-[400px] flex-col gap-1">
+                    {(s.items ?? []).map((i: any, idx: number) => (
+                        <div
+                            key={idx}
+                            className="flex items-center justify-between border-b border-dashed text-xs last:border-0 last:pb-0"
+                        >
+                            <span>
+                                <span className="mr-1 font-semibold">
+                                    {i.quantity}x
+                                </span>{" "}
+                                {i.name}
+                            </span>
+                            <span className="ml-2 whitespace-nowrap text-muted-foreground">
+                                [{i.pv} {t("PV /")} {i.bv} {t("BV]")}
+                            </span>
+                        </div>
+                    ))}
+
+                    {s.transactionType === "Swap" && s.returnedItems ? (
+                        <div className="mt-2 border-t border-purple-200 pt-2">
+                            <div className="mb-1 text-eyebrow uppercase tracking-eyebrow text-purple-700">
+                                {t("Returned in Exchange")}
+                            </div>
+                            {s.returnedItems.map((i: any, idx: number) => (
+                                <div
+                                    key={idx}
+                                    className="flex justify-between text-xs italic text-purple-600"
+                                >
+                                    <span>
+                                        {i.quantity}x {i.name}
+                                    </span>
+                                    <span>({i.productCode})</span>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+
+                    {/* ──────────────────────────────────────────
+                     * THE PRICE MOVED UNDER THE BASKET
+                     *
+                     * The price of these lines had changed between
+                     * the basket being filled and the sale being rung
+                     * up. The sale was made at the catalogue's price
+                     * and the difference is written down here, so
+                     * that it can be seen and explained rather than
+                     * discovered later.
+                     * ────────────────────────────────────────── */}
+                    {s.priceChanges && s.priceChanges.length > 0 ? (
+                        <div className="mt-2 border-t border-orange-200 pt-2">
+                            <div className="mb-1 text-eyebrow uppercase tracking-eyebrow text-orange-700">
+                                {t("Re-priced while the sale was rung up")}
+                            </div>
+                            {s.priceChanges.map(
+                                (change: PriceChangeLine, idx: number) => (
+                                    <div
+                                        key={idx}
+                                        className="flex justify-between gap-2 text-xs text-orange-700"
+                                    >
+                                        <span className="truncate">
+                                            {change.quantity}x {change.name}
+                                        </span>
+                                        <span className="whitespace-nowrap">
+                                            {change.quotedPrice} {t("&rarr;")}{" "}
+                                            {change.chargedPrice}
+                                        </span>
+                                    </div>
+                                )
+                            )}
+                        </div>
+                    ) : null}
+                </div>
+            ),
+        },
+        {
+            id: "pv",
+            header: "Total PV/BV",
+            align: "right",
+            accessor: (s: any) =>
+                (s.items ?? []).reduce(
+                    (sum: number, i: any) => sum + (i.pv * i.quantity),
+                    0
+                ),
+            cell: (s: any) => (
+                <div className="font-mono text-xs">
+                    <div className="font-medium text-emerald-600">
+                        {(
+                            s.items ?? []
+                        ).reduce(
+                            (sum: number, i: any) => sum + (i.pv * i.quantity),
+                            0
+                        )
+                            .toLocaleString()}{" "}
+                        {t("PV")}
+                    </div>
+                    <div className="text-muted-foreground">
+                        {(
+                            s.items ?? []
+                        ).reduce(
+                            (sum: number, i: any) => sum + (i.bv * i.quantity),
+                            0
+                        )
+                            .toLocaleString()}{" "}
+                        {t("BV")}
+                    </div>
+                </div>
+            ),
+        },
+        {
+            id: "total",
+            header: `Total (${currency})`,
+            align: "right",
+            accessor: (s: any) => s.total ?? 0,
+            cell: (s: any) => (
+                <div>
+                    <div className="font-semibold tabular-nums">
+                        {(s.total ?? 0).toLocaleString()}
+                    </div>
+                    {s.loan ? (
+                        <div className="mt-1 space-y-0.5 text-xs">
+                            <div className="font-medium text-emerald-600">
+                                {t("Paid:")}{" "}
+                                {(
+                                    (s.total ?? 0) - (s.loan.balance ?? 0)
+                                ).toLocaleString()}
+                            </div>
+                            <div className="font-medium text-orange-600">
+                                {t("Due:")} {(s.loan.balance ?? 0).toLocaleString()}
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
+            ),
+        },
+        {
+            id: "refunded",
+            header: "Refunded",
+            align: "right",
+            accessor: (s: any) => s.refundAmount ?? 0,
+            cell: (s: any) => {
+                const refunded = s.refundAmount ?? 0;
+                if (refunded <= 0) {
+                    return <span className="text-muted-foreground">—</span>;
+                }
+                const fully = isSaleFullyRefunded(s);
+                return (
+                    <div className="flex flex-col items-end gap-1">
+                        <span className="font-semibold tabular-nums">
+                            {currency} {refunded.toLocaleString()}
+                        </span>
+                        <Badge variant={fully ? "info" : "warning"}>
+                            {fully ? "Refunded" : "Partly refunded"}
+                        </Badge>
+                    </div>
+                );
+            },
+        },
+        {
+            id: "status",
+            header: "Status",
+            accessor: (s: any) => s.deliveryStatus ?? "Taken",
+            cell: (s: any) => (
+                <div className="flex flex-col items-start gap-1">
+                    <StatusBadge status={s.deliveryStatus || "Taken"} />
+                    {s.transactionType && s.transactionType !== "Sale" ? (
+                        <Badge variant="secondary">{s.transactionType}</Badge>
+                    ) : null}
+                </div>
+            ),
+        },
+        {
+            id: "actions",
+            header: "Actions",
+            sortable: false,
+            excludeFromSearch: true,
+            cell: (s: any) => (
+                <div className="flex items-center justify-center gap-1">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t("Edit Sale")}
+                        onClick={() => {
+                            setEditingSale(s);
+                            setIsEditOpen(true);
+                        }}
+                    >
+                        <Pencil className="h-4 w-4 text-blue-600" />
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t("Print Receipt")}
+                        onClick={() => {
+                            const totalPV = (s.items ?? []).reduce(
+                                (sum: number, i: any) => sum + (i.pv * i.quantity),
+                                0
+                            );
+                            const totalBV = (s.items ?? []).reduce(
+                                (sum: number, i: any) => sum + (i.bv * i.quantity),
+                                0
+                            );
+                            const receiptData: ReceiptData = {
+                                customer: s.customer
+                                    ? {
+                                          name: s.customer.name,
+                                          phone: s.customer.phone,
+                                          email: s.customer.email || "",
+                                          distributorId: s.customer.distributorId,
+                                      }
+                                    : undefined,
+                                shop: {
+                                    name: s.shop?.name || "HQ",
+                                    location: s.shop?.location || "Main Warehouse",
+                                    contact: s.shop?.contact || "",
+                                    serialNumber: s.shop?.serialNumber || "HQ-001",
+                                },
+                                operator: s.operator || {
+                                    name: "",
+                                    phone: "",
+                                    email: "",
+                                },
+                                clientType: s.clientType,
+                                paymentMode: s.paymentMode || "Cash",
+                                date: new Date(s._creationTime).toISOString(),
+                                paymentDueDate: s.paymentDueDate,
+                                invoiceNumber: s.invoiceNumber || s._id.slice(0, 8).toUpperCase(),
+                                items: (s.items ?? []).map((i: any) => ({
+                                    ...i,
+                                    qty: i.quantity, // MAP quantity to qty for ReceiptTemplate
+                                    productCode: i.productCode || "000",
+                                })),
+                                total: s.total,
+                                totalPV,
+                                totalBV,
+                                initialDeposit: s.initialDeposit, // Pass recorded deposit
+                                balance: s.isLoan
+                                    ? s.total - (s.initialDeposit || 0)
+                                    : undefined, // Calculate remaining balance
+                                // The currency the sale was rung up in, so an old
+                                // receipt says what the money was then.
+                                currency: s.currency || currency,
+                            };
+
+                            // If manual name exists, override customer name if it was a walk-in
+                            if (s.manualCustomerName && !receiptData.customer) {
+                                receiptData.customer = {
+                                    name: s.manualCustomerName,
+                                    phone: "",
+                                    email: "",
+                                };
+                            }
+                            setPrintReceiptData(receiptData);
+                            setIsReceiptOpen(true);
+                        }}
+                    >
+                        <Printer className="h-4 w-4" />
+                    </Button>
+
+                    {/* Handing money back is a separate, permissioned action.
+                        A sale that has been refunded in full cannot be
+                        refunded again. */}
+                    {can("sales.refund") && !isSaleFullyRefunded(s) ? (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            title={t("Refund this sale")}
+                            onClick={() => {
+                                setRefundingSale(s);
+                                setIsRefundOpen(true);
+                            }}
+                        >
+                            <Undo2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                    ) : null}
+                </div>
+            ),
+        },
     ];
 
     const handlePrint = () => {
@@ -351,19 +734,19 @@ export function MySalesView() {
                             <TabsList className="h-9 p-1 bg-linear-to-b from-muted/50 to-muted/80 border shadow-xs rounded-lg">
                                 <TabsTrigger
                                     value="audit"
-                                    className="text-[10px] font-bold uppercase tracking-wider h-7 px-3 rounded-md transition-all
+                                    className="text-eyebrow uppercase tracking-eyebrow h-7 px-3 rounded-md transition-all
                                            data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm
                                            data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground"
                                 >
-                                    Daily Audit
+                                    {t("Daily Audit")}
                                 </TabsTrigger>
                                 <TabsTrigger
                                     value="range"
-                                    className="text-[10px] font-bold uppercase tracking-wider h-7 px-3 rounded-md transition-all
+                                    className="text-eyebrow uppercase tracking-eyebrow h-7 px-3 rounded-md transition-all
                                            data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm
                                            data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground"
                                 >
-                                    Date Range
+                                    {t("Date Range")}
                                 </TabsTrigger>
                             </TabsList>
                         </Tabs>
@@ -373,7 +756,7 @@ export function MySalesView() {
                                 <PopoverTrigger asChild>
                                     <Button variant="outline" className={cn("w-[160px] justify-start text-left font-normal h-9 bg-white", !selectedDate && "text-muted-foreground")}>
                                         <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                                        {selectedDate ? format(selectedDate, "PPP") : <span>{t("Pick a date")}</span>}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0" align="start">
@@ -391,44 +774,44 @@ export function MySalesView() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Package:</Label>
+                        <Label className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground whitespace-nowrap">{t("Package:")}</Label>
                         <Select value={filterPackageType} onValueChange={setFilterPackageType}>
                             <SelectTrigger className="w-[110px] bg-white h-9 text-xs">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent side="top">
-                                <SelectItem value="All">All</SelectItem>
-                                <SelectItem value="Bronze">Bronze</SelectItem>
-                                <SelectItem value="Silver">Silver</SelectItem>
-                                <SelectItem value="Gold">Gold</SelectItem>
+                                <SelectItem value="All">{t("All")}</SelectItem>
+                                <SelectItem value="Bronze">{t("Bronze")}</SelectItem>
+                                <SelectItem value="Silver">{t("Silver")}</SelectItem>
+                                <SelectItem value="Gold">{t("Gold")}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Delivery:</Label>
+                        <Label className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground whitespace-nowrap">{t("Delivery:")}</Label>
                         <Select value={filterDeliveryStatus} onValueChange={setFilterDeliveryStatus}>
                             <SelectTrigger className="w-[110px] bg-white h-9 text-xs">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent side="top">
-                                <SelectItem value="All">All</SelectItem>
-                                <SelectItem value="Taken">Taken</SelectItem>
-                                <SelectItem value="Pending">Pending</SelectItem>
+                                <SelectItem value="All">{t("All")}</SelectItem>
+                                <SelectItem value="Taken">{t("Taken")}</SelectItem>
+                                <SelectItem value="Pending">{t("Pending")}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Type:</Label>
+                        <Label className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground whitespace-nowrap">{t("Type:")}</Label>
                         <Select value={filterTransactionType} onValueChange={setFilterTransactionType}>
                             <SelectTrigger className="w-[110px] bg-white h-9 text-xs">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent side="top">
-                                <SelectItem value="All">All</SelectItem>
-                                <SelectItem value="Sale">Sale</SelectItem>
-                                <SelectItem value="Swap">Swap</SelectItem>
+                                <SelectItem value="All">{t("All")}</SelectItem>
+                                <SelectItem value="Sale">{t("Sale")}</SelectItem>
+                                <SelectItem value="Swap">{t("Swap")}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -436,7 +819,7 @@ export function MySalesView() {
                     <div className="flex-1 min-w-[200px] relative">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="Search items, client, ID..."
+                            placeholder={t("Search items, client, ID...")}
                             className="pl-9 bg-white h-9 text-xs"
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -445,22 +828,49 @@ export function MySalesView() {
                     <DistributorValues selectedId={selectedCustomerId} onSelect={setSelectedCustomerId} />
 
                     <div className="flex items-center gap-2 ml-auto">
+                        <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("Rows")}</Label>
+                        <Select
+                            value={`${rowsPerPage}`}
+                            onValueChange={(value) => {
+                                const newSize = Number(value);
+                                setRowsPerPage(newSize);
+                                localStorage.setItem("pos_mysales_rows_per_page", String(newSize));
+                                setCurrentPage(1);
+                            }}
+                        >
+                            <SelectTrigger className="h-9 w-[70px] bg-white text-xs">
+                                <SelectValue placeholder={rowsPerPage} />
+                            </SelectTrigger>
+                            <SelectContent side="top">
+                                {[5, 10, 20, 30, 50, 100].map((pageSize) => (
+                                    <SelectItem key={pageSize} value={`${pageSize}`}>
+                                        {pageSize}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => exportToExcel(results || [], columns as any, "My_Sales_Report")}
-                            className="h-9 px-3 gap-2 text-[10px] font-black uppercase border-emerald-600/20 text-emerald-700 hover:bg-emerald-50 bg-white"
+                            onClick={() =>
+                                exportExcel(
+                                    "My Sales Report",
+                                    (results || []) as unknown as Record<string, unknown>[],
+                                    toExportColumns(columns)
+                                )
+                            }
+                            className="h-9 px-3 gap-2 text-eyebrow uppercase tracking-eyebrow border-emerald-600/20 text-emerald-700 hover:bg-emerald-50 bg-white"
                         >
-                            <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+                            <FileSpreadsheet className="h-3.5 w-3.5" /> {t("Excel")}
                         </Button>
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={async () => {
                                 const summaryStats = [
-                                    { title: "Total Volume", value: `${currency} ${fmt(stats?.totalVolume || 0)}`, description: "Items moved" },
-                                    { title: "Today's Collection", value: `${currency} ${fmt(stats?.totalCollected || 0)}`, description: "Cash received" },
-                                    { title: "Outstanding Credit", value: `${currency} ${fmt(stats?.totalOutstanding || 0)}`, description: "Awaiting payment" }
+                                    { label: "Total Volume", value: `${currency} ${fmt(stats?.totalVolume || 0)}`, hint: "Items moved" },
+                                    { label: "Today's Collection", value: `${currency} ${fmt(stats?.totalCollected || 0)}`, hint: "Cash received" },
+                                    { label: "Outstanding Credit", value: `${currency} ${fmt(stats?.totalOutstanding || 0)}`, hint: "Awaiting payment" }
                                 ];
 
                                 let logoBase64 = undefined;
@@ -476,309 +886,69 @@ export function MySalesView() {
                                     console.error("Failed to load logo for PDF", error);
                                 }
 
-                                exportToPDF(results || [], columns as any, "My_Sales_Report", "My Sales Report", summaryStats, logoBase64);
+                                await exportPdf(
+                                    "My Sales Report",
+                                    (results || []) as unknown as Record<string, unknown>[],
+                                    toExportColumns(columns),
+                                    { stats: summaryStats, business: { logoDataUrl: logoBase64 } }
+                                );
                             }}
-                            className="h-9 px-3 gap-2 text-[10px] font-black uppercase border-red-600/20 text-red-700 hover:bg-red-50 bg-white"
+                            className="h-9 px-3 gap-2 text-eyebrow uppercase tracking-eyebrow border-red-600/20 text-red-700 hover:bg-red-50 bg-white"
                         >
-                            <FileText className="h-3.5 w-3.5" /> PDF
+                            <FileText className="h-3.5 w-3.5" /> {t("PDF")}
                         </Button>
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={handlePrint}
-                            className="h-9 px-3 gap-2 text-[10px] font-black uppercase border-muted-foreground/20 bg-white"
+                            className="h-9 px-3 gap-2 text-eyebrow uppercase tracking-eyebrow border-muted-foreground/20 bg-white"
                         >
-                            <Printer className="h-3.5 w-3.5" /> Print
+                            <Printer className="h-3.5 w-3.5" /> {t("Print")}
                         </Button>
                     </div>
                 </div>
 
                 {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="bg-primary/5 border-primary/20 shadow-sm">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Sales Volume</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{currency} {fmt(stats?.totalVolume || 0)}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1">Total value of all items moved</p>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-emerald-50/50 border-emerald-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-emerald-700 uppercase tracking-wider">Today&apos;s Collection</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-emerald-600">{currency} {fmt(stats?.totalCollected || 0)}</div>
-                            <p className="text-[10px] text-emerald-600/70 mt-1">Actual cash & deposits received</p>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-orange-50/50 border-orange-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-orange-700 uppercase tracking-wider">Outstanding Credit</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-orange-600">{currency} {fmt(stats?.totalOutstanding || 0)}</div>
-                            <p className="text-[10px] text-orange-600/70 mt-1">Remaining balance on credit</p>
-                        </CardContent>
-                    </Card>
-                </div >
+                <StatGrid columns={3}>
+                    <StatCard
+                        label={t("Total Sales Volume")}
+                        value={`${currency} ${fmt(stats?.totalVolume || 0)}`}
+                        hint={t("Total value of all items moved")}
+                        isLoading={stats === undefined}
+                    />
+                    <StatCard
+                        label={t("Today's Collection")}
+                        value={`${currency} ${fmt(stats?.totalCollected || 0)}`}
+                        hint={t("Actual cash & deposits received")}
+                        tone="success"
+                        isLoading={stats === undefined}
+                    />
+                    <StatCard
+                        label={t("Outstanding Credit")}
+                        value={`${currency} ${fmt(stats?.totalOutstanding || 0)}`}
+                        hint={t("Remaining balance on credit")}
+                        tone="warning"
+                        isLoading={stats === undefined}
+                    />
+                </StatGrid>
 
                 {/* Sales Table */}
-                < div className="flex-1 border rounded-md overflow-hidden bg-background flex flex-col" >
-                    <div className="flex-1 overflow-auto">
-                        <Table>
-                            <TableHeader className="sticky top-0 bg-background z-10">
-                                <TableRow>
-                                    <TableHead className="w-[150px]">Date</TableHead>
-                                    <TableHead>Client Type</TableHead>
-                                    <TableHead className="w-[40%]">Items (Qty x Name [PV/BV])</TableHead>
-                                    <TableHead className="text-right">Total PV/BV</TableHead>
-                                    <TableHead className="text-right">Total ({currency})</TableHead>
-                                    <TableHead className="w-[100px] text-center">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {isLoading ? (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="h-24 text-center">
-                                            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                                        </TableCell>
-                                    </TableRow>
-                                ) : currentView.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                                            No sales found for this period.
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    currentView.map((sale) => {
-                                        const totalPV = sale.items.reduce((sum: number, i: any) => sum + (i.pv * i.quantity), 0);
-                                        const totalBV = sale.items.reduce((sum: number, i: any) => sum + (i.bv * i.quantity), 0);
-
-                                        return (
-                                            <TableRow key={sale._id} className="hover:bg-muted/5">
-                                                <TableCell className="font-mono text-xs">
-                                                    <div className="font-semibold">{new Date(sale._creationTime).toLocaleDateString()}</div>
-                                                    <div className="text-[10px] text-muted-foreground">{new Date(sale._creationTime).toLocaleTimeString()}</div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex flex-col gap-1 items-start">
-                                                        <div className="flex gap-1 flex-wrap">
-                                                            <Badge variant={(sale as any).clientType === "HP Client" ? "secondary" : "outline"}>
-                                                                {(sale as any).clientType}
-                                                            </Badge>
-                                                            <Badge variant={(sale as any).paymentMode === "Loan" ? "destructive" : "outline"} className="text-[10px] h-5">
-                                                                {(sale as any).paymentMode || "Cash"}
-                                                            </Badge>
-                                                        </div>
-
-                                                        {(sale as any).manualCustomerName && (
-                                                            <div className="text-[10px] font-medium text-blue-600 mt-1">
-                                                                Cust: {(sale as any).manualCustomerName}
-                                                            </div>
-                                                        )}
-
-                                                        {(sale as any).paymentDueDate && (
-                                                            <Badge variant="outline" className="text-[10px] border-orange-200 text-orange-700 bg-orange-50">
-                                                                Due: {new Date((sale as any).paymentDueDate).toLocaleDateString()}
-                                                            </Badge>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="max-w-[400px]">
-                                                    <div className="flex flex-col gap-1">
-                                                        {sale.items.map((i: any, idx: number) => (
-                                                            <div key={idx} className="text-xs border-b border-dashed last:border-0 pb-1 last:pb-0 flex items-center justify-between">
-                                                                <span><span className="font-bold mr-1">{i.quantity}x</span> {i.name}</span>
-                                                                <span className="text-muted-foreground ml-2 text-[10px] whitespace-nowrap">
-                                                                    [{i.pv} PV / {i.bv} BV]
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                        {sale.transactionType === "Swap" && sale.returnedItems && (
-                                                            <div className="mt-2 pt-2 border-t border-purple-200">
-                                                                <div className="text-[10px] font-bold text-purple-700 uppercase mb-1">Returned in Exchange:</div>
-                                                                {sale.returnedItems.map((i: any, idx: number) => (
-                                                                    <div key={idx} className="text-[10px] text-purple-600 flex justify-between italic">
-                                                                        <span>{i.quantity}x {i.name}</span>
-                                                                        <span>({i.productCode})</span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-
-                                                        {/* ──────────────────────────────────────────
-                                                         * THE PRICE MOVED UNDER THE BASKET
-                                                         *
-                                                         * The price of these lines had changed between
-                                                         * the basket being filled and the sale being rung
-                                                         * up. The sale was made at the catalogue's price
-                                                         * and the difference is written down here, so
-                                                         * that it can be seen and explained rather than
-                                                         * discovered later.
-                                                         * ────────────────────────────────────────── */}
-                                                        {sale.priceChanges && sale.priceChanges.length > 0 && (
-                                                            <div className="mt-2 pt-2 border-t border-orange-200">
-                                                                <div className="text-[10px] font-bold text-orange-700 uppercase mb-1">
-                                                                    Re-priced while the sale was rung up:
-                                                                </div>
-                                                                {sale.priceChanges.map((change: PriceChangeLine, idx: number) => (
-                                                                    <div key={idx} className="text-[10px] text-orange-700 flex justify-between gap-2">
-                                                                        <span className="truncate">{change.quantity}x {change.name}</span>
-                                                                        <span className="whitespace-nowrap">
-                                                                            {change.quotedPrice} &rarr; {change.chargedPrice}
-                                                                        </span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="text-right font-mono text-xs">
-                                                    <div className="font-medium text-emerald-600">{totalPV.toLocaleString()} PV</div>
-                                                    <div className="text-muted-foreground">{totalBV.toLocaleString()} BV</div>
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="font-bold">{sale.total.toLocaleString()}</div>
-                                                    {sale.loan && (
-                                                        <div className="text-[10px] space-y-0.5 mt-1">
-                                                            <div className="text-emerald-600 font-medium">Paid: {(sale.total - sale.loan.balance).toLocaleString()}</div>
-                                                            <div className="text-orange-600 font-medium">Due: {sale.loan.balance.toLocaleString()}</div>
-                                                        </div>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center justify-center gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        title="Edit Sale"
-                                                        onClick={() => {
-                                                            setEditingSale(sale);
-                                                            setIsEditOpen(true);
-                                                        }}
-                                                    >
-                                                        <Pencil className="h-4 w-4 text-blue-600" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        title="Print Receipt"
-                                                        onClick={() => {
-                                                            const s = sale as any;
-                                                            const receiptData: ReceiptData = {
-                                                                customer: s.customer ? {
-                                                                    name: s.customer.name,
-                                                                    phone: s.customer.phone,
-                                                                    email: s.customer.email || "",
-                                                                    distributorId: s.customer.distributorId,
-                                                                } : undefined,
-                                                                shop: {
-                                                                    name: s.shop?.name || "HQ",
-                                                                    location: s.shop?.location || "Main Warehouse",
-                                                                    contact: s.shop?.contact || "",
-                                                                    serialNumber: s.shop?.serialNumber || "HQ-001",
-                                                                },
-                                                                operator: s.operator || {
-                                                                    name: "",
-                                                                    phone: "",
-                                                                    email: "",
-                                                                },
-                                                                clientType: s.clientType,
-                                                                paymentMode: s.paymentMode || "Cash",
-                                                                date: new Date(s._creationTime).toISOString(),
-                                                                paymentDueDate: s.paymentDueDate,
-                                                                invoiceNumber: s._id.slice(0, 8).toUpperCase(),
-                                                                items: s.items.map((i: any) => ({
-                                                                    ...i,
-                                                                    qty: i.quantity, // MAP quantity to qty for ReceiptTemplate
-                                                                    productCode: i.productCode || "000",
-                                                                })),
-                                                                total: s.total,
-                                                                totalPV: totalPV,
-                                                                totalBV: totalBV,
-                                                                initialDeposit: s.initialDeposit, // Pass recorded deposit
-                                                                balance: s.isLoan ? (s.total - (s.initialDeposit || 0)) : undefined, // Calculate remaining balance
-                                                                // The currency the sale was rung up in, so an old
-                                                                // receipt says what the money was then.
-                                                                currency: s.currency || currency,
-                                                            };
-
-                                                            // If manual name exists, override customer name if it was a walk-in
-                                                            if (s.manualCustomerName && !receiptData.customer) {
-                                                                receiptData.customer = {
-                                                                    name: s.manualCustomerName,
-                                                                    phone: "",
-                                                                    email: ""
-                                                                };
-                                                            }
-                                                            setPrintReceiptData(receiptData);
-                                                            setIsReceiptOpen(true);
-                                                        }}
-                                                    >
-                                                        <Printer className="h-4 w-4" />
-                                                    </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        )
-                                    })
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-
-                    {/* Pagination Footer */}
-                    <div className="flex items-center justify-end border-t bg-muted/20 px-4 py-4 space-x-2">
-                        <div className="flex items-center space-x-2 mr-auto">
-                            <p className="text-xs font-medium hidden sm:inline-block">Rows</p>
-                            <Select
-                                value={`${rowsPerPage}`}
-                                onValueChange={(value) => {
-                                    const newSize = Number(value);
-                                    setRowsPerPage(newSize);
-                                    localStorage.setItem("pos_mysales_rows_per_page", String(newSize));
-                                    setCurrentPage(1);
-                                }}
-                            >
-                                <SelectTrigger className="h-8 w-[65px]">
-                                    <SelectValue placeholder={rowsPerPage} />
-                                </SelectTrigger>
-                                <SelectContent side="top">
-                                    {[5, 10, 20, 30, 50, 100].map((pageSize) => (
-                                        <SelectItem key={pageSize} value={`${pageSize}`}>
-                                            {pageSize}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="text-xs font-medium mr-2">
-                            {Math.min(startIndex + 1, effectiveTotalItems)}-{Math.min(endIndex, effectiveTotalItems)} of {effectiveTotalItems}
-                        </div>
-
-                        <Button
-                            variant="outline"
-                            className="h-8 w-8 p-0"
-                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-8 w-8 p-0"
-                            onClick={handleNextPage}
-                            disabled={currentPage >= totalPages || (currentPage === totalPages && status === "Exhausted")}
-                        >
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </div >
+                <DataTable
+                    data={currentView}
+                    columns={saleColumns}
+                    getRowId={(sale: any) => sale._id}
+                    manual
+                    manualPage={currentPage}
+                    manualPageCount={totalPages}
+                    manualTotal={effectiveTotalItems}
+                    onManualPageChange={handlePageChange}
+                    pageSize={rowsPerPage}
+                    isLoading={isLoading}
+                    isEmpty={!isLoading && currentView.length === 0}
+                    emptyTitle={t("No sales found for this period.")}
+                    emptyHint={t("Change the date, the filters or the search to see other sales.")}
+                    ariaLabel="Sales in this period"
+                />
 
                 {
                     printReceiptData && (
@@ -798,21 +968,30 @@ export function MySalesView() {
                         if (!o) setEditingSale(null);
                     }}
                 />
+
+                <RefundSaleDialog
+                    sale={refundingSale}
+                    open={isRefundOpen}
+                    onOpenChange={(o) => {
+                        setIsRefundOpen(o);
+                        if (!o) setRefundingSale(null);
+                    }}
+                />
             </div >
 
             {/* HIDDEN PRINT CONTENT */}
             < div id="my-sales-print" className="hidden print:report-print-view bg-white text-black p-4 min-h-screen report-print-view" >
                 <div className="pb-6 border-b-2 border-emerald-600 mb-6 font-sans relative">
                     <div className="text-center px-20">
-                        <h2 className="text-3xl font-black text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
-                        {businessAddress && <p className="text-[11px] leading-tight font-bold text-gray-600">{businessAddress}</p>}
-                        {businessPhone && <p className="text-[11px] font-bold text-gray-500">Tel: {businessPhone}</p>}
-                        <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">
-                            OFFICIAL MY SALES REPORT
+                        <h2 className="text-3xl font-bold text-emerald-800 tracking-tight uppercase mb-1">{businessName}</h2>
+                        {businessAddress && <p className="text-xs leading-tight font-bold text-gray-600">{businessAddress}</p>}
+                        {businessPhone && <p className="text-xs font-bold text-gray-500">{t("Tel:")} {businessPhone}</p>}
+                        <div className="mt-2 inline-block px-4 py-1 bg-emerald-600 text-white text-xs font-bold uppercase tracking-wide rounded-full">
+                            {t("OFFICIAL MY SALES REPORT")}
                         </div>
                     </div>
                     <div className="absolute right-0 top-0 h-full flex items-start pt-1">
-                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-black text-2xl text-emerald-800 bg-emerald-50">
+                        <div className="h-16 w-16 rounded-xl border-2 border-emerald-600 flex items-center justify-center font-bold text-2xl text-emerald-800 bg-emerald-50">
                             {businessName.slice(0, 2).toUpperCase()}
                         </div>
                     </div>
@@ -820,36 +999,36 @@ export function MySalesView() {
 
                 <div className="grid grid-cols-3 gap-4 mb-4 border-b border-gray-100 pb-4">
                     <div className="flex flex-col pl-4 border-l border-gray-100 first:pl-0 first:border-0">
-                        <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">TOTAL VOLUME</p>
-                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalVolume || 0)}</p>
-                        <p className="text-[7px] font-bold text-gray-400 italic font-mono">Value of all items moved</p>
+                        <p className="text-xs font-bold text-[#008542] uppercase tracking-wide">{t("TOTAL VOLUME")}</p>
+                        <p className="text-xs font-bold text-black">{currency} {fmt(stats?.totalVolume || 0)}</p>
+                        <p className="text-xs font-bold text-gray-400 italic font-mono">{t("Value of all items moved")}</p>
                     </div>
                     <div className="flex flex-col pl-4 border-l border-gray-100">
-                        <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">TODAY'S COLLECTION</p>
-                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalCollected || 0)}</p>
-                        <p className="text-[7px] font-bold text-gray-400 italic font-mono">Actual cash received</p>
+                        <p className="text-xs font-bold text-[#008542] uppercase tracking-wide">{t("TODAY'S COLLECTION")}</p>
+                        <p className="text-xs font-bold text-black">{currency} {fmt(stats?.totalCollected || 0)}</p>
+                        <p className="text-xs font-bold text-gray-400 italic font-mono">{t("Actual cash received")}</p>
                     </div>
                     <div className="flex flex-col pl-4 border-l border-gray-100">
-                        <p className="text-[9px] font-black text-[#008542] uppercase tracking-tighter">OUTSTANDING CREDIT</p>
-                        <p className="text-xs font-black text-black">{currency} {fmt(stats?.totalOutstanding || 0)}</p>
-                        <p className="text-[7px] font-bold text-gray-400 italic font-mono">Remaining balance</p>
+                        <p className="text-xs font-bold text-[#008542] uppercase tracking-wide">{t("OUTSTANDING CREDIT")}</p>
+                        <p className="text-xs font-bold text-black">{currency} {fmt(stats?.totalOutstanding || 0)}</p>
+                        <p className="text-xs font-bold text-gray-400 italic font-mono">{t("Remaining balance")}</p>
                     </div>
                 </div>
 
                 <div className="mb-4">
-                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Sales Records</h3>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5 tracking-wide">
+                    <h3 className="text-lg font-bold text-gray-900 uppercase tracking-tight">{t("Sales Records")}</h3>
+                    <p className="text-xs font-bold text-gray-500 uppercase mt-0.5 tracking-wide">
                         {dateMode === "audit" ? `Audit Date: ${format(selectedDate || new Date(), "PPP")}` : `Range: ${format(date?.from || new Date(), "PP")} - ${format(date?.to || new Date(), "PP")}`}
                     </p>
                 </div>
 
-                <table className="w-full border-collapse border border-gray-300 print:text-[10px]">
+                <table className="w-full border-collapse border border-gray-300 print:text-xs">
                     <thead>
                         <tr className="bg-[#008542] border-b-2 border-emerald-800">
-                            <th className="px-1 py-3 text-center font-black uppercase text-[10px] border-r border-emerald-700 w-8 text-white">#</th>
+                            <th className="px-1 py-3 text-center font-bold uppercase text-xs border-r border-emerald-700 w-8 text-white">#</th>
                             {columns.map((col, idx) => (
-                                <th key={idx} className="px-3 py-2 text-[10px] border-r border-gray-300 last:border-0 text-white text-left font-black uppercase">
-                                    {col.header}
+                                <th key={idx} className="px-3 py-2 text-xs border-r border-gray-300 last:border-0 text-white text-left font-bold uppercase">
+                                    {t(col.header)}
                                 </th>
                             ))}
                         </tr>
@@ -857,9 +1036,9 @@ export function MySalesView() {
                     <tbody>
                         {(results || []).map((item, rowIdx) => (
                             <tr key={rowIdx} className={rowIdx % 2 === 1 ? "bg-gray-50" : "bg-white"}>
-                                <td className="px-1 py-2 text-[10px] border-r border-gray-300 text-center font-bold text-gray-500 w-8">{rowIdx + 1}</td>
+                                <td className="px-1 py-2 text-xs border-r border-gray-300 text-center font-bold text-gray-500 w-8">{rowIdx + 1}</td>
                                 {columns.map((col, colIdx) => (
-                                    <td key={colIdx} className="px-3 py-2 text-[10px] border-r border-gray-300 last:border-0 text-black font-medium whitespace-pre-line">
+                                    <td key={colIdx} className="px-3 py-2 text-xs border-r border-gray-300 last:border-0 text-black font-medium whitespace-pre-line">
                                         {(col as any).exportValue
                                             ? (col as any).exportValue(item)
                                             : typeof col.accessor === "function"
@@ -872,9 +1051,9 @@ export function MySalesView() {
                     </tbody>
                 </table>
 
-                <div className="mt-8 flex justify-between text-[10px] font-bold text-gray-400 italic">
-                    <span>Generated by System on {new Date().toLocaleString()}</span>
-                    <span>Verified Official Document</span>
+                <div className="mt-8 flex justify-between text-xs font-bold text-gray-400 italic">
+                    <span>{t("Generated by System on")} {new Date().toLocaleString()}</span>
+                    <span>{t("Verified Official Document")}</span>
                 </div>
             </div >
         </>
@@ -882,14 +1061,15 @@ export function MySalesView() {
 }
 
 function DistributorValues({ selectedId, onSelect }: { selectedId: Id<"customers"> | undefined, onSelect: (id: Id<"customers"> | undefined) => void }) {
-    const [open, setOpen] = useState(false);
+    
+    const t = useT();const [open, setOpen] = useState(false);
     const customers = useQuery(api.customers.listAll, {});
 
     const selectedCustomer = customers?.find((c) => c._id === selectedId);
 
     return (
         <div className="flex items-center gap-2">
-            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Distributor:</Label>
+            <Label className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground whitespace-nowrap">{t("Distributor:")}</Label>
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
                     <Button
@@ -906,9 +1086,9 @@ function DistributorValues({ selectedId, onSelect }: { selectedId: Id<"customers
                 </PopoverTrigger>
                 <PopoverContent className="w-[200px] p-0">
                     <Command>
-                        <CommandInput placeholder="Search..." />
+                        <CommandInput placeholder={t("Search...")} />
                         <CommandList>
-                            <CommandEmpty>Not found</CommandEmpty>
+                            <CommandEmpty>{t("Not found")}</CommandEmpty>
                             <CommandGroup>
                                 <CommandItem
                                     onSelect={() => {
@@ -922,7 +1102,7 @@ function DistributorValues({ selectedId, onSelect }: { selectedId: Id<"customers
                                             !selectedId ? "opacity-100" : "opacity-0"
                                         )}
                                     />
-                                    All Distributors
+                                    {t("All Distributors")}
                                 </CommandItem>
                                 {customers?.map((customer) => (
                                     <CommandItem
@@ -942,8 +1122,8 @@ function DistributorValues({ selectedId, onSelect }: { selectedId: Id<"customers
                                         <div className="flex flex-col">
                                             <span className="font-medium">{customer.name}</span>
                                             {customer.distributorId && (
-                                                <span className="text-[10px] text-muted-foreground">
-                                                    ID: {customer.distributorId}
+                                                <span className="text-xs text-muted-foreground">
+                                                    {t("ID:")} {customer.distributorId}
                                                 </span>
                                             )}
                                         </div>

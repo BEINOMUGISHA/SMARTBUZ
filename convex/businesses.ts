@@ -44,6 +44,7 @@ import {
   isSupportedCurrency,
   sanitizeModules,
 } from "./defaults";
+import { enablePackageForCategory } from "./packages/manage";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -351,6 +352,10 @@ export const register = mutation({
       joinedAt: now,
     });
 
+    // The vertical's own package goes on with the vertical: its features,
+    // its settings and the screens that go with it.
+    await enablePackageForCategory(ctx, businessId, categoryId, ownerId);
+
     // Default storage location and sales point, so the business is usable
     // the moment it is created.
     const warehouseId = await ctx.db.insert("warehouses", {
@@ -489,6 +494,9 @@ export const createForCurrentUser = mutation({
       subscriptionStatus: "trial",
     });
 
+    // The vertical's own package goes on with the vertical.
+    await enablePackageForCategory(ctx, businessId, categoryId, owner._id);
+
     await ctx.db.insert("memberships", {
       userId: owner._id,
       businessId,
@@ -615,6 +623,16 @@ export const completeOnboarding = mutation({
     if (args.country?.trim()) patch.country = args.country.trim();
     if (args.businessAddress !== undefined) patch.businessAddress = args.businessAddress;
     if (args.businessPhone !== undefined) patch.businessPhone = args.businessPhone;
+
+    // The vertical's package goes on with the vertical.
+    if (args.categoryId?.trim()) {
+      await enablePackageForCategory(
+        ctx,
+        tenant.businessId,
+        args.categoryId,
+        tenant.user._id
+      );
+    }
 
     await ctx.db.patch(tenant.businessId, patch);
 
@@ -774,6 +792,16 @@ export const setCategory = mutation({
       taxNote: tax.taxNote,
       updatedAt: new Date().toISOString(),
     });
+
+    // The new vertical's package goes on with it. The package the
+    // business had before is left as it was — switching vertical is not
+    // switching off what was already on.
+    await enablePackageForCategory(
+      ctx,
+      tenant.businessId,
+      args.categoryId,
+      tenant.user._id
+    );
 
     await logActivity(
       ctx,

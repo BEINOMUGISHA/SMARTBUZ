@@ -1,7 +1,17 @@
+/**
+ * @deprecated This module scraped the rendered DOM for text, so a column it
+ * could not find in the markup was silently dropped from the file. Every
+ * screen now uses the typed stack in `@/lib/export`, which writes the rows
+ * it was given. This file is kept only so an old import still resolves.
+ */
 import * as ExcelJS from "exceljs";
 import * as FileSaver from "file-saver";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+
+import { extractTextFromReact } from "@/lib/export";
+
+export { extractTextFromReact };
 
 interface Column {
     header: string;
@@ -210,25 +220,4 @@ export function exportToPDF(
     });
 
     doc.save(`${filename}.pdf`);
-}
-
-/**
- * Helper to extract plain text from React elements in accessor functions
- */
-export function extractTextFromReact(element: any): string {
-    if (typeof element === "string" || typeof element === "number") return String(element);
-    if (!element) return "";
-
-    const props = element.props;
-    if (!props) return "";
-
-    const children = props.children;
-    if (Array.isArray(children)) {
-        // Filter out nulls/falsy, and map recursively
-        return children
-            .map(child => extractTextFromReact(child))
-            .filter(text => text.length > 0)
-            .join("\n");
-    }
-    return extractTextFromReact(children);
 }

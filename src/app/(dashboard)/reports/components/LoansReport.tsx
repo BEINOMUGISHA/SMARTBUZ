@@ -22,9 +22,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export function LoansReport() {
-    const [subTab, setSubTab] = useState<"loans" | "collections" | "aged">("loans");
+    
+    const t = useT();const [subTab, setSubTab] = useState<"loans" | "collections" | "aged">("loans");
     const [reportMode, setReportMode] = useState<"daily" | "range">("range");
     const [search, setSearch] = useState("");
     const [dateRange, setDateRange] = useState({
@@ -51,14 +53,14 @@ export function LoansReport() {
             <Tabs value={subTab} onValueChange={(v) => setSubTab(v as any)} className="w-full">
                 <div className="flex items-center justify-between mb-2">
                     <TabsList className="bg-muted/50 p-1 rounded-xl h-10 border shadow-xs">
-                        <TabsTrigger value="loans" className="rounded-lg px-5 h-8 font-black uppercase text-[9px] tracking-widest data-[state=active]:bg-primary data-[state=active]:text-white">
-                            <CreditCard className="h-3 w-3 mr-2" /> Loans
+                        <TabsTrigger value="loans" className="rounded-lg px-5 h-8 data-[state=active]:bg-primary data-[state=active]:text-white text-eyebrow uppercase tracking-eyebrow">
+                            <CreditCard className="h-3 w-3 mr-2" /> {t("Loans")}
                         </TabsTrigger>
-                        <TabsTrigger value="collections" className="rounded-lg px-5 h-8 font-black uppercase text-[9px] tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white text-emerald-600">
-                            <Wallet className="h-3 w-3 mr-2" /> Collections
+                        <TabsTrigger value="collections" className="rounded-lg px-5 h-8 data-[state=active]:bg-emerald-600 data-[state=active]:text-white text-emerald-600 text-eyebrow uppercase tracking-eyebrow">
+                            <Wallet className="h-3 w-3 mr-2" /> {t("Collections")}
                         </TabsTrigger>
-                        <TabsTrigger value="aged" className="rounded-lg px-5 h-8 font-black uppercase text-[9px] tracking-widest data-[state=active]:bg-red-600 data-[state=active]:text-white text-red-600">
-                            <AlertTriangle className="h-3 w-3 mr-2" /> Aged Debtors
+                        <TabsTrigger value="aged" className="rounded-lg px-5 h-8 data-[state=active]:bg-red-600 data-[state=active]:text-white text-red-600 text-eyebrow uppercase tracking-eyebrow">
+                            <AlertTriangle className="h-3 w-3 mr-2" /> {t("Aged Debtors")}
                         </TabsTrigger>
                     </TabsList>
                 </div>
@@ -132,7 +134,8 @@ function LoansTab({
     shops, customers, page, setPage, rowsPerPage, setRowsPerPage,
     viewingLoanId, setViewingLoanId, isViewSheetOpen, setIsViewSheetOpen,
 }: any) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const loansArgs = {
         startDate: dateRange.from,
         endDate: dateRange.to,
@@ -185,7 +188,7 @@ function LoansTab({
                     ]}
                     value={selectedShop}
                     onValueChange={setSelectedShop}
-                    placeholder="Select Branch"
+                    placeholder={t("Select Branch")}
                     width="180px"
                 />
 
@@ -197,7 +200,7 @@ function LoansTab({
                     ]}
                     value={clientType}
                     onValueChange={setClientType}
-                    placeholder="Client Type"
+                    placeholder={t("Client Type")}
                     width="150px"
                 />
 
@@ -208,14 +211,14 @@ function LoansTab({
                     ]}
                     value={customerId}
                     onValueChange={setCustomerId}
-                    placeholder="Distributor"
+                    placeholder={t("Distributor")}
                     width="180px"
                 />
 
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search debtors by name, phone or product..."
+                        placeholder={t("Search debtors by name, phone or product...")}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -226,8 +229,8 @@ function LoansTab({
             <ReportSummary data={summaryData || undefined} isLoading={summaryData === undefined} variant="loans" />
 
             <ReportTable
-                title="Outstanding Loans Report"
-                subtitle="Detailed tracking of credit-based sales and debtor balances."
+                title={t("Outstanding Loans Report")}
+                subtitle={t("Detailed tracking of credit-based sales and debtor balances.")}
                 data={loansRecords?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
                 summaryData={summaryData || undefined}
                 isLoading={loansLoading}
@@ -256,8 +259,8 @@ function LoansTab({
                         header: "Date/Time",
                         accessor: (l: any) => (
                             <div className="font-mono leading-tight">
-                                <div className="font-black">{format(new Date(l.date || l._creationTime), "dd MMM yyyy")}</div>
-                                <div className="text-[9px] text-muted-foreground">{format(new Date(l.date || l._creationTime), "HH:mm")}</div>
+                                <div className="font-semibold">{format(new Date(l.date || l._creationTime), "dd MMM yyyy")}</div>
+                                <div className="text-xs text-muted-foreground">{format(new Date(l.date || l._creationTime), "HH:mm")}</div>
                             </div>
                         )
                     },
@@ -266,17 +269,17 @@ function LoansTab({
                         accessor: (l: any) => (
                             <div className="space-y-1">
                                 <div className="flex gap-1 flex-wrap">
-                                    <Badge variant={l.clientType === "HP Client" ? "secondary" : "outline"} className="text-[9px] h-4">
+                                    <Badge variant={l.clientType === "HP Client" ? "secondary" : "outline"} className="text-xs h-4">
                                         {l.clientType}
                                     </Badge>
-                                    <Badge variant="destructive" className="text-[9px] h-4">
-                                        Loan
+                                    <Badge variant="destructive" className="text-xs h-4">
+                                        {t("Loan")}
                                     </Badge>
                                 </div>
-                                <div className="text-[10px] font-black text-primary truncate max-w-[120px]">
+                                <div className="text-xs font-semibold text-primary truncate max-w-[120px]">
                                     {l.customerName}
                                 </div>
-                                <div className="text-[9px] font-medium text-muted-foreground italic">
+                                <div className="text-xs font-medium text-muted-foreground italic">
                                     {l.customerPhone}
                                 </div>
                             </div>
@@ -287,12 +290,12 @@ function LoansTab({
                         accessor: (l: any) => (
                             <div className="space-y-1 max-w-[300px]">
                                 {(l.items || []).map((item: any, idx: number) => (
-                                    <div key={idx} className="text-[10px] flex justify-between gap-4 border-b border-dashed border-muted pb-0.5 last:border-0">
+                                    <div key={idx} className="text-xs flex justify-between gap-4 border-b border-dashed border-muted pb-0.5 last:border-0">
                                         <span className="truncate">
-                                            <span className="font-black text-primary mr-1">{item.quantity}x</span>
+                                            <span className="font-semibold text-primary mr-1">{item.quantity}x</span>
                                             {item.name}
                                         </span>
-                                        <span className="text-muted-foreground shrink-0 font-medium">[{item.pv} PV / {item.bv} BV]</span>
+                                        <span className="text-muted-foreground shrink-0 font-medium">[{item.pv} {t("PV /")} {item.bv} {t("BV]")}</span>
                                     </div>
                                 ))}
                             </div>
@@ -303,11 +306,11 @@ function LoansTab({
                         header: "Balances",
                         accessor: (l: any) => (
                             <div className="text-right space-y-0.5 font-mono">
-                                <div className="text-[9px] text-muted-foreground">Original: {(l.totalAmount || 0).toLocaleString()}</div>
-                                <div className="font-black text-destructive text-xs">Due: {(l.balance || 0).toLocaleString()}</div>
+                                <div className="text-xs text-muted-foreground">{t("Original:")} {(l.totalAmount || 0).toLocaleString()}</div>
+                                <div className="font-semibold text-destructive text-xs">{t("Due:")} {(l.balance || 0).toLocaleString()}</div>
                                 {l.dueDate && (
-                                    <div className="text-[8px] font-bold text-orange-600 bg-orange-50 px-1 py-0.5 rounded inline-block">
-                                        Due: {format(new Date(l.dueDate), "dd MMM")}
+                                    <div className="text-xs font-bold text-orange-600 bg-orange-50 px-1 py-0.5 rounded inline-block">
+                                        {t("Due:")} {format(new Date(l.dueDate), "dd MMM")}
                                     </div>
                                 )}
                             </div>
@@ -317,7 +320,7 @@ function LoansTab({
                     {
                         header: "Status",
                         accessor: (l: any) => (
-                            <Badge variant={(l.balance || 0) > 0 ? "destructive" : "outline"} className="text-[9px] uppercase font-black tracking-tighter">
+                            <Badge variant={(l.balance || 0) > 0 ? "destructive" : "outline"} className="tracking-tighter text-eyebrow uppercase tracking-eyebrow">
                                 {(l.balance || 0) > 0 ? "Outstanding" : "Cleared"}
                             </Badge>
                         ),
@@ -330,28 +333,28 @@ function LoansTab({
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Loan Details</SheetTitle>
+                        <SheetTitle>{t("Loan Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete information about this loan record.
+                            {t("Complete information about this loan record.")}
                         </SheetDescription>
                     </SheetHeader>
                     {loanWithDetails ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Date</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Date")}</span>
                                     <span className="font-semibold">{format(new Date(loanWithDetails.date), "dd MMM yyyy")}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Total Amount</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Total Amount")}</span>
                                     <span className="font-bold text-lg text-emerald-600">{currency} {loanWithDetails.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Balance Due</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Balance Due")}</span>
                                     <span className="font-bold text-lg text-destructive">{currency} {loanWithDetails.balance.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Status</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Status")}</span>
                                     <Badge variant={loanWithDetails.balance > 0 ? "destructive" : "outline"}>
                                         {loanWithDetails.balance > 0 ? "Outstanding" : "Cleared"}
                                     </Badge>
@@ -359,15 +362,15 @@ function LoansTab({
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Customer Information</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Customer Information")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                         <span className="font-semibold">{loanWithDetails.customer?.name || loanWithDetails.manualCustomerName || "N/A"}</span>
                                     </div>
                                     {loanWithDetails.customer?.phone && (
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm text-muted-foreground">Phone</span>
+                                            <span className="text-sm text-muted-foreground">{t("Phone")}</span>
                                             <span className="font-semibold text-sm">{loanWithDetails.customer.phone}</span>
                                         </div>
                                     )}
@@ -375,40 +378,40 @@ function LoansTab({
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Sold By</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Sold By")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     {loanWithDetails.user ? (
                                         <>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Name</span>
+                                                <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                                 <span className="font-semibold capitalize">{loanWithDetails.user.first_name} {loanWithDetails.user.last_name}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Email</span>
+                                                <span className="text-sm text-muted-foreground">{t("Email")}</span>
                                                 <span className="font-semibold text-sm">{loanWithDetails.user.email}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm text-muted-foreground">Role</span>
+                                                <span className="text-sm text-muted-foreground">{t("Role")}</span>
                                                 <Badge className="capitalize">{loanWithDetails.user.roles?.[0] || "N/A"}</Badge>
                                             </div>
                                         </>
                                     ) : (
-                                        <div className="text-sm text-muted-foreground">User information not available</div>
+                                        <div className="text-sm text-muted-foreground">{t("User information not available")}</div>
                                     )}
                                 </div>
                             </div>
 
                             {loanWithDetails.sale && loanWithDetails.sale.items && loanWithDetails.sale.items.length > 0 && (
                                 <div className="space-y-3">
-                                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Items ({loanWithDetails.sale.items.length})</h3>
+                                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Items (")}{loanWithDetails.sale.items.length})</h3>
                                     <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                         {loanWithDetails.sale.items.map((item: any, idx: number) => (
                                             <div key={idx} className="flex justify-between border-b border-muted pb-2 last:border-0">
                                                 <div className="flex gap-2">
-                                                    <span className="font-black text-primary">{item.quantity}x</span>
+                                                    <span className="font-semibold text-primary">{item.quantity}x</span>
                                                     <span className="text-sm">{item.name}</span>
                                                 </div>
-                                                <span className="text-sm text-muted-foreground">[{item.pv} PV / {item.bv} BV]</span>
+                                                <span className="text-sm text-muted-foreground">[{item.pv} {t("PV /")} {item.bv} {t("BV]")}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -434,7 +437,8 @@ function CollectionsTab({
     selectedShop, setSelectedShop, customerId, setCustomerId,
     search, setSearch, shops, customers,
 }: any) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
@@ -518,7 +522,7 @@ function CollectionsTab({
                     ]}
                     value={selectedShop}
                     onValueChange={setSelectedShop}
-                    placeholder="Select Shop"
+                    placeholder={t("Select Shop")}
                     width="160px"
                 />
 
@@ -529,14 +533,14 @@ function CollectionsTab({
                     ]}
                     value={customerId}
                     onValueChange={setCustomerId}
-                    placeholder="Customer"
+                    placeholder={t("Customer")}
                     width="180px"
                 />
 
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search customer, shop, recorded by..."
+                        placeholder={t("Search customer, shop, recorded by...")}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -547,8 +551,8 @@ function CollectionsTab({
             <ReportSummary customStats={customStats} isLoading={summary === undefined} />
 
             <ReportTable
-                title="Loan Collections / Payments"
-                subtitle="All loan repayments received in the selected period."
+                title={t("Loan Collections / Payments")}
+                subtitle={t("All loan repayments received in the selected period.")}
                 data={payments?.slice((page - 1) * rowsPerPage, page * rowsPerPage) || []}
                 isLoading={payments === undefined}
                 onViewDetails={handleViewPaymentDetails}
@@ -573,8 +577,8 @@ function CollectionsTab({
                         header: "Date/Time",
                         accessor: (p: any) => (
                             <div className="font-mono leading-tight">
-                                <div className="font-black">{format(new Date(p.date || p._creationTime), "dd MMM yyyy")}</div>
-                                <div className="text-[9px] text-muted-foreground">{format(new Date(p.date || p._creationTime), "HH:mm")}</div>
+                                <div className="font-semibold">{format(new Date(p.date || p._creationTime), "dd MMM yyyy")}</div>
+                                <div className="text-xs text-muted-foreground">{format(new Date(p.date || p._creationTime), "HH:mm")}</div>
                             </div>
                         )
                     },
@@ -582,9 +586,9 @@ function CollectionsTab({
                         header: "Customer",
                         accessor: (p: any) => (
                             <div className="flex flex-col gap-0.5 min-w-[140px]">
-                                <span className="font-black text-primary leading-none">{p.customerName}</span>
-                                <span className="text-[9px] font-bold text-muted-foreground">{p.customerPhone}</span>
-                                <Badge variant="outline" className="text-[8px] uppercase font-black tracking-tighter px-1 h-3.5 w-fit mt-0.5">
+                                <span className="font-semibold text-primary leading-none">{p.customerName}</span>
+                                <span className="text-xs font-bold text-muted-foreground">{p.customerPhone}</span>
+                                <Badge variant="outline" className="tracking-tighter px-1 h-3.5 w-fit mt-0.5 text-eyebrow uppercase tracking-eyebrow">
                                     {p.customerType}
                                 </Badge>
                             </div>
@@ -594,14 +598,14 @@ function CollectionsTab({
                     {
                         header: "Shop",
                         accessor: (p: any) => (
-                            <span className="text-[10px] font-bold uppercase text-muted-foreground">{p.shopName}</span>
+                            <span className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">{p.shopName}</span>
                         ),
                         exportValue: (p: any) => p.shopName,
                     },
                     {
                         header: "Amount Paid",
                         accessor: (p: any) => (
-                            <span className="font-black text-emerald-700 text-sm">{currency} {p.amount.toLocaleString()}</span>
+                            <span className="font-semibold text-emerald-700 text-sm">{currency} {p.amount.toLocaleString()}</span>
                         ),
                         exportValue: (p: any) => p.amount.toLocaleString(),
                         className: "text-right",
@@ -610,10 +614,10 @@ function CollectionsTab({
                         header: "Remaining Balance",
                         accessor: (p: any) => (
                             <div className="text-right">
-                                <div className={cn("font-black", p.balance > 0 ? "text-destructive" : "text-emerald-600")}>
+                                <div className={cn("font-semibold", p.balance > 0 ? "text-destructive" : "text-emerald-600")}>
                                     {currency} {p.balance.toLocaleString()}
                                 </div>
-                                <div className="text-[9px] text-muted-foreground">of {currency} {p.loanAmount.toLocaleString()}</div>
+                                <div className="text-xs text-muted-foreground">of {currency} {p.loanAmount.toLocaleString()}</div>
                             </div>
                         ),
                         exportValue: (p: any) => p.balance.toLocaleString(),
@@ -623,7 +627,7 @@ function CollectionsTab({
                         header: "Status",
                         accessor: (p: any) => (
                             <Badge variant={p.balance > 0 ? "secondary" : "default"} className={cn(
-                                "text-[9px] uppercase font-black tracking-tighter",
+                                "tracking-tighter text-eyebrow uppercase tracking-eyebrow",
                                 p.balance > 0 ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"
                             )}>
                                 {p.balance > 0 ? "Partial" : "Cleared"}
@@ -634,7 +638,7 @@ function CollectionsTab({
                     {
                         header: "Recorded By",
                         accessor: (p: any) => (
-                            <span className="text-[10px] font-bold capitalize text-muted-foreground">{p.recordedBy}</span>
+                            <span className="text-xs font-bold capitalize text-muted-foreground">{p.recordedBy}</span>
                         ),
                         exportValue: (p: any) => p.recordedBy,
                     },
@@ -645,32 +649,32 @@ function CollectionsTab({
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Payment Details</SheetTitle>
+                        <SheetTitle>{t("Payment Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete information about this loan payment record.
+                            {t("Complete information about this loan payment record.")}
                         </SheetDescription>
                     </SheetHeader>
                     {viewingPayment ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Date</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Date")}</span>
                                     <span className="font-semibold">{format(new Date(viewingPayment.date || viewingPayment._creationTime), "dd MMM yyyy")}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Amount Paid</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Amount Paid")}</span>
                                     <span className="font-bold text-lg text-emerald-600">{currency} {viewingPayment.amount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Remaining Balance</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Remaining Balance")}</span>
                                     <span className={cn("font-bold text-lg", viewingPayment.balance > 0 ? "text-destructive" : "text-emerald-600")}>
                                         {currency} {viewingPayment.balance.toLocaleString()}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Status</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Status")}</span>
                                     <Badge variant={viewingPayment.balance > 0 ? "secondary" : "default"} className={cn(
-                                        "uppercase font-black tracking-tighter",
+                                        "uppercase font-semibold tracking-tighter",
                                         viewingPayment.balance > 0 ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"
                                     )}>
                                         {viewingPayment.balance > 0 ? "Partial" : "Cleared"}
@@ -679,19 +683,19 @@ function CollectionsTab({
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Customer Information</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Customer Information")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                         <span className="font-semibold">{viewingPayment.customerName}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Phone</span>
+                                        <span className="text-sm text-muted-foreground">{t("Phone")}</span>
                                         <span className="font-semibold text-sm">{viewingPayment.customerPhone}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Type</span>
-                                        <Badge variant="outline" className="text-[10px] uppercase font-black tracking-tighter px-1 h-4">
+                                        <span className="text-sm text-muted-foreground">{t("Type")}</span>
+                                        <Badge variant="outline" className="tracking-tighter px-1 h-4 text-eyebrow uppercase tracking-eyebrow">
                                             {viewingPayment.customerType}
                                         </Badge>
                                     </div>
@@ -699,24 +703,24 @@ function CollectionsTab({
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Loan Details</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Loan Details")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Original Loan Amount</span>
+                                        <span className="text-sm text-muted-foreground">{t("Original Loan Amount")}</span>
                                         <span className="font-semibold">{currency} {viewingPayment.loanAmount.toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Shop</span>
+                                        <span className="text-sm text-muted-foreground">{t("Shop")}</span>
                                         <span className="font-semibold">{viewingPayment.shopName}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Recorded By</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Recorded By")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                         <span className="font-semibold capitalize">{viewingPayment.recordedBy}</span>
                                     </div>
                                 </div>
@@ -740,7 +744,8 @@ function AgedDebtorsTab({
     selectedShop, setSelectedShop, customerId, setCustomerId,
     search, setSearch, shops, customers,
 }: any) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
     const [bucketFilter, setBucketFilter] = useState<string>("all");
@@ -791,7 +796,7 @@ function AgedDebtorsTab({
             case "30": return { text: "31-60d", className: "bg-amber-100 text-amber-700 border-amber-200" };
             case "60": return { text: "61-90d", className: "bg-orange-100 text-orange-700 border-orange-200" };
             case "90": return { text: "91-120d", className: "bg-red-100 text-red-700 border-red-200" };
-            case "over90": return { text: ">120d", className: "bg-red-200 text-red-900 border-red-300 font-black" };
+            case "over90": return { text: ">120d", className: "bg-red-200 text-red-900 border-red-300 font-semibold" };
             default: return { text: b, className: "" };
         }
     };
@@ -811,7 +816,7 @@ function AgedDebtorsTab({
                     ]}
                     value={selectedShop}
                     onValueChange={setSelectedShop}
-                    placeholder="Select Shop"
+                    placeholder={t("Select Shop")}
                     width="160px"
                 />
 
@@ -822,7 +827,7 @@ function AgedDebtorsTab({
                     ]}
                     value={customerId}
                     onValueChange={setCustomerId}
-                    placeholder="Customer"
+                    placeholder={t("Customer")}
                     width="180px"
                 />
 
@@ -837,14 +842,14 @@ function AgedDebtorsTab({
                     ]}
                     value={bucketFilter}
                     onValueChange={setBucketFilter}
-                    placeholder="Age Bucket"
+                    placeholder={t("Age Bucket")}
                     width="160px"
                 />
 
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                     <Input
-                        placeholder="Search debtor name or phone..."
+                        placeholder={t("Search debtor name or phone...")}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 h-10 text-xs border-input bg-background focus:bg-white transition-all shadow-sm"
@@ -855,8 +860,12 @@ function AgedDebtorsTab({
             <ReportSummary customStats={customStats} isLoading={data === undefined} />
 
             <ReportTable
-                title="Aged Debtors Report"
-                subtitle={`${data?.totalDebtors || 0} debtors with outstanding balances totaling ${currency} ${(data?.totalOutstanding || 0).toLocaleString()}`}
+                title={t("Aged Debtors Report")}
+                subtitle={t("{0} debtors with outstanding balances totaling {1} {2}", {
+            0: data?.totalDebtors || 0,
+            1: currency,
+            2: (data?.totalOutstanding || 0).toLocaleString(),
+        })}
                 data={filteredLoans.slice((page - 1) * rowsPerPage, page * rowsPerPage)}
                 isLoading={data === undefined}
                 onViewDetails={handleViewDetails}
@@ -881,8 +890,8 @@ function AgedDebtorsTab({
                         header: "Loan Date",
                         accessor: (l: any) => (
                             <div className="font-mono leading-tight">
-                                <div className="font-black">{format(new Date(l.date || l._creationTime), "dd MMM yyyy")}</div>
-                                <div className="text-[9px] text-muted-foreground">{l.ageDays} days ago</div>
+                                <div className="font-semibold">{format(new Date(l.date || l._creationTime), "dd MMM yyyy")}</div>
+                                <div className="text-xs text-muted-foreground">{l.ageDays} days ago</div>
                             </div>
                         )
                     },
@@ -890,9 +899,9 @@ function AgedDebtorsTab({
                         header: "Debtor",
                         accessor: (l: any) => (
                             <div className="flex flex-col gap-0.5 min-w-[140px]">
-                                <span className="font-black text-primary leading-none">{l.customerName}</span>
-                                <span className="text-[9px] font-bold text-muted-foreground">{l.customerPhone}</span>
-                                <Badge variant="outline" className="text-[8px] uppercase font-black tracking-tighter px-1 h-3.5 w-fit mt-0.5">
+                                <span className="font-semibold text-primary leading-none">{l.customerName}</span>
+                                <span className="text-xs font-bold text-muted-foreground">{l.customerPhone}</span>
+                                <Badge variant="outline" className="tracking-tighter px-1 h-3.5 w-fit mt-0.5 text-eyebrow uppercase tracking-eyebrow">
                                     {l.clientType}
                                 </Badge>
                             </div>
@@ -904,7 +913,7 @@ function AgedDebtorsTab({
                         accessor: (l: any) => {
                             const b = bucketLabel(l.bucket);
                             return (
-                                <Badge variant="outline" className={cn("text-[9px] uppercase font-black tracking-tighter", b.className)}>
+                                <Badge variant="outline" className={cn("tracking-tighter text-eyebrow uppercase tracking-eyebrow", b.className)}>
                                     {b.text}
                                 </Badge>
                             );
@@ -931,7 +940,7 @@ function AgedDebtorsTab({
                     {
                         header: "Outstanding",
                         accessor: (l: any) => (
-                            <span className="font-black text-destructive text-sm">{currency} {l.outstandingBalance.toLocaleString()}</span>
+                            <span className="font-semibold text-destructive text-sm">{currency} {l.outstandingBalance.toLocaleString()}</span>
                         ),
                         exportValue: (l: any) => l.outstandingBalance.toLocaleString(),
                         className: "text-right",
@@ -939,10 +948,10 @@ function AgedDebtorsTab({
                     {
                         header: "Due Date",
                         accessor: (l: any) => l.dueDate ? (
-                            <span className="text-[9px] font-bold text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
+                            <span className="text-xs font-bold text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
                                 {format(new Date(l.dueDate), "dd MMM yyyy")}
                             </span>
-                        ) : <span className="text-[9px] text-muted-foreground">—</span>,
+                        ) : <span className="text-xs text-muted-foreground">—</span>,
                         exportValue: (l: any) => l.dueDate ? format(new Date(l.dueDate), "dd MMM yyyy") : "—",
                         className: "text-center",
                     },
@@ -953,56 +962,56 @@ function AgedDebtorsTab({
             <Sheet open={isViewSheetOpen} onOpenChange={setIsViewSheetOpen}>
                 <SheetContent className="sm:max-w-[600px] overflow-y-auto p-6">
                     <SheetHeader>
-                        <SheetTitle>Aged Debtor Details</SheetTitle>
+                        <SheetTitle>{t("Aged Debtor Details")}</SheetTitle>
                         <SheetDescription>
-                            Complete information about this aged debtor loan record.
+                            {t("Complete information about this aged debtor loan record.")}
                         </SheetDescription>
                     </SheetHeader>
                     {viewingLoan ? (
                         <div className="space-y-6 py-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Loan Date</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Loan Date")}</span>
                                     <span className="font-semibold">{format(new Date(viewingLoan.date || viewingLoan._creationTime), "dd MMM yyyy")}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Age</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Age")}</span>
                                     <span className="font-semibold">{viewingLoan.ageDays} days</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Original Amount</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Original Amount")}</span>
                                     <span className="font-semibold">{currency} {viewingLoan.originalAmount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Paid</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Paid")}</span>
                                     <span className="font-bold text-emerald-600">{currency} {viewingLoan.paidAmount.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Outstanding</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Outstanding")}</span>
                                     <span className="font-bold text-lg text-destructive">{currency} {viewingLoan.outstandingBalance.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center justify-between pb-3 border-b">
-                                    <span className="text-sm font-medium text-muted-foreground">Age Bucket</span>
-                                    <Badge variant="outline" className={cn("text-xs uppercase font-black tracking-tighter", bucketLabel(viewingLoan.bucket).className)}>
+                                    <span className="text-sm font-medium text-muted-foreground">{t("Age Bucket")}</span>
+                                    <Badge variant="outline" className={cn("text-xs uppercase font-semibold tracking-tighter", bucketLabel(viewingLoan.bucket).className)}>
                                         {bucketLabel(viewingLoan.bucket).text}
                                     </Badge>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Debtor Information</h3>
+                                <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Debtor Information")}</h3>
                                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="text-sm text-muted-foreground">{t("Name")}</span>
                                         <span className="font-semibold">{viewingLoan.customerName}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Phone</span>
+                                        <span className="text-sm text-muted-foreground">{t("Phone")}</span>
                                         <span className="font-semibold text-sm">{viewingLoan.customerPhone}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Client Type</span>
-                                        <Badge variant="outline" className="text-[10px] uppercase font-black tracking-tighter px-1 h-4">
+                                        <span className="text-sm text-muted-foreground">{t("Client Type")}</span>
+                                        <Badge variant="outline" className="tracking-tighter px-1 h-4 text-eyebrow uppercase tracking-eyebrow">
                                             {viewingLoan.clientType}
                                         </Badge>
                                     </div>
@@ -1011,10 +1020,10 @@ function AgedDebtorsTab({
 
                             {viewingLoan.dueDate && (
                                 <div className="space-y-3">
-                                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Due Date</h3>
+                                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{t("Due Date")}</h3>
                                     <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm text-muted-foreground">Due Date</span>
+                                            <span className="text-sm text-muted-foreground">{t("Due Date")}</span>
                                             <span className="font-semibold">{format(new Date(viewingLoan.dueDate), "dd MMM yyyy")}</span>
                                         </div>
                                     </div>

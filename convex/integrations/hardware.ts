@@ -315,7 +315,10 @@ export const setHardwareStatus = mutation({
             );
         }
 
-        const allowed = ["configured", "testing", "verified", "not_working"];
+        // A device that has been taken out of service for good is "retired";
+        // one that can be repaired is "not_working". The two are different
+        // facts about the business, so they are different states.
+        const allowed = ["configured", "testing", "verified", "not_working", "retired"];
         if (!allowed.includes(args.status)) {
             throw new ConvexError(
                 `A device's status must be one of: ${allowed.join(", ")}.`

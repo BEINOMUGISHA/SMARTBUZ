@@ -1,426 +1,554 @@
 "use client";
 
+/**
+ * SMART_BUZ — Inventory Management Hub
+ *
+ * Warehouse valuation, distribution and the low-stock audit.
+ *
+ * The page used to show the *global activity log* under the heading "Stock
+ * Movements" — so signing in, editing a customer or opening a till all
+ * appeared as warehouse events. It now shows the real stock entries, and
+ * anything else it shows is labelled for what it is.
+ */
+
+import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
+import Link from "next/link";
 import {
-    Card, CardContent, CardHeader, CardTitle, CardDescription
-} from "@/components/ui/card";
-import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow
-} from "@/components/ui/table";
-import {
-    Package, TrendingUp, AlertTriangle, Database, Activity, BarChart3,
-    ArrowRight, Loader2, DollarSign, Layers, ChevronRight
+    Package,
+    TrendingUp,
+    AlertTriangle,
+    Database,
+    Activity,
+    BarChart3,
+    Layers,
+    DollarSign,
+    ArrowRight,
 } from "lucide-react";
 import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-    PieChart, Pie
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+    Cell,
+    PieChart,
+    Pie,
 } from "recharts";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import {
+    PageHeader,
+    StatCard,
+    StatGrid,
+    SectionCard,
+    DataState,
+} from "@/components/app/page-shell";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTableExport } from "@/components/app/data-table-export";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+/**
+ * The chart palette, read from the design tokens rather than hardcoded hex,
+ * so the charts follow the light and dark themes with everything else.
+ */
+const CHART_COLORS = [
+    "var(--color-chart-1)",
+    "var(--color-chart-2)",
+    "var(--color-chart-3)",
+    "var(--color-chart-4)",
+    "var(--color-chart-5)",
+    "var(--color-chart-1)",
+];
+
+const LOW_STOCK_THRESHOLD = 15;
+const LOW_STOCK_LOOKBACK_DAYS = 7;
+
+interface LowStockRow {
+    _id: string;
+    name: string;
+    productCode?: string;
+    categoryName?: string;
+    qty: number;
+    dailyVelocity?: number;
+    daysToStockOut?: number | null;
+    recommendedOrder?: number;
+    valuation?: number;
+}
 
 export default function InventoryPage() {
-    const { currency } = useCurrency();
-    const stats = useQuery(api.stocks.getInventoryStats, {});
-    const lowStockAudit = useQuery(api.stocks.getLowStockAudit, { threshold: 15, lookbackDays: 7 });
-    const activities = useQuery(api.activityLogs.list, { paginationOpts: { numItems: 8, cursor: null } });
+    
+    const t = useT();const { currency } = useCurrency();
+    const [search, setSearch] = useState("");
 
-    if (!stats) {
-        return (
-            <div className="flex h-[60vh] items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                    <p className="font-bold text-muted-foreground animate-pulse">Analyzing Warehouse Data...</p>
+    const stats = useQuery(api.stocks.getInventoryStats, {});
+    const lowStockAudit = useQuery(api.stocks.getLowStockAudit, {
+        threshold: LOW_STOCK_THRESHOLD,
+        lookbackDays: LOW_STOCK_LOOKBACK_DAYS,
+    });
+    const stockEntries = useQuery(api.stocks.getStockEntries, {});
+
+    const margin = useMemo(() => {
+        const sell = stats?.totalSellValue ?? 0;
+        const cost = stats?.totalCostValue ?? 0;
+        return {
+            percentage: sell > 0 ? ((sell - cost) / sell) * 100 : 0,
+            profit: sell - cost,
+        };
+    }, [stats]);
+
+    const lowStockColumns: DataTableColumn<LowStockRow>[] = [
+        {
+            id: "name",
+            header: "Product",
+            accessor: (row) => row.name,
+            cell: (row) => (
+                <div className="min-w-0">
+                    <p className="truncate font-medium text-foreground">{row.name}</p>
+                    {row.productCode ? (
+                        <p className="font-mono text-xs text-muted-foreground">
+                            {row.productCode}
+                        </p>
+                    ) : null}
                 </div>
-            </div>
-        );
-    }
+            ),
+        },
+        {
+            id: "category",
+            header: "Category",
+            accessor: (row) => row.categoryName ?? "",
+            cell: (row) =>
+                row.categoryName ? (
+                    <Badge variant="neutral">{row.categoryName}</Badge>
+                ) : (
+                    "—"
+                ),
+            hideBelow: "md",
+        },
+        {
+            id: "qty",
+            header: "Qty left",
+            accessor: (row) => row.qty,
+            align: "right",
+            cell: (row) => (
+                <span
+                    className={
+                        row.qty <= 5
+                            ? "font-semibold text-danger"
+                            : "font-medium"
+                    }
+                >
+                    {row.qty}
+                </span>
+            ),
+        },
+        {
+            id: "velocity",
+            header: "Daily sell",
+            accessor: (row) => row.dailyVelocity ?? 0,
+            align: "right",
+            cell: (row) => (
+                <span className="font-mono text-xs">
+                    {row.dailyVelocity ?? 0}
+                </span>
+            ),
+            hideBelow: "lg",
+        },
+        {
+            id: "days",
+            header: "Days left",
+            accessor: (row) => row.daysToStockOut ?? null,
+            align: "right",
+            cell: (row) => (
+                <span className="font-mono text-xs">
+                    {row.daysToStockOut === null ||
+                    row.daysToStockOut === undefined
+                        ? "—"
+                        : `${row.daysToStockOut}d`}
+                </span>
+            ),
+            hideBelow: "lg",
+        },
+        {
+            id: "reorder",
+            header: "Reorder",
+            accessor: (row) => row.recommendedOrder ?? 0,
+            align: "right",
+            cell: (row) => (
+                <span className="font-mono text-xs">
+                    {row.recommendedOrder && row.recommendedOrder > 0
+                        ? `${row.recommendedOrder} units`
+                        : "—"}
+                </span>
+            ),
+            hideBelow: "md",
+        },
+        {
+            id: "valuation",
+            header: "Valuation",
+            accessor: (row) => row.valuation ?? 0,
+            align: "right",
+            cell: (row) => (
+                <span className="font-mono text-xs">
+                    {currency} {(row.valuation ?? 0).toLocaleString()}
+                </span>
+            ),
+        },
+        {
+            id: "status",
+            header: "Status",
+            accessor: (row) => (row.qty === 0 ? "out_of_stock" : "low"),
+            align: "right",
+            cell: (row) =>
+                row.qty === 0 ? (
+                    <Badge variant="danger">{t("Out of stock")}</Badge>
+                ) : (
+                    <Badge variant="warning">{t("Restock soon")}</Badge>
+                ),
+        },
+    ];
 
     return (
-        <div className="space-y-8 pb-12">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-1">
-                    <h1 className="text-3xl font-black tracking-tight">Inventory Management Hub</h1>
-                    <p className="text-muted-foreground font-medium">Global warehouse valuation and distribution analytics.</p>
-                </div>
-                <div className="flex items-center gap-2">
+        <div className="space-y-6">
+            <PageHeader
+                icon={Layers}
+                eyebrow="Warehouse"
+                title={t("Inventory Management Hub")}
+                description={t("Global warehouse valuation, distribution and the restocking picture.")}
+                actions={
                     <Link href="/stock">
-                        <Button variant="outline" className="font-bold">
-                            <Layers className="mr-2 h-4 w-4" /> Manage Stocks
+                        <Button variant="outline">
+                            <Layers className="mr-2 size-4" />
+                            {t("Manage stock")}
                         </Button>
                     </Link>
-                </div>
-            </div>
+                }
+            />
 
-            {/* Top Level KPIs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard
-                    title="Warehouse Valuation"
-                    description="Total selling price of all inventory items"
-                    value={`${currency} ${stats.totalSellValue.toLocaleString()}`}
-                    subValue={`Cost: ${currency} ${stats.totalCostValue.toLocaleString()}`}
-                    icon={DollarSign}
-                    color="bg-blue-500"
-                />
-                <StatCard
-                    title="Estimated Margin"
-                    description="Profit percentage across entire inventory"
-                    value={`${(((stats.totalSellValue - stats.totalCostValue) / (stats.totalSellValue || 1)) * 100).toFixed(1)}%`}
-                    subValue={`Profit: ${currency} ${(stats.totalSellValue - stats.totalCostValue).toLocaleString()}`}
-                    icon={TrendingUp}
-                    color="bg-green-500"
-                />
-                <StatCard
-                    title="Total SKU Volume"
-                    description="Total quantity of all items in stock"
-                    value={stats.totalItems.toLocaleString()}
-                    subValue={`${stats.skuCount} Unique Products`}
-                    icon={Package}
-                    color="bg-purple-500"
-                />
-                <StatCard
-                    title="Stock Risks"
-                    description="Products with low inventory needing restock"
-                    value={lowStockAudit?.length.toString() || "0"}
-                    subValue="Items below reorder point"
-                    icon={AlertTriangle}
-                    color={lowStockAudit && lowStockAudit.length > 0 ? "bg-red-500" : "bg-emerald-500"}
-                />
-            </div>
+            <DataState isLoading={!stats}>
+                {stats ? (
+                    <>
+                        <StatGrid>
+                            <StatCard
+                                label={t("Warehouse valuation")}
+                                value={`${currency} ${stats.totalSellValue.toLocaleString()}`}
+                                hint={t("Cost {0} {1}", {
+            0: currency,
+            1: stats.totalCostValue.toLocaleString(),
+        })}
+                                icon={DollarSign}
+                                tone="info"
+                            />
+                            <StatCard
+                                label={t("Estimated margin")}
+                                value={`${margin.percentage.toFixed(1)}%`}
+                                hint={t("Profit {0} {1}", {
+            0: currency,
+            1: margin.profit.toLocaleString(),
+        })}
+                                icon={TrendingUp}
+                                tone={
+                                    margin.percentage > 0 ? "success" : "default"
+                                }
+                            />
+                            <StatCard
+                                label={t("Units in stock")}
+                                value={stats.totalItems.toLocaleString()}
+                                hint={t("{0} distinct products", {
+            0: stats.skuCount,
+        })}
+                                icon={Package}
+                            />
+                            <StatCard
+                                label={t("Stock risks")}
+                                value={(lowStockAudit?.length ?? 0).toString()}
+                                hint={t("Below {0} units", {
+            0: LOW_STOCK_THRESHOLD,
+        })}
+                                icon={AlertTriangle}
+                                tone={
+                                    (lowStockAudit?.length ?? 0) > 0
+                                        ? "danger"
+                                        : "success"
+                                }
+                            />
+                        </StatGrid>
 
-            {/* Secondary KPIs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard
-                    title="Total BV"
-                    description="Business Volume - points for distributor commissions"
-                    value={stats.totalBV.toLocaleString()}
-                    subValue="Business Volume"
-                    icon={BarChart3}
-                    color="bg-indigo-500"
-                />
-                <StatCard
-                    title="Total PV"
-                    description="Point Value - qualification points for rank advancement"
-                    value={stats.totalPV.toLocaleString()}
-                    subValue="Point Value"
-                    icon={Activity}
-                    color="bg-pink-500"
-                />
-                <StatCard
-                    title="Out of Stock"
-                    description="Products completely unavailable in warehouse"
-                    value={stats.outOfStockCount.toString()}
-                    subValue="Products with zero quantity"
-                    icon={AlertTriangle}
-                    color={stats.outOfStockCount > 0 ? "bg-red-500" : "bg-emerald-500"}
-                />
-                <StatCard
-                    title="Active Suppliers"
-                    description="Number of suppliers and shops in operation"
-                    value={stats.supplierCount.toString()}
-                    subValue={`${stats.shopCount} Active Shops`}
-                    icon={Database}
-                    color="bg-orange-500"
-                />
-            </div>
+                        <StatGrid>
+                            <StatCard
+                                label={t("Business volume")}
+                                value={stats.totalBV.toLocaleString()}
+                                hint={t("Points that earn distributor commission")}
+                                icon={BarChart3}
+                            />
+                            <StatCard
+                                label={t("Point value")}
+                                value={stats.totalPV.toLocaleString()}
+                                hint={t("Qualification points for rank")}
+                                icon={Activity}
+                            />
+                            <StatCard
+                                label={t("Out of stock")}
+                                value={stats.outOfStockCount.toString()}
+                                hint={t("Products with nothing left")}
+                                icon={AlertTriangle}
+                                tone={
+                                    stats.outOfStockCount > 0
+                                        ? "danger"
+                                        : "success"
+                                }
+                            />
+                            <StatCard
+                                label={t("Suppliers")}
+                                value={stats.supplierCount.toString()}
+                                hint={t("{0} active shops", {
+            0: stats.shopCount,
+        })}
+                                icon={Database}
+                            />
+                        </StatGrid>
 
-            {/* Stock Distribution */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <StatCard
-                    title="Warehouse Stock"
-                    description="Inventory remaining in main warehouse (not yet issued)"
-                    value={stats.warehouseStock.toLocaleString()}
-                    subValue="Items in main warehouse"
-                    icon={Package}
-                    color="bg-cyan-500"
-                />
-                <StatCard
-                    title="Shop Stock"
-                    description="Total inventory currently allocated to all shops"
-                    value={stats.totalShopStock.toLocaleString()}
-                    subValue="Items distributed to shops"
-                    icon={Layers}
-                    color="bg-teal-500"
-                />
-            </div>
+                        <StatGrid columns={2}>
+                            <StatCard
+                                label={t("Warehouse stock")}
+                                value={stats.warehouseStock.toLocaleString()}
+                                hint={t("In the main warehouse, not yet issued")}
+                                icon={Package}
+                            />
+                            <StatCard
+                                label={t("Shop stock")}
+                                value={stats.totalShopStock.toLocaleString()}
+                                hint={t("Already distributed to shops")}
+                                icon={Layers}
+                            />
+                        </StatGrid>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Category Distribution Chart */}
-                <Card className="lg:col-span-1 shadow-sm border-none bg-card/50 backdrop-blur-sm">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <BarChart3 className="h-5 w-5 text-primary" />
-                            Category Distribution
-                        </CardTitle>
-                        <CardDescription>Stock volume by category</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="h-[300px] w-full pt-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={stats.categoryDistribution} layout="vertical" margin={{ left: 60, right: 20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(0,0,0,0.05)" />
-                                    <XAxis type="number" hide />
-                                    <YAxis
-                                        dataKey="name"
-                                        type="category"
-                                        axisLine={false}
-                                        tickLine={false}
-                                        tick={{ fontSize: 11, fontWeight: 600 }}
-                                        width={55}
-                                    />
-                                    <Tooltip
-                                        cursor={{ fill: 'transparent' }}
-                                        content={({ active, payload }) => {
-                                            if (active && payload && payload.length && payload[0]?.payload) {
-                                                return (
-                                                    <div className="bg-white border rounded-lg shadow-xl p-3 border-primary/20">
-                                                        <p className="text-xs font-black text-muted-foreground uppercase">{payload[0].payload.name}</p>
-                                                        <p className="text-xl font-black text-primary">{payload[0].value?.toLocaleString()} items</p>
-                                                    </div>
-                                                );
-                                            }
-                                            return null;
-                                        }}
-                                    />
-                                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
-                                        {stats.categoryDistribution.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
+                        {/* ── Distribution ─────────────────────────────── */}
+                        <div className="grid gap-4 lg:grid-cols-3">
+                            <DistributionChart
+                                title={t("Category distribution")}
+                                description={t("Stock volume by category")}
+                                icon={BarChart3}
+                                data={stats.categoryDistribution}
+                                kind="bar"
+                            />
+                            <DistributionChart
+                                title={t("Supplier distribution")}
+                                description={t("Stock volume by supplier")}
+                                icon={Database}
+                                data={stats.supplierDistribution}
+                                kind="pie"
+                            />
+                            <DistributionChart
+                                title={t("Shop distribution")}
+                                description={t("Stock allocated to shops")}
+                                icon={Layers}
+                                data={stats.shopDistribution}
+                                kind="bar"
+                            />
                         </div>
-                    </CardContent>
-                </Card>
 
-                {/* Supplier Distribution Chart */}
-                <Card className="lg:col-span-1 shadow-sm border-none bg-card/50 backdrop-blur-sm">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Database className="h-5 w-5 text-primary" />
-                            Supplier Distribution
-                        </CardTitle>
-                        <CardDescription>Stock volume by supplier</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="h-[300px] w-full pt-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={stats.supplierDistribution}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={40}
-                                        outerRadius={80}
-                                        paddingAngle={2}
-                                        dataKey="value"
-                                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                        labelLine={false}
-                                    >
-                                        {stats.supplierDistribution.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip
-                                        content={({ active, payload }) => {
-                                            if (active && payload && payload.length && payload[0]?.payload) {
-                                                return (
-                                                    <div className="bg-white border rounded-lg shadow-xl p-3 border-primary/20">
-                                                        <p className="text-xs font-black text-muted-foreground uppercase">{payload[0].payload.name}</p>
-                                                        <p className="text-xl font-black text-primary">{payload[0].value?.toLocaleString()} items</p>
-                                                    </div>
-                                                );
-                                            }
-                                            return null;
-                                        }}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Shop Distribution Chart */}
-                <Card className="lg:col-span-1 shadow-sm border-none bg-card/50 backdrop-blur-sm">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Layers className="h-5 w-5 text-primary" />
-                            Shop Distribution
-                        </CardTitle>
-                        <CardDescription>Stock allocated to shops</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="h-[300px] w-full pt-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={stats.shopDistribution} layout="vertical" margin={{ left: 60, right: 20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(0,0,0,0.05)" />
-                                    <XAxis type="number" hide />
-                                    <YAxis
-                                        dataKey="name"
-                                        type="category"
-                                        axisLine={false}
-                                        tickLine={false}
-                                        tick={{ fontSize: 11, fontWeight: 600 }}
-                                        width={55}
-                                    />
-                                    <Tooltip
-                                        cursor={{ fill: 'transparent' }}
-                                        content={({ active, payload }) => {
-                                            if (active && payload && payload.length && payload[0]?.payload) {
-                                                return (
-                                                    <div className="bg-white border rounded-lg shadow-xl p-3 border-primary/20">
-                                                        <p className="text-xs font-black text-muted-foreground uppercase">{payload[0].payload.name}</p>
-                                                        <p className="text-xl font-black text-primary">{payload[0].value?.toLocaleString()} items</p>
-                                                    </div>
-                                                );
-                                            }
-                                            return null;
-                                        }}
-                                    />
-                                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
-                                        {stats.shopDistribution.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Recent Activity Feed */}
-            <Card className="shadow-sm border-none bg-card/50 backdrop-blur-sm">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Activity className="h-5 w-5 text-primary" />
-                        Stock Movements
-                    </CardTitle>
-                    <CardDescription>Latest logs from warehouse operations</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-6">
-                        {activities?.page.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-12">No recent warehouse activity</p>
-                        ) : (
-                            activities?.page.map((log: any) => (
-                                <div key={log._id} className="relative pl-6 pb-6 border-l last:pb-0 border-muted">
-                                    <div className="absolute left-[-5px] top-0 h-2.5 w-2.5 rounded-full bg-primary" />
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-black text-primary uppercase tracking-wider">{log.action}</p>
-                                        <p className="text-sm font-medium line-clamp-2">{log.details}</p>
-                                        <p className="text-[10px] text-muted-foreground font-mono">
-                                            {new Date(log.timestamp).toLocaleString()}
-                                        </p>
-                                    </div>
+                        {/* ── Stock movements ─────────────────────────── */}
+                        <SectionCard
+                            title={t("Stock movements")}
+                            description={t("Every addition to and deduction from stock, as it was recorded.")}
+                            icon={Activity}
+                            padded={false}
+                        >
+                            <DataState
+                                isLoading={!stockEntries}
+                                isEmpty={(stockEntries?.length ?? 0) === 0}
+                                emptyTitle={t("No stock movements yet")}
+                                emptyHint={t("Stock that has been added, restocked or issued will appear here.")}
+                                loadingRows={4}
+                            >
+                                <div className="divide-y divide-border/60">
+                                    {(stockEntries ?? []).slice(0, 12).map((entry: any) => (
+                                        <div
+                                            key={entry._id}
+                                            className="flex items-start justify-between gap-4 px-4 py-3 sm:px-5"
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-medium text-foreground">
+                                                    {entry.stockName}
+                                                </p>
+                                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                                    {entry.type === "restock"
+                                                        ? "Restocked"
+                                                        : "Added"}
+                                                    {entry.productCode
+                                                        ? ` · ${entry.productCode}`
+                                                        : ""}
+                                                    {entry.userName
+                                                        ? ` · ${entry.userName}`
+                                                        : ""}
+                                                </p>
+                                            </div>
+                                            <div className="shrink-0 text-right">
+                                                <p className="text-sm font-semibold tabular-nums text-foreground">
+                                                    +{(entry.quantity ?? 0).toLocaleString()}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {entry.date
+                                                        ? new Date(
+                                                              entry.date
+                                                          ).toLocaleString()
+                                                        : ""}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
+                            </DataState>
+                        </SectionCard>
 
-            {/* Audit Section */}
-            <Card className="shadow-sm border-none bg-card/50 backdrop-blur-sm overflow-hidden">
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                        <CardTitle className="flex items-center gap-2">
-                            <AlertTriangle className="h-5 w-5 text-red-500" />
-                            Low Stock Audit Tool
-                        </CardTitle>
-                        <CardDescription>Items with quantity below 15 units. Prioritize for restocking.</CardDescription>
-                    </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                    <Table>
-                        <TableHeader className="bg-muted/30">
-                            <TableRow>
-                                <TableHead className="pl-6 font-bold py-4">Product</TableHead>
-                                <TableHead className="font-bold">Category</TableHead>
-                                <TableHead className="text-center font-bold">Qty Left</TableHead>
-                                <TableHead className="text-center font-bold">Daily Sell</TableHead>
-                                <TableHead className="text-center font-bold">Days Left</TableHead>
-                                <TableHead className="text-center font-bold">Reorder</TableHead>
-                                <TableHead className="text-right font-bold">Valuation</TableHead>
-                                <TableHead className="text-right pr-6 font-bold">Status</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {lowStockAudit?.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground font-medium">
-                                        No low stock items detected. Warehouse levels are healthy.
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                lowStockAudit?.map((item: any) => (
-                                    <TableRow key={item._id} className="hover:bg-muted/20 transition-colors group">
-                                        <TableCell className="pl-6 py-4">
-                                            <div className="font-bold text-sm">{item.name}</div>
-                                            <div className="text-[10px] font-mono text-muted-foreground">{item.productCode}</div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline" className="font-normal text-[10px] uppercase">{item.categoryName}</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            <span className={item.qty <= 5 ? "text-red-500 font-black" : "font-bold"}>
-                                                {item.qty}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="text-center font-mono text-xs">{item.dailyVelocity}</TableCell>
-                                        <TableCell className="text-center font-mono text-xs">
-                                            {item.daysToStockOut === null ? "—" : `${item.daysToStockOut}d`}
-                                        </TableCell>
-                                        <TableCell className="text-center font-mono text-xs">
-                                            {item.recommendedOrder > 0 ? `${item.recommendedOrder} units` : "—"}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono text-xs">
-                                            {currency} {item.valuation.toLocaleString()}
-                                        </TableCell>
-                                        <TableCell className="text-right pr-6">
-                                            {item.qty === 0 ? (
-                                                <Badge variant="destructive" className="font-black text-[10px] uppercase">Out of Stock</Badge>
-                                            ) : (
-                                                <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50 font-black text-[10px] uppercase">Restock Soon</Badge>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+                        {/* ── Low stock audit ─────────────────────────── */}
+                        <SectionCard
+                            title={t("Low stock audit")}
+                            description={t("Items below {0} units, over the last {1} days of selling.", {
+            0: LOW_STOCK_THRESHOLD,
+            1: LOW_STOCK_LOOKBACK_DAYS,
+        })}
+                            icon={AlertTriangle}
+                            padded={false}
+                            actions={
+                                <DataTableExport
+                                    title={t("Low stock audit")}
+                                    rows={lowStockAudit ?? []}
+                                    columns={lowStockColumns}
+                                />
+                            }
+                        >
+                            <DataTable
+                                data={lowStockAudit ?? []}
+                                columns={lowStockColumns}
+                                getRowId={(row) => row._id}
+                                isLoading={!lowStockAudit}
+                                searchTerm={search}
+                                onPageSizeChange={() => {}}
+                                defaultSort={{ id: "qty", direction: "asc" }}
+                                emptyTitle={t("No low stock items detected")}
+                                emptyHint={t("Warehouse levels are healthy.")}
+                                ariaLabel="Low stock audit"
+                                caption={t("Sorted by how few are left. {0} item(s) need attention.", {
+            0: lowStockAudit?.length ?? 0,
+        })}
+                            />
+                        </SectionCard>
+                    </>
+                ) : null}
+            </DataState>
         </div>
     );
 }
 
-function StatCard({ title, description, value, subValue, icon: Icon, color }: any) {
+/* ─────────────────────────── distribution chart ─────────────────────── */
+
+function DistributionChart({
+    title,
+    description,
+    icon: Icon,
+    data,
+    kind,
+}: {
+    title: string;
+    description: string;
+    icon: any;
+    data: Array<{ name: string; value: number }>;
+    kind: "bar" | "pie";
+}) {
+    
+    const t = useT();return (
+        <SectionCard title={title} description={description} icon={Icon}>
+            <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    {kind === "pie" ? (
+                        <PieChart>
+                            <Pie
+                                data={data}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={40}
+                                outerRadius={80}
+                                paddingAngle={2}
+                                dataKey="value"
+                                label={({ name, percent }) =>
+                                    `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                                }
+                                labelLine={false}
+                            >
+                                {data.map((entry, index) => (
+                                    <Cell
+                                        key={`cell-${index}`}
+                                        fill={CHART_COLORS[index % CHART_COLORS.length]}
+                                    />
+                                ))}
+                            </Pie>
+                            <ChartTooltip />
+                        </PieChart>
+                    ) : (
+                        <BarChart
+                            data={data}
+                            layout="vertical"
+                            margin={{ left: 60, right: 20 }}
+                        >
+                            <CartesianGrid
+                                strokeDasharray="3 3"
+                                horizontal={false}
+                                stroke="var(--border)"
+                            />
+                            <XAxis type="number" hide />
+                            <YAxis
+                                dataKey="name"
+                                type="category"
+                                axisLine={false}
+                                tickLine={false}
+                                tick={{ fontSize: 11 }}
+                                width={55}
+                            />
+                            <ChartTooltip />
+                            <Bar
+                                dataKey="value"
+                                radius={[0, 4, 4, 0]}
+                                barSize={20}
+                            >
+                                {data.map((entry, index) => (
+                                    <Cell
+                                        key={`cell-${index}`}
+                                        fill={CHART_COLORS[index % CHART_COLORS.length]}
+                                    />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    )}
+                </ResponsiveContainer>
+            </div>
+        </SectionCard>
+    );
+}
+
+function ChartTooltip({
+    active,
+    payload,
+}: {
+    active?: boolean;
+    payload?: any[];
+}) {
+    if (!active || !payload || payload.length === 0 || !payload[0]?.payload) {
+        return null;
+    }
     return (
-        <Card className="border-none shadow-sm overflow-hidden relative group">
-            <CardContent className="pt-6">
-                <div className="flex items-center justify-between mb-4 relative z-10">
-                    <div className={`p-2.5 rounded-xl ${color} text-white shadow-lg shadow-${color.split('-')[1]}-200`}>
-                        <Icon className="h-5 w-5" />
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <div className="relative z-10">
-                    <p className="text-xs font-black text-muted-foreground uppercase tracking-wider mb-1">{title}</p>
-                    <p className="text-2xl font-black mb-1">{value}</p>
-                    <p className="text-xs text-muted-foreground font-medium mb-1">{subValue}</p>
-                    {description && <p className="text-[10px] text-muted-foreground/70 leading-tight">{description}</p>}
-                </div>
-                {/* Background Decor */}
-                <div className={`absolute -right-6 -bottom-6 opacity-[0.03] transition-transform group-hover:scale-110 duration-500`}>
-                    <Icon className="h-32 w-32" />
-                </div>
-            </CardContent>
-        </Card>
+        <div className="rounded-lg border border-border bg-popover p-3 shadow-lg">
+            <p className="text-eyebrow uppercase tracking-eyebrow text-muted-foreground">
+                {payload[0].payload.name}
+            </p>
+            <p className="text-lg font-semibold tabular-nums text-foreground">
+                {payload[0].value?.toLocaleString()} items
+            </p>
+        </div>
     );
 }

@@ -67,11 +67,28 @@ function publish(next: CachedSession | null) {
     for (const listener of listeners) listener();
 }
 
-/** Keep the last known session, so the till can come up without a network. */
+/**
+ * Keep the last known session, so the till can come up without a network.
+ */
 export function cacheSession(session: Omit<CachedSession, "cachedAt">): void {
     if (typeof window === "undefined") return;
 
     const entry: CachedSession = { ...session, cachedAt: new Date().toISOString() };
+
+    // If nothing actually changed, do not write and do not wake anybody.
+    //
+    // The live session is re-read from the server on every Convex update, and
+    // the result arrives as a fresh object each time. Writing that back to
+    // the cache and telling every subscriber about it produced a loop:
+    // a new session object woke the subscribers, the subscribers re-read the
+    // session, the session came back as a new object, and around again.
+    //
+    // The content of the session is what matters, not its identity. When the
+    // content is the same, there is nothing to say.
+    const current = readCachedSession();
+    if (current && sameSessionContent(current, entry)) {
+        return;
+    }
 
     try {
         window.localStorage.setItem(SESSION_KEY, JSON.stringify(entry));
@@ -81,6 +98,24 @@ export function cacheSession(session: Omit<CachedSession, "cachedAt">): void {
     }
 
     publish(entry);
+}
+
+/**
+ * Are these two snapshots the same session?
+ *
+ * `cachedAt` is excluded: it says when the entry was written, not what the
+ * session is.
+ */
+function sameSessionContent(a: CachedSession, b: CachedSession): boolean {
+    return (
+        a.email === b.email &&
+        JSON.stringify(a.user ?? null) === JSON.stringify(b.user ?? null) &&
+        JSON.stringify(a.businesses ?? []) === JSON.stringify(b.businesses ?? []) &&
+        JSON.stringify(a.activeBusiness ?? null) ===
+            JSON.stringify(b.activeBusiness ?? null) &&
+        JSON.stringify(a.permissions ?? []) ===
+            JSON.stringify(b.permissions ?? [])
+    );
 }
 
 /** The last known session, or null when there is none. */

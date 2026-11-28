@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 interface SummaryData {
     totalRevenue: number;
@@ -35,7 +36,8 @@ interface ReportSummaryProps {
 }
 
 export function ReportSummary({ data, isLoading, variant = "overview", customStats }: ReportSummaryProps) {
-    const { currency } = useCurrency();
+    
+    const t = useT();const { currency } = useCurrency();
 
     if (isLoading) {
         return (
@@ -59,11 +61,11 @@ export function ReportSummary({ data, isLoading, variant = "overview", customSta
                     "bg-white border-2 border-muted/20 rounded-xl p-3 pl-4 border-l-4 transition-all hover:bg-muted/5",
                     stat.color
                 )}>
-                    <div className="text-[15px] font-black tracking-tight text-gray-900 leading-none">
+                    <div className="text-base font-semibold tracking-tight text-gray-900 leading-none">
                         {stat.value}
                     </div>
-                    <div className="text-[9px] font-black text-muted-foreground mt-1.5 uppercase tracking-tighter">
-                        {stat.description}
+                    <div className="text-muted-foreground mt-1.5 tracking-tighter text-eyebrow uppercase tracking-eyebrow">
+                        {t(stat.description)}
                     </div>
                 </div>
             ))}

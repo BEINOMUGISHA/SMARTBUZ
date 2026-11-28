@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 const ROLES = [
     { value: "admin", label: "Administrator" },
@@ -53,7 +54,8 @@ const TIMEZONES = [
 ];
 
 export function BusinessManagement() {
-    const business = useQuery(api.businesses.getActive, {});
+    
+    const t = useT();const business = useQuery(api.businesses.getActive, {});
     const summary = useQuery(api.businesses.getSetupSummary, {});
 
     if (business === undefined) {
@@ -68,9 +70,9 @@ export function BusinessManagement() {
         return (
             <Card>
                 <CardHeader>
-                    <CardTitle>No business selected</CardTitle>
+                    <CardTitle>{t("No business selected")}</CardTitle>
                     <CardDescription>
-                        You do not belong to a business yet. Register one to get started.
+                        {t("You do not belong to a business yet. Register one to get started.")}
                     </CardDescription>
                 </CardHeader>
             </Card>
@@ -96,19 +98,19 @@ export function BusinessManagement() {
             <Tabs defaultValue="team">
                 <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 h-11 bg-muted/50 p-1.5 rounded-xl">
                     <TabsTrigger value="team" className="rounded-lg font-bold text-sm">
-                        <Users className="h-4 w-4 mr-2" /> Team
+                        <Users className="h-4 w-4 mr-2" /> {t("Team")}
                     </TabsTrigger>
                     <TabsTrigger value="branches" className="rounded-lg font-bold text-sm">
-                        <Store className="h-4 w-4 mr-2" /> Branches
+                        <Store className="h-4 w-4 mr-2" /> {t("Branches")}
                     </TabsTrigger>
                     <TabsTrigger value="warehouses" className="rounded-lg font-bold text-sm">
-                        <Warehouse className="h-4 w-4 mr-2" /> Warehouses
+                        <Warehouse className="h-4 w-4 mr-2" /> {t("Warehouses")}
                     </TabsTrigger>
                     <TabsTrigger value="employees" className="rounded-lg font-bold text-sm">
-                        <UserCog className="h-4 w-4 mr-2" /> Employees
+                        <UserCog className="h-4 w-4 mr-2" /> {t("Employees")}
                     </TabsTrigger>
                     <TabsTrigger value="profile" className="rounded-lg font-bold text-sm">
-                        <Building2 className="h-4 w-4 mr-2" /> Profile
+                        <Building2 className="h-4 w-4 mr-2" /> {t("Profile")}
                     </TabsTrigger>
                 </TabsList>
 
@@ -137,7 +139,8 @@ export function BusinessManagement() {
  * ──────────────────────────────────────────────────────────────────── */
 
 function TeamPanel() {
-    const members = useQuery(api.businesses.listMembers, {});
+    
+    const t = useT();const members = useQuery(api.businesses.listMembers, {});
     const invitations = useQuery(api.businesses.listInvitations, {});
     const addMember = useMutation(api.businesses.addMember);
     const updateRole = useMutation(api.businesses.updateMemberRole);
@@ -183,27 +186,26 @@ function TeamPanel() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-lg font-bold">Team</CardTitle>
+                <CardTitle className="text-lg font-bold">{t("Team")}</CardTitle>
                 <CardDescription>
-                    Everyone who can sign in to this business. A role decides what they may do
-                    here — and only here.
+                    {t("Everyone who can sign in to this business. A role decides what they may do here — and only here.")}
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <form onSubmit={handleAdd} className="grid gap-4 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end">
                     <div className="space-y-2">
-                        <Label htmlFor="member-email">Email</Label>
+                        <Label htmlFor="member-email">{t("Email")}</Label>
                         <Input
                             id="member-email"
                             type="email"
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="staff@example.com"
+                            placeholder={t("staff@example.com")}
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="member-role">Role</Label>
+                        <Label htmlFor="member-role">{t("Role")}</Label>
                         <Select value={role} onValueChange={setRole}>
                             <SelectTrigger id="member-role">
                                 <SelectValue />
@@ -211,24 +213,24 @@ function TeamPanel() {
                             <SelectContent>
                                 {ROLES.map((r) => (
                                     <SelectItem key={r.value} value={r.value}>
-                                        {r.label}
+                                        {t(r.label)}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="member-title">Job title</Label>
+                        <Label htmlFor="member-title">{t("Job title")}</Label>
                         <Input
                             id="member-title"
                             value={jobTitle}
                             onChange={(e) => setJobTitle(e.target.value)}
-                            placeholder="Cashier"
+                            placeholder={t("Cashier")}
                         />
                     </div>
                     <Button type="submit" disabled={saving}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                        Add
+                        {t("Add")}
                     </Button>
                 </form>
 
@@ -244,7 +246,7 @@ function TeamPanel() {
                             </div>
                             <div className="flex items-center gap-2">
                                 {m.role === "owner" ? (
-                                    <Badge>Owner</Badge>
+                                    <Badge>{t("Owner")}</Badge>
                                 ) : (
                                     <Select
                                         value={m.role}
@@ -256,7 +258,7 @@ function TeamPanel() {
                                         <SelectContent>
                                             {ROLES.map((r) => (
                                                 <SelectItem key={r.value} value={r.value}>
-                                                    {r.label}
+                                                    {t(r.label)}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -267,7 +269,9 @@ function TeamPanel() {
                                         size="icon"
                                         variant="ghost"
                                         onClick={() => handleRemove(m.userId)}
-                                        aria-label={`Remove ${m.email}`}
+                                        aria-label={t("Remove {0}", {
+            0: m.email,
+        })}
                                     >
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                     </Button>
@@ -276,14 +280,14 @@ function TeamPanel() {
                         </div>
                     ))}
                     {members !== undefined && members.length === 0 && (
-                        <p className="text-sm text-muted-foreground">No team members yet.</p>
+                        <p className="text-sm text-muted-foreground">{t("No team members yet.")}</p>
                     )}
                 </div>
 
                 {invitations && invitations.length > 0 && (
                     <div className="space-y-2">
                         <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            Pending invitations
+                            {t("Pending invitations")}
                         </div>
                         {invitations.map((i) => (
                             <div
@@ -306,7 +310,8 @@ function TeamPanel() {
  * ──────────────────────────────────────────────────────────────────── */
 
 function BranchesPanel() {
-    const branches = useQuery(api.branches.list, {});
+    
+    const t = useT();const branches = useQuery(api.branches.list, {});
     const create = useMutation(api.branches.create);
     const update = useMutation(api.branches.update);
     const remove = useMutation(api.branches.remove);
@@ -336,28 +341,28 @@ function BranchesPanel() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-lg font-bold">Branches</CardTitle>
+                <CardTitle className="text-lg font-bold">{t("Branches")}</CardTitle>
                 <CardDescription>
-                    The sales points of this business. Each one can hold its own stock.
+                    {t("The sales points of this business. Each one can hold its own stock.")}
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <form onSubmit={handleCreate} className="grid gap-4 md:grid-cols-[2fr_1fr_2fr_auto] md:items-end">
                     <div className="space-y-2">
-                        <Label htmlFor="branch-name">Name</Label>
-                        <Input id="branch-name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Kampala Main" />
+                        <Label htmlFor="branch-name">{t("Name")}</Label>
+                        <Input id="branch-name" required value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Kampala Main")} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="branch-code">Code</Label>
-                        <Input id="branch-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="KLA-001" />
+                        <Label htmlFor="branch-code">{t("Code")}</Label>
+                        <Input id="branch-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder={t("KLA-001")} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="branch-address">Address</Label>
-                        <Input id="branch-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Kampala Central" />
+                        <Label htmlFor="branch-address">{t("Address")}</Label>
+                        <Input id="branch-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("Kampala Central")} />
                     </div>
                     <Button type="submit" disabled={saving}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                        Add branch
+                        {t("Add branch")}
                     </Button>
                 </form>
 
@@ -367,8 +372,8 @@ function BranchesPanel() {
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2 font-semibold">
                                     {b.name}
-                                    {b.isDefault && <Badge variant="secondary">Default</Badge>}
-                                    {!b.isActive && <Badge variant="outline">Inactive</Badge>}
+                                    {b.isDefault && <Badge variant="secondary">{t("Default")}</Badge>}
+                                    {!b.isActive && <Badge variant="outline">{t("Inactive")}</Badge>}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
                                     {b.code ?? "—"} {b.address ? `• ${b.address}` : ""}
@@ -377,13 +382,15 @@ function BranchesPanel() {
                             <div className="flex items-center gap-2">
                                 {!b.isDefault && (
                                     <Button size="sm" variant="outline" onClick={() => setDefault({ id: b._id })}>
-                                        Make default
+                                        {t("Make default")}
                                     </Button>
                                 )}
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    aria-label={`Delete ${b.name}`}
+                                    aria-label={t("Delete {0}", {
+            0: b.name,
+        })}
                                     onClick={async () => {
                                         try {
                                             await remove({ id: b._id });
@@ -399,7 +406,7 @@ function BranchesPanel() {
                         </div>
                     ))}
                     {branches !== undefined && branches.length === 0 && (
-                        <p className="text-sm text-muted-foreground">No branches yet.</p>
+                        <p className="text-sm text-muted-foreground">{t("No branches yet.")}</p>
                     )}
                 </div>
             </CardContent>
@@ -412,7 +419,8 @@ function BranchesPanel() {
  * ──────────────────────────────────────────────────────────────────── */
 
 function WarehousesPanel() {
-    const warehouses = useQuery(api.warehouses.list, {});
+    
+    const t = useT();const warehouses = useQuery(api.warehouses.list, {});
     const create = useMutation(api.warehouses.create);
     const remove = useMutation(api.warehouses.remove);
     const setDefault = useMutation(api.warehouses.setDefault);
@@ -440,35 +448,35 @@ function WarehousesPanel() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-lg font-bold">Warehouses</CardTitle>
-                <CardDescription>Where this business keeps its stock.</CardDescription>
+                <CardTitle className="text-lg font-bold">{t("Warehouses")}</CardTitle>
+                <CardDescription>{t("Where this business keeps its stock.")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <form onSubmit={handleCreate} className="grid gap-4 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end">
                     <div className="space-y-2">
-                        <Label htmlFor="wh-name">Name</Label>
-                        <Input id="wh-name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Main Warehouse" />
+                        <Label htmlFor="wh-name">{t("Name")}</Label>
+                        <Input id="wh-name" required value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Main Warehouse")} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="wh-code">Code</Label>
-                        <Input id="wh-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="WH-MAIN" />
+                        <Label htmlFor="wh-code">{t("Code")}</Label>
+                        <Input id="wh-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder={t("WH-MAIN")} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="wh-type">Type</Label>
+                        <Label htmlFor="wh-type">{t("Type")}</Label>
                         <Select value={type} onValueChange={setType}>
                             <SelectTrigger id="wh-type">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="main">Main</SelectItem>
-                                <SelectItem value="branch">Branch</SelectItem>
-                                <SelectItem value="transit">Transit</SelectItem>
+                                <SelectItem value="main">{t("Main")}</SelectItem>
+                                <SelectItem value="branch">{t("Branch")}</SelectItem>
+                                <SelectItem value="transit">{t("Transit")}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                     <Button type="submit" disabled={saving}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                        Add warehouse
+                        {t("Add warehouse")}
                     </Button>
                 </form>
 
@@ -478,7 +486,7 @@ function WarehousesPanel() {
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2 font-semibold">
                                     {w.name}
-                                    {w.isDefault && <Badge variant="secondary">Default</Badge>}
+                                    {w.isDefault && <Badge variant="secondary">{t("Default")}</Badge>}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
                                     {w.code ?? "—"} • {w.type}
@@ -487,13 +495,15 @@ function WarehousesPanel() {
                             <div className="flex items-center gap-2">
                                 {!w.isDefault && (
                                     <Button size="sm" variant="outline" onClick={() => setDefault({ id: w._id })}>
-                                        Make default
+                                        {t("Make default")}
                                     </Button>
                                 )}
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    aria-label={`Delete ${w.name}`}
+                                    aria-label={t("Delete {0}", {
+            0: w.name,
+        })}
                                     onClick={async () => {
                                         try {
                                             await remove({ id: w._id });
@@ -509,7 +519,7 @@ function WarehousesPanel() {
                         </div>
                     ))}
                     {warehouses !== undefined && warehouses.length === 0 && (
-                        <p className="text-sm text-muted-foreground">No warehouses yet.</p>
+                        <p className="text-sm text-muted-foreground">{t("No warehouses yet.")}</p>
                     )}
                 </div>
             </CardContent>
@@ -522,7 +532,8 @@ function WarehousesPanel() {
  * ──────────────────────────────────────────────────────────────────── */
 
 function EmployeesPanel() {
-    const employees = useQuery(api.employees.list, {});
+    
+    const t = useT();const employees = useQuery(api.employees.list, {});
     const branches = useQuery(api.branches.list, {});
     const create = useMutation(api.employees.create);
     const remove = useMutation(api.employees.remove);
@@ -557,30 +568,30 @@ function EmployeesPanel() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-lg font-bold">Employees</CardTitle>
+                <CardTitle className="text-lg font-bold">{t("Employees")}</CardTitle>
                 <CardDescription>
-                    The staff list of this business. An employee may or may not have a sign-in.
+                    {t("The staff list of this business. An employee may or may not have a sign-in.")}
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <form onSubmit={handleCreate} className="grid gap-4 md:grid-cols-[2fr_1fr_1fr_1fr_auto] md:items-end">
                     <div className="space-y-2">
-                        <Label htmlFor="emp-name">Name</Label>
+                        <Label htmlFor="emp-name">{t("Name")}</Label>
                         <Input id="emp-name" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="emp-title">Job title</Label>
+                        <Label htmlFor="emp-title">{t("Job title")}</Label>
                         <Input id="emp-title" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="emp-phone">Phone</Label>
+                        <Label htmlFor="emp-phone">{t("Phone")}</Label>
                         <Input id="emp-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="emp-branch">Branch</Label>
+                        <Label htmlFor="emp-branch">{t("Branch")}</Label>
                         <Select value={branchId} onValueChange={setBranchId}>
                             <SelectTrigger id="emp-branch">
-                                <SelectValue placeholder="None" />
+                                <SelectValue placeholder={t("None")} />
                             </SelectTrigger>
                             <SelectContent>
                                 {(branches ?? []).map((b) => (
@@ -593,7 +604,7 @@ function EmployeesPanel() {
                     </div>
                     <Button type="submit" disabled={saving}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                        Add
+                        {t("Add")}
                     </Button>
                 </form>
 
@@ -613,7 +624,9 @@ function EmployeesPanel() {
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    aria-label={`Delete ${emp.fullName}`}
+                                    aria-label={t("Delete {0}", {
+            0: emp.fullName,
+        })}
                                     onClick={async () => {
                                         try {
                                             await remove({ id: emp._id });
@@ -629,7 +642,7 @@ function EmployeesPanel() {
                         </div>
                     ))}
                     {employees !== undefined && employees.length === 0 && (
-                        <p className="text-sm text-muted-foreground">No employees yet.</p>
+                        <p className="text-sm text-muted-foreground">{t("No employees yet.")}</p>
                     )}
                 </div>
             </CardContent>
@@ -642,7 +655,8 @@ function EmployeesPanel() {
  * ──────────────────────────────────────────────────────────────────── */
 
 function ProfilePanel() {
-    const { currency } = useCurrency();
+    
+    const tr = useT();const { currency } = useCurrency();
     const business = useQuery(api.businesses.getActive, {});
     const update = useMutation(api.businesses.updateSettings);
     const [saving, setSaving] = useState(false);
@@ -674,20 +688,19 @@ function ProfilePanel() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-lg font-bold">Business settings</CardTitle>
+                <CardTitle className="text-lg font-bold">{tr("Business settings")}</CardTitle>
                 <CardDescription>
-                    Money and time are set per business — a business in Kampala can bill in
-                    shillings while another bills in dollars.
+                    {tr("Money and time are set per business — a business in Kampala can bill in shillings while another bills in dollars.")}
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <form onSubmit={handleSubmit} className="grid gap-5 md:grid-cols-2">
                     <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="name">Business name</Label>
+                        <Label htmlFor="name">{tr("Business name")}</Label>
                         <Input id="name" name="name" defaultValue={business.name} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="currency">Currency</Label>
+                        <Label htmlFor="currency">{tr("Currency")}</Label>
                         <Select name="currency" defaultValue={business.currency ?? `${currency}`}>
                             <SelectTrigger id="currency">
                                 <SelectValue />
@@ -702,7 +715,7 @@ function ProfilePanel() {
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="timezone">Timezone</Label>
+                        <Label htmlFor="timezone">{tr("Timezone")}</Label>
                         <Select name="timezone" defaultValue={business.timezone ?? "Africa/Kampala"}>
                             <SelectTrigger id="timezone">
                                 <SelectValue />
@@ -717,25 +730,25 @@ function ProfilePanel() {
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="country">Country</Label>
+                        <Label htmlFor="country">{tr("Country")}</Label>
                         <Input id="country" name="country" defaultValue={business.country ?? "Uganda"} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="tin">Taxpayer number</Label>
+                        <Label htmlFor="tin">{tr("Taxpayer number")}</Label>
                         <Input id="tin" name="tin" defaultValue={business.tin ?? ""} />
                     </div>
                     <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="businessAddress">Address</Label>
+                        <Label htmlFor="businessAddress">{tr("Address")}</Label>
                         <Input id="businessAddress" name="businessAddress" defaultValue={business.businessAddress ?? ""} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="businessPhone">Phone</Label>
+                        <Label htmlFor="businessPhone">{tr("Phone")}</Label>
                         <Input id="businessPhone" name="businessPhone" defaultValue={business.businessPhone ?? ""} />
                     </div>
                     <div className="flex items-end justify-end md:col-span-2">
                         <Button type="submit" disabled={saving}>
                             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save settings
+                            {tr("Save settings")}
                         </Button>
                     </div>
                 </form>

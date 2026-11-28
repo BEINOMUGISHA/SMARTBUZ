@@ -72,6 +72,12 @@ interface HealthBody {
  * credentials may well be what was broken. If the deployment does not answer
  * there, `/auth/jwks` is tried: it is public too, and it proves the piece the
  * browser actually depends on - the published signing keys - is being served.
+ *
+ * The cloud in front of the deployment drops the occasional request, and a
+ * health check that reports an outage because of one dropped request is worse
+ * than no health check at all: it cries wolf and the people watching it stop
+ * believing it. So a failed round is tried a second time before the
+ * dependency is called down.
  */
 async function probeConvex(baseUrl: string): Promise<{
   status: ProbeStatus;
@@ -81,30 +87,38 @@ async function probeConvex(baseUrl: string): Promise<{
   const candidates = ["/version", "/auth/jwks"];
   let lastStatus: ProbeStatus = "unreachable";
 
-  for (const path of candidates) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-    try {
-      const response = await fetch(`${baseUrl}${path}`, {
-        method: "GET",
-        cache: "no-store",
-        signal: controller.signal,
-        headers: { accept: "application/json" },
-      });
-      if (response.ok) {
-        // The body is consumed but never forwarded: it is deployment
-        // metadata, and this endpoint is public.
-        await response.json().catch(() => null);
-        return { status: "ok", latencyMs: Date.now() - started };
+  for (let round = 0; round < 2; round += 1) {
+    if (round > 0) {
+      // A short pause before the second attempt: a blip that has already
+      // passed will not pass again.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+
+    for (const path of candidates) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+      try {
+        const response = await fetch(`${baseUrl}${path}`, {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+          headers: { accept: "application/json" },
+        });
+        if (response.ok) {
+          // The body is consumed but never forwarded: it is deployment
+          // metadata, and this endpoint is public.
+          await response.json().catch(() => null);
+          return { status: "ok", latencyMs: Date.now() - started };
+        }
+        lastStatus = "unexpected-response";
+      } catch (error) {
+        const aborted =
+          (error as { name?: string })?.name === "AbortError" ||
+          controller.signal.aborted;
+        lastStatus = aborted ? "timeout" : "unreachable";
+      } finally {
+        clearTimeout(timer);
       }
-      lastStatus = "unexpected-response";
-    } catch (error) {
-      const aborted =
-        (error as { name?: string })?.name === "AbortError" ||
-        controller.signal.aborted;
-      lastStatus = aborted ? "timeout" : "unreachable";
-    } finally {
-      clearTimeout(timer);
     }
   }
 

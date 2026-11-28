@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/context/auth-context";
 import { businessCurrency, formatMoney } from "@/lib/currency";
 import { toast } from "sonner";
+import { useT } from "@/i18n/provider";
 
 interface MoMoModalProps {
     isOpen: boolean;
@@ -44,7 +45,8 @@ export function MobileMoneyModal({
     initialPhone = "",
     onPaymentStarted,
 }: MoMoModalProps) {
-    const convex = useConvex();
+    
+    const tr = useT();const convex = useConvex();
     const { activeBusiness } = useAuth();
 
     // The currency the business trades in.
@@ -243,59 +245,58 @@ export function MobileMoneyModal({
                     <div className="flex items-start justify-between gap-2">
                         <DialogTitle className="flex items-center gap-2">
                             <Smartphone className="h-5 w-5 text-primary" />
-                            <span>Mobile Money Payment</span>
+                            <span>{tr("Mobile Money Payment")}</span>
                         </DialogTitle>
                         <Button
                             type="button"
                             variant="ghost"
                             size="icon-sm"
                             onClick={onClose}
-                            aria-label="Close mobile money dialog"
+                            aria-label={tr("Close mobile money dialog")}
                             className="text-muted-foreground hover:text-foreground"
                         >
                             <X className="h-4 w-4" />
                         </Button>
                     </div>
                     <DialogDescription>
-                        Ask {network} to send a PIN prompt to the customer&apos;s phone. The
-                        money is confirmed by {network}, not by the till.
+                        {tr("Ask")} {network} {tr("to send a PIN prompt to the customer&apos;s phone. The money is confirmed by")} {network}{tr(", not by the till.")}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
                     {/* Amount Callout */}
                     <div className="p-3 rounded-xl bg-muted/60 border flex items-center justify-between">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase">Amount Due:</span>
-                        <span className="text-xl font-black text-primary">{formatMoney(amount, currency)}</span>
+                        <span className="text-xs font-semibold text-muted-foreground uppercase">{tr("Amount Due:")}</span>
+                        <span className="text-xl font-semibold text-primary">{formatMoney(amount, currency)}</span>
                     </div>
 
                     {/* Network Selection */}
                     <div className="space-y-1.5">
-                        <Label className="text-xs font-bold">Select Mobile Carrier</Label>
+                        <Label className="text-xs font-bold">{tr("Select Mobile Carrier")}</Label>
                         <div className="grid grid-cols-2 gap-2">
                             <button
                                 type="button"
                                 onClick={() => setNetwork("MTN")}
-                                className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-black transition-all ${network === "MTN" ? "border-amber-400 bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-2 ring-amber-400/20" : "border-border hover:bg-muted"}`}
+                                className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-semibold transition-all ${network === "MTN" ? "border-amber-400 bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-2 ring-amber-400/20" : "border-border hover:bg-muted"}`}
                             >
-                                <span>MTN MoMo</span>
-                                <Badge className="bg-amber-400 text-black hover:bg-amber-400 text-[10px] font-black">*165#</Badge>
+                                <span>{tr("MTN MoMo")}</span>
+                                <Badge className="bg-amber-400 text-black hover:bg-amber-400 text-xs font-semibold">*165#</Badge>
                             </button>
 
                             <button
                                 type="button"
                                 onClick={() => setNetwork("AIRTEL")}
-                                className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-black transition-all ${network === "AIRTEL" ? "border-red-500 bg-red-500/10 text-red-600 dark:text-red-300 ring-2 ring-red-500/20" : "border-border hover:bg-muted"}`}
+                                className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-semibold transition-all ${network === "AIRTEL" ? "border-red-500 bg-red-500/10 text-red-600 dark:text-red-300 ring-2 ring-red-500/20" : "border-border hover:bg-muted"}`}
                             >
-                                <span>Airtel Money</span>
-                                <Badge className="bg-red-600 text-white hover:bg-red-600 text-[10px] font-black">*185#</Badge>
+                                <span>{tr("Airtel Money")}</span>
+                                <Badge className="bg-red-600 text-white hover:bg-red-600 text-xs font-semibold">*185#</Badge>
                             </button>
                         </div>
                     </div>
 
                     {/* Phone Input */}
                     <div className="space-y-1.5">
-                        <Label htmlFor="momo-phone" className="text-xs font-bold">Customer Phone Number</Label>
+                        <Label htmlFor="momo-phone" className="text-xs font-bold">{tr("Customer Phone Number")}</Label>
                         <div className="relative">
                             <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
@@ -317,9 +318,9 @@ export function MobileMoneyModal({
                                 className="p-4 rounded-xl border border-amber-400/30 bg-amber-500/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
                             >
                                 <Loader2 className="h-8 w-8 animate-spin text-amber-500 mx-auto" />
-                                <p className="font-bold text-sm">Talking to {network}...</p>
+                                <p className="font-bold text-sm">{tr("Talking to")} {network}...</p>
                                 <p className="text-xs text-muted-foreground">
-                                    Asking {network} to send a PIN prompt to the customer&apos;s phone.
+                                    {tr("Asking")} {network} {tr("to send a PIN prompt to the customer&apos;s phone.")}
                                 </p>
                             </div>
                         )}
@@ -330,17 +331,16 @@ export function MobileMoneyModal({
                                 className="p-4 rounded-xl border border-primary/20 bg-primary/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
                             >
                                 <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                                <p className="font-bold text-sm">Waiting for the customer</p>
+                                <p className="font-bold text-sm">{tr("Waiting for the customer")}</p>
                                 <p className="text-xs text-muted-foreground">
-                                    The customer is entering their secret PIN on their phone. The money is
-                                    confirmed once {network} says so.
+                                    {tr("The customer is entering their secret PIN on their phone. The money is confirmed once")} {network} {tr("says so.")}
                                 </p>
                                 <div className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
-                                    Timeout in {timer}s
+                                    {tr("Timeout in")} {timer}s
                                 </div>
                                 {reference && (
-                                    <p className="text-[11px] font-mono text-muted-foreground break-all">
-                                        Reference: {reference}
+                                    <p className="text-xs font-mono text-muted-foreground break-all">
+                                        {tr("Reference:")} {reference}
                                     </p>
                                 )}
                             </div>
@@ -352,9 +352,9 @@ export function MobileMoneyModal({
                                 className="p-4 rounded-xl border border-green-500/30 bg-green-500/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
                             >
                                 <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto" />
-                                <p className="font-bold text-sm">Confirmed by {network}</p>
+                                <p className="font-bold text-sm">{tr("Confirmed by")} {network}</p>
                                 <p className="text-xs text-muted-foreground">
-                                    The provider confirmed this payment.
+                                    {tr("The provider confirmed this payment.")}
                                 </p>
                             </div>
                         )}
@@ -365,15 +365,15 @@ export function MobileMoneyModal({
                                 className="p-4 rounded-xl border border-red-500/30 bg-red-500/5 text-center space-y-2 animate-in fade-in slide-in-from-top-1 duration-200"
                             >
                                 <AlertCircle className="h-8 w-8 text-red-600 mx-auto" />
-                                <p className="font-bold text-sm">The payment did not go through</p>
+                                <p className="font-bold text-sm">{tr("The payment did not go through")}</p>
                                 <p className="text-xs text-muted-foreground">
-                                    Nothing was charged. Record the sale as unpaid, or try again.
+                                    {tr("Nothing was charged. Record the sale as unpaid, or try again.")}
                                 </p>
                             </div>
                         )}
 
                         {lastMessage && status !== "PROMPTING" && (
-                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            <p className="text-xs text-muted-foreground leading-relaxed">
                                 {lastMessage}
                             </p>
                         )}
@@ -381,21 +381,20 @@ export function MobileMoneyModal({
 
                     {/* Manual Reference */}
                     <div className="space-y-1.5 pt-2 border-t">
-                        <Label htmlFor="momo-reference" className="text-[11px] text-muted-foreground font-semibold">
-                            Reference from the customer&apos;s confirmation (optional)
+                        <Label htmlFor="momo-reference" className="text-xs text-muted-foreground font-semibold">
+                            {tr("Reference from the customer&apos;s confirmation (optional)")}
                         </Label>
                         <Input
                             id="momo-reference"
-                            placeholder="e.g. 1948203948 (from the customer's SMS)"
+                            placeholder={tr("e.g. 1948203948 (from the customer's SMS)")}
                             value={manualRef}
                             onChange={(e) => setManualRef(e.target.value)}
                             className="h-8 text-xs font-mono"
                         />
-                        <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                        <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-start gap-1">
                             <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
                             <span>
-                                A reference records the payment for checking. It does not confirm it —
-                                that is the provider&apos;s word to give.
+                                {tr("A reference records the payment for checking. It does not confirm it — that is the provider&apos;s word to give.")}
                             </span>
                         </p>
                     </div>
@@ -403,7 +402,7 @@ export function MobileMoneyModal({
 
                 <DialogFooter className="flex items-center justify-between sm:justify-between gap-2">
                     <Button variant="outline" size="sm" onClick={onClose}>
-                        Close
+                        {tr("Close")}
                     </Button>
 
                     <div className="flex items-center gap-2">
@@ -412,11 +411,11 @@ export function MobileMoneyModal({
                                 size="sm"
                                 onClick={handleSendPrompt}
                                 disabled={!phone || status === "PROMPTING"}
-                                aria-label="Send PIN prompt to customer"
+                                aria-label={tr("Send PIN prompt to customer")}
                                 className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-black font-bold"
                             >
                                 {status === "PROMPTING" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Smartphone className="h-3.5 w-3.5" />}
-                                <span>Send Prompt</span>
+                                <span>{tr("Send Prompt")}</span>
                             </Button>
                         )}
 
@@ -428,7 +427,7 @@ export function MobileMoneyModal({
                                 className="gap-1.5"
                             >
                                 <PlugZap className="h-3.5 w-3.5" />
-                                <span>Ask {network}</span>
+                                <span>{tr("Ask")} {network}</span>
                             </Button>
                         )}
 
@@ -440,7 +439,7 @@ export function MobileMoneyModal({
                             className="gap-1.5"
                         >
                             <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span>Record Reference</span>
+                            <span>{tr("Record Reference")}</span>
                         </Button>
                     </div>
                 </DialogFooter>

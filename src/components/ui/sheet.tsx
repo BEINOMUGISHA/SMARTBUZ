@@ -1,4 +1,6 @@
-"use client"
+"use client";
+
+import { useT } from "@/i18n/provider";
 
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
@@ -52,7 +54,8 @@ function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
 }) {
-  return (
+  
+    const t = useT();return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
@@ -74,7 +77,7 @@ function SheetContent({
         {children}
         <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
           <XIcon className="size-4" />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t("Close")}</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPortal>

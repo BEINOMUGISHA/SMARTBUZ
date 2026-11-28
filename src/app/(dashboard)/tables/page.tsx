@@ -41,9 +41,11 @@ import { toast } from "sonner";
 import { formatError } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/use-currency";
+import { useT } from "@/i18n/provider";
 
 export default function TablesPage() {
-    const { currency } = useCurrency();
+    
+    const tr = useT();const { currency } = useCurrency();
     const { user } = useAuth();
     const [tab, setTab] = useState("floor");
     const [tableOpen, setTableOpen] = useState(false);
@@ -147,15 +149,15 @@ export default function TablesPage() {
         <div className="space-y-6">
             <VerticalPageHeader
                 icon={UtensilsCrossed}
-                title="Tables & Orders"
-                description="Run the floor, open tabs and close orders as guests pay."
+                title={tr("Tables & Orders")}
+                description={tr("Run the floor, open tabs and close orders as guests pay.")}
                 actions={
                     <>
                         <CreateButton
                             onClick={() => setMenuOpen(true)}
-                            label="Add menu item"
+                            label={tr("Add menu item")}
                         />
-                        <CreateButton onClick={() => setTableOpen(true)} label="Add table" />
+                        <CreateButton onClick={() => setTableOpen(true)} label={tr("Add table")} />
                     </>
                 }
             />
@@ -163,10 +165,10 @@ export default function TablesPage() {
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="grid h-11 w-full grid-cols-2 rounded-xl border bg-muted/50 p-1.5">
                     <TabsTrigger value="floor" className="rounded-lg text-sm font-bold">
-                        <UtensilsCrossed className="mr-2 h-4 w-4" /> Floor
+                        <UtensilsCrossed className="mr-2 h-4 w-4" /> {tr("Floor")}
                     </TabsTrigger>
                     <TabsTrigger value="menu" className="rounded-lg text-sm font-bold">
-                        <BookOpen className="mr-2 h-4 w-4" /> Menu
+                        <BookOpen className="mr-2 h-4 w-4" /> {tr("Menu")}
                     </TabsTrigger>
                 </TabsList>
 
@@ -176,8 +178,8 @@ export default function TablesPage() {
                         <LoadingState />
                     ) : outlets.length === 0 ? (
                         <EmptyState
-                            title="No tables yet"
-                            hint="Add your tables and the floor view will let you open tabs and take orders."
+                            title={tr("No tables yet")}
+                            hint={tr("Add your tables and the floor view will let you open tabs and take orders.")}
                         />
                     ) : (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
@@ -201,7 +203,7 @@ export default function TablesPage() {
                                         )}
                                     >
                                         <div className="flex items-start justify-between gap-2">
-                                            <p className="text-lg font-black">{t.name}</p>
+                                            <p className="text-lg font-semibold">{t.name}</p>
                                             <StatusBadge status={t.status} />
                                         </div>
                                         <p className="mt-1 text-xs text-muted-foreground">
@@ -210,13 +212,13 @@ export default function TablesPage() {
                                             {t.rate ? `${ugx(t.rate)}/session` : ""}
                                         </p>
                                         {order && (
-                                            <p className="mt-2 text-sm font-black tabular-nums text-amber-700 dark:text-amber-400">
+                                            <p className="mt-2 text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-400">
                                                 {ugx(order.total)}
                                             </p>
                                         )}
                                         {order && (
-                                            <p className="text-[10px] text-muted-foreground">
-                                                {order.items.length} item(s)
+                                            <p className="text-xs text-muted-foreground">
+                                                {order.items.length} {tr("item(s)")}
                                             </p>
                                         )}
                                     </button>
@@ -231,7 +233,7 @@ export default function TablesPage() {
                             <CardContent className="space-y-4 p-5">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <h3 className="text-lg font-black">{orderFor.name}</h3>
+                                        <h3 className="text-lg font-semibold">{orderFor.name}</h3>
                                         <p className="text-xs text-muted-foreground">
                                             {activeOrder
                                                 ? `${activeOrder.items.length} item(s) on the tab`
@@ -250,7 +252,7 @@ export default function TablesPage() {
 
                                 {!activeOrder ? (
                                     <Button onClick={handleOpenOrder} className="w-full">
-                                        Open table
+                                        {tr("Open table")}
                                     </Button>
                                 ) : (
                                     <>
@@ -258,7 +260,7 @@ export default function TablesPage() {
                                         <div className="max-h-64 space-y-1.5 overflow-y-auto">
                                             {activeOrder.items.length === 0 ? (
                                                 <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                                                    Tap a menu item below to add it.
+                                                    {tr("Tap a menu item below to add it.")}
                                                 </p>
                                             ) : (
                                                 activeOrder.items.map((i: any, idx: number) => (
@@ -269,7 +271,7 @@ export default function TablesPage() {
                                                         <span className="font-semibold">
                                                             {i.quantity} × {i.name}
                                                         </span>
-                                                        <span className="font-black tabular-nums">
+                                                        <span className="font-semibold tabular-nums">
                                                             {ugx(i.price * i.quantity)}
                                                         </span>
                                                     </div>
@@ -278,25 +280,25 @@ export default function TablesPage() {
                                         </div>
 
                                         <div className="flex items-center justify-between rounded-xl bg-primary/10 p-3">
-                                            <span className="text-sm font-black uppercase">
-                                                Tab total
+                                            <span className="text-sm font-semibold uppercase">
+                                                {tr("Tab total")}
                                             </span>
-                                            <span className="text-xl font-black tabular-nums">
+                                            <span className="text-xl font-semibold tabular-nums">
                                                 {ugx(activeOrder.total)}
                                             </span>
                                         </div>
 
                                         <Button className="w-full" onClick={closeCurrentOrder}>
                                             <CheckCircle2 className="mr-2 h-4 w-4" />
-                                            Close &amp; pay {ugx(activeOrder.total)}
+                                            {tr("Close &amp; pay")} {ugx(activeOrder.total)}
                                         </Button>
                                     </>
                                 )}
 
                                 {activeOrder && (
                                     <div>
-                                        <p className="mb-2 text-xs font-black uppercase tracking-wider text-muted-foreground">
-                                            Quick add from menu
+                                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                            {tr("Quick add from menu")}
                                         </p>
                                         <div className="flex flex-wrap gap-1.5">
                                             {(menu ?? []).slice(0, 14).map((m: any) => (
@@ -311,7 +313,7 @@ export default function TablesPage() {
                                             ))}
                                             {(menu ?? []).length === 0 && (
                                                 <p className="text-xs text-muted-foreground">
-                                                    No menu items yet — add some from the Menu tab.
+                                                    {tr("No menu items yet — add some from the Menu tab.")}
                                                 </p>
                                             )}
                                         </div>
@@ -328,8 +330,8 @@ export default function TablesPage() {
                         <LoadingState />
                     ) : menu.length === 0 ? (
                         <EmptyState
-                            title="No menu items"
-                            hint="Add your dishes and drinks so staff can order them straight from the table."
+                            title={tr("No menu items")}
+                            hint={tr("Add your dishes and drinks so staff can order them straight from the table.")}
                         />
                     ) : (
                         <RecordList
@@ -338,28 +340,28 @@ export default function TablesPage() {
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <p className="font-black">{m.name}</p>
-                                            <Badge variant="outline" className="text-[10px]">
+                                            <p className="font-semibold">{m.name}</p>
+                                            <Badge variant="outline" className="text-xs">
                                                 {m.category}
                                             </Badge>
                                             {m.available === false && (
-                                                <Badge variant="destructive" className="text-[10px]">
-                                                    Unavailable
+                                                <Badge variant="destructive" className="text-xs">
+                                                    {tr("Unavailable")}
                                                 </Badge>
                                             )}
                                         </div>
                                         {m.description && (
                                             <p className="mt-0.5 text-xs text-muted-foreground">
-                                                {m.description}
+                                                {tr(m.description)}
                                             </p>
                                         )}
                                         {m.preparationMinutes && (
-                                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
                                                 {m.preparationMinutes} min prep
                                             </p>
                                         )}
                                     </div>
-                                    <p className="shrink-0 text-sm font-black tabular-nums">
+                                    <p className="shrink-0 text-sm font-semibold tabular-nums">
                                         {ugx(m.price)}
                                     </p>
                                 </div>
@@ -372,7 +374,7 @@ export default function TablesPage() {
             <FormDialog
                 open={tableOpen}
                 onOpenChange={setTableOpen}
-                title="Add a table"
+                title={tr("Add a table")}
                 submitLabel="Add table"
                 fields={[
                     { name: "name", label: "Table name / number", required: true, full: true },
@@ -386,7 +388,7 @@ export default function TablesPage() {
             <FormDialog
                 open={menuOpen}
                 onOpenChange={setMenuOpen}
-                title="Add menu item"
+                title={tr("Add menu item")}
                 submitLabel="Add item"
                 fields={[
                     { name: "name", label: "Item name", required: true },

@@ -29,6 +29,15 @@ import { OfflineStatusBanner } from "@/components/offline/sync-status";
 import { SyncProvider } from "@/components/offline/sync-provider";
 import { BusinessSwitcher } from "@/components/business-switcher";
 import { RouteAnnouncer } from "@/components/route-announcer";
+import {
+    CommandPalette,
+    CommandPaletteTrigger,
+    useCommandPalette,
+} from "@/components/command-palette";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notifications/notification-bell";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
+import { useT } from "@/i18n/provider";
 
 const reportsSubItems = [
     { href: "/reports/overview", label: "Overview" },
@@ -76,7 +85,8 @@ interface SidebarContentProps {
  * state is thrown away every time anything in the shell changes.
  */
 export function SidebarContent(props: SidebarContentProps) {
-    const {
+    
+    const t = useT();const {
         isCollapsed,
         accent,
         category,
@@ -98,14 +108,14 @@ export function SidebarContent(props: SidebarContentProps) {
             {/* Logo Area */}
             <div
                 className={cn(
-                    "flex h-20 items-center border-b border-sidebar-border/50 transition-all",
-                    isCollapsed ? "justify-center px-2" : "px-6"
+                    "flex min-h-20 items-center border-b border-sidebar-border/50 transition-all",
+                    isCollapsed ? "justify-center px-2" : "px-6 py-3"
                 )}
             >
-                <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
+                <Link href="/" className="flex min-w-0 items-center gap-3 transition-opacity hover:opacity-80">
                     <div
                         className={cn(
-                            "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-tr p-1 text-lg font-black text-white shadow-md",
+                            "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-tr p-1 text-lg font-semibold text-white shadow-md",
                             accent.gradient
                         )}
                         style={{
@@ -115,15 +125,18 @@ export function SidebarContent(props: SidebarContentProps) {
                         {businessName.charAt(0)}
                     </div>
                     {!isCollapsed && (
-                        <div className="flex flex-col animate-in fade-in duration-300">
-                            <span className="text-lg font-black tracking-tight text-sidebar-primary">
+                        // A long business name must not push the navigation
+                        // down the page, so both lines are held to one line each.
+                        <div className="flex min-w-0 flex-col animate-in fade-in duration-300">
+                            <span className="truncate text-lg font-semibold tracking-tight text-sidebar-primary">
                                 {businessName}
                             </span>
                             <span
                                 className={cn(
-                                    "text-[10px] font-bold uppercase tracking-wider",
+                                    "truncate text-eyebrow uppercase tracking-eyebrow",
                                     accent.text
                                 )}
+                                title={businessSubtitle}
                             >
                                 {businessSubtitle}
                             </span>
@@ -139,12 +152,12 @@ export function SidebarContent(props: SidebarContentProps) {
 
             {/* Navigation — driven by the active business category */}
             <div className="flex-1 overflow-y-auto px-4 py-6">
-                <nav className="space-y-4" aria-label="Main">
+                <nav className="space-y-4" aria-label={t("Main")}>
                     {navGroups.map((group) => (
                         <div key={group.group} className="space-y-1.5">
                             {group.label && !isCollapsed && (
-                                <p className="px-4 pb-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">
-                                    {group.label}
+                                <p className="px-4 pb-1 text-eyebrow uppercase tracking-eyebrow text-muted-foreground/70">
+                                    {t(group.label)}
                                 </p>
                             )}
                             {group.items.map((item) => {
@@ -174,7 +187,7 @@ export function SidebarContent(props: SidebarContentProps) {
                                                         : "text-muted-foreground group-hover:text-sidebar-primary"
                                                 )}
                                             />
-                                            {!isCollapsed && <span>{item.label}</span>}
+                                            {!isCollapsed && <span>{t(item.label)}</span>}
                                         </div>
                                         {isActive && !isCollapsed && (
                                             <ChevronRight className="h-4 w-4 animate-in fade-in slide-in-from-left-2 text-sidebar-primary" />
@@ -200,7 +213,7 @@ export function SidebarContent(props: SidebarContentProps) {
                                 >
                                     <div className="flex items-center gap-3">
                                         <BarChart3 className="h-5 w-5" />
-                                        <span>Reports</span>
+                                        <span>{t("Reports")}</span>
                                     </div>
                                     <ChevronDown
                                         className={cn(
@@ -214,7 +227,7 @@ export function SidebarContent(props: SidebarContentProps) {
                                 <Link
                                     href="/reports/overview"
                                     className="flex items-center justify-center rounded-xl px-2 py-3 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-primary"
-                                    title="Reports"
+                                    title={t("Reports")}
                                 >
                                     <BarChart3 className="h-5 w-5" />
                                 </Link>
@@ -235,7 +248,7 @@ export function SidebarContent(props: SidebarContentProps) {
                                                         : "text-muted-foreground"
                                                 )}
                                             >
-                                                <span>{item.label}</span>
+                                                <span>{t(item.label)}</span>
                                             </Link>
                                         );
                                     })}
@@ -259,7 +272,7 @@ export function SidebarContent(props: SidebarContentProps) {
                     title={isCollapsed ? "Subscription" : undefined}
                 >
                     <CreditCard className="h-5 w-5" />
-                    {!isCollapsed && <span>Subscription</span>}
+                    {!isCollapsed && <span>{t("Subscription")}</span>}
                 </Link>
 
                 <Link
@@ -273,7 +286,7 @@ export function SidebarContent(props: SidebarContentProps) {
                     title={isCollapsed ? "Devices" : undefined}
                 >
                     <MonitorSmartphone className="h-5 w-5" />
-                    {!isCollapsed && <span>Devices</span>}
+                    {!isCollapsed && <span>{t("Devices")}</span>}
                 </Link>
 
                 <Link
@@ -287,7 +300,7 @@ export function SidebarContent(props: SidebarContentProps) {
                     title={isCollapsed ? "Integrations" : undefined}
                 >
                     <Plug className="h-5 w-5" />
-                    {!isCollapsed && <span>Integrations</span>}
+                    {!isCollapsed && <span>{t("Integrations")}</span>}
                 </Link>
 
                 <Link
@@ -301,7 +314,7 @@ export function SidebarContent(props: SidebarContentProps) {
                     title={isCollapsed ? "Settings" : undefined}
                 >
                     <Settings className="h-5 w-5" />
-                    {!isCollapsed && <span>Settings</span>}
+                    {!isCollapsed && <span>{t("Settings")}</span>}
                 </Link>
 
                 {isPlatformAdmin && (
@@ -316,7 +329,7 @@ export function SidebarContent(props: SidebarContentProps) {
                         title={isCollapsed ? "Platform" : undefined}
                     >
                         <ShieldCheck className="h-5 w-5" />
-                        {!isCollapsed && <span>Platform</span>}
+                        {!isCollapsed && <span>{t("Platform")}</span>}
                     </Link>
                 )}
 
@@ -346,7 +359,7 @@ export function SidebarContent(props: SidebarContentProps) {
                             size="icon"
                             className="h-8 w-8 rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => onLogout()}
-                            title="Logout"
+                            title={t("Logout")}
                         >
                             <LogOut className="h-4 w-4" />
                         </Button>
@@ -359,7 +372,7 @@ export function SidebarContent(props: SidebarContentProps) {
                             size="icon"
                             className="h-8 w-8 rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => onLogout()}
-                            title="Logout"
+                            title={t("Logout")}
                         >
                             <LogOut className="h-4 w-4" />
                         </Button>
@@ -417,12 +430,14 @@ function DashboardShell({
 }: {
     children: React.ReactNode;
 }) {
-    const { logout, user, isLoading, activeBusiness } = useAuth();
+    
+    const t = useT();const { logout, user, isLoading, activeBusiness } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isReportsOpen, setIsReportsOpen] = useState(false);
+    const commandPalette = useCommandPalette();
 
     const { category, profile, navigation, accent } = useActiveCategory(activeBusiness?.role);
 
@@ -450,7 +465,7 @@ function DashboardShell({
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 text-2xl font-black text-white shadow-lg animate-pulse">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 text-2xl font-semibold text-white shadow-lg animate-pulse">
                         {businessName.charAt(0)}
                     </div>
                     <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
@@ -493,19 +508,23 @@ function DashboardShell({
     return (
         <SyncProvider>
         <RouteAnnouncer />
+        <CommandPalette
+            open={commandPalette.open}
+            onOpenChange={commandPalette.setOpen}
+        />
         <div className="flex min-h-screen w-full bg-background/50">
             {/* Skip to the content — the navigation is long, and a person
                 who cannot see it has no other way past it. */}
             <a
                 href="#main-content"
-                className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-modal focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground"
             >
-                Skip to the content
+                {t("Skip to the content")}
             </a>
             {/* Desktop Sidebar */}
             <aside
                 className={cn(
-                    "fixed inset-y-0 z-50 hidden flex-col border-r bg-sidebar shadow-2xl transition-all duration-300 lg:flex",
+                    "fixed inset-y-0 z-sidebar hidden flex-col border-r bg-sidebar shadow-2xl transition-all duration-300 lg:flex",
                     isCollapsed ? "w-[80px]" : "w-[280px]"
                 )}
             >
@@ -520,22 +539,25 @@ function DashboardShell({
                 )}
             >
                 {/* Mobile Header */}
-                <div className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/95 px-6 shadow-sm backdrop-blur lg:hidden">
+                <div className="sticky top-0 z-header flex h-16 items-center justify-between border-b bg-background/95 px-4 shadow-sm backdrop-blur sm:px-6 lg:hidden">
                     <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-400 text-sm font-black text-white shadow-sm">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-400 text-sm font-semibold text-white shadow-sm">
                             {businessName.charAt(0)}
                         </div>
-                        <span className="text-base font-bold tracking-tight text-primary">
+                        <span className="text-base font-semibold tracking-tight text-primary">
                             {businessName}
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
                         <OfflineStatusBanner />
+                        <NotificationBell />
+                        <LanguageSwitcher />
+                        <ThemeToggle />
                         <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
                             <SheetTrigger asChild>
                                 <Button variant="ghost" size="icon" className="-mr-2">
                                     <Menu className="h-6 w-6" />
-                                    <span className="sr-only">Toggle navigation menu</span>
+                                    <span className="sr-only">{t("Toggle navigation menu")}</span>
                                 </Button>
                             </SheetTrigger>
                             <SheetContent side="left" className="w-[300px] border-r-0 p-0">
@@ -545,15 +567,26 @@ function DashboardShell({
                     </div>
                 </div>
 
+                {/* Desktop top bar — search, connection state, theme. */}
+                <div className="sticky top-0 z-header hidden h-14 items-center justify-between gap-4 border-b border-border/60 bg-background/85 px-6 backdrop-blur lg:flex">
+                    <CommandPaletteTrigger
+                        onOpen={() => commandPalette.setOpen(true)}
+                        className="max-w-sm"
+                    />
+                    <div className="flex items-center gap-2">
+                        <OfflineStatusBanner />
+                        <NotificationBell />
+                        <LanguageSwitcher />
+                        <ThemeToggle />
+                    </div>
+                </div>
+
                 <main
                     id="main-content"
                     tabIndex={-1}
-                    className="flex-1 p-4 lg:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 focus:outline-none"
+                    className="flex-1 animate-in fade-in slide-in-from-bottom-4 duration-300 focus:outline-none"
                 >
-                    <div className="mx-auto max-w-7xl space-y-4">
-                        <div className="hidden justify-end lg:flex">
-                            <OfflineStatusBanner />
-                        </div>
+                    <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
                         {children}
                     </div>
                 </main>

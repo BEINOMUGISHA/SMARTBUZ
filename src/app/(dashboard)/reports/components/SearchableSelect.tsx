@@ -4,6 +4,7 @@ import * as React from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n/provider";
 import {
     Command,
     CommandEmpty,
@@ -42,7 +43,8 @@ export function SearchableSelect({
     className,
     width = "200px"
 }: SearchableSelectProps) {
-    const [open, setOpen] = React.useState(false);
+    
+    const t = useT();const [open, setOpen] = React.useState(false);
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -52,7 +54,7 @@ export function SearchableSelect({
                     role="combobox"
                     aria-expanded={open}
                     className={cn(
-                        "justify-between h-8 text-[10px] font-bold border-muted-foreground/20",
+                        "justify-between h-8 text-xs font-bold border-muted-foreground/20",
                         className
                     )}
                     style={{ width }}
@@ -67,9 +69,11 @@ export function SearchableSelect({
             </PopoverTrigger>
             <PopoverContent className="p-0" style={{ width }}>
                 <Command>
-                    <CommandInput placeholder={`Search ${placeholder.toLowerCase()}...`} className="h-8 text-xs" />
+                    <CommandInput placeholder={t("Search {0}...", {
+            0: placeholder.toLowerCase(),
+        })} className="h-8 text-xs" />
                     <CommandList>
-                        <CommandEmpty className="py-2 text-[10px]">{emptyText}</CommandEmpty>
+                        <CommandEmpty className="py-2 text-xs">{emptyText}</CommandEmpty>
                         <CommandGroup>
                             {options.map((option) => (
                                 <CommandItem
@@ -79,7 +83,7 @@ export function SearchableSelect({
                                         onValueChange(currentValue === value ? "" : currentValue);
                                         setOpen(false);
                                     }}
-                                    className="text-[10px] py-1"
+                                    className="text-xs py-1"
                                 >
                                     <Check
                                         className={cn(
@@ -87,7 +91,7 @@ export function SearchableSelect({
                                             value === option.value ? "opacity-100" : "opacity-0"
                                         )}
                                     />
-                                    {option.label}
+                                    {t(option.label)}
                                 </CommandItem>
                             ))}
                         </CommandGroup>

@@ -1,3 +1,4 @@
+"use client";
 /**
  * SMARTBUZ Session Context
  *
@@ -23,7 +24,6 @@
  * and the server calls the backend.
  */
 
-"use client";
 
 import React, {
   createContext,

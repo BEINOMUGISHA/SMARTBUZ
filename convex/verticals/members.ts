@@ -14,7 +14,9 @@ import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
+import { writeAudit } from "../audit";
 import { logActivity, requirePermission, requireTenant } from "../tenancy";
+import { assertScreenAvailable } from "../packages/manage";
 
 /* ───────────────────────── members ───────────────────────── */
 
@@ -59,7 +61,9 @@ export const createMember = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "members.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["members"]);
 
         // Auto-generate a member number when one is not supplied.
         let memberNumber = args.memberNumber;
@@ -134,7 +138,9 @@ export const recordMemberTransaction = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "members.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["members"]);
         const member = await ctx.db.get(args.memberId);
         if (!member) throw new ConvexError("Member not found");
         if (member.businessId !== businessId) {
@@ -248,7 +254,9 @@ export const walletTransaction = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "customers.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["members"]);
         if (args.amount <= 0) throw new ConvexError("Amount must be greater than zero");
 
         const wallet = await ctx.db
@@ -323,7 +331,9 @@ export const recordCommission = mutation({
         paid: v.optional(v.boolean()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "employees.manage");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["members"]);
         if (args.rate < 0 || args.rate > 100) throw new ConvexError("Commission rate must be between 0 and 100");
 
         const commission = Math.round((args.grossAmount * args.rate) / 100);
@@ -376,7 +386,9 @@ export const markCommissionPaid = mutation({
     args: { id: v.id("staffCommissions"), paidDate: v.optional(v.string()), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "finance.expenses.create");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["members"]);
         await ctx.db.patch(args.id, { paid: true, paidDate: args.paidDate || new Date().toISOString() });
         return args.id;
     },
@@ -396,7 +408,9 @@ export const recordDonation = mutation({
         userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
     handler: async (ctx, args) => {
         const tenant = await requireTenant(ctx, args.businessId);
+        await requirePermission(ctx, tenant.businessId, "finance.income.create");
         const businessId = tenant.businessId;
+        await assertScreenAvailable(ctx, businessId, ["members"]);
         if (args.amount <= 0) throw new ConvexError("Amount must be greater than zero");
 
         const id = await ctx.db.insert("donations", {
@@ -464,5 +478,137 @@ export const getDonationsSummary = query({
             byType,
             recent: rows.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
         };
+    },
+});
+
+/* ───────────────────────── record lifecycle ───────────────────────── */
+
+/**
+ * Amend a member.
+ *
+ * The balance and the share count are never writable here: they are the
+ * running totals of the member ledger, so they can only move through a
+ * transaction.
+ */
+export const updateMember = mutation({
+    args: {
+        id: v.id("members"),
+        name: v.optional(v.string()),
+        phone: v.optional(v.string()),
+        email: v.optional(v.string()),
+        memberType: v.optional(v.string()),
+        status: v.optional(v.string()),
+        notes: v.optional(v.string()),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "members.manage");
+
+        const member = await ctx.db.get(args.id);
+        if (!member) throw new ConvexError("Member not found");
+        if (member.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        await ctx.db.patch(args.id, {
+            ...(args.name !== undefined ? { name: args.name } : {}),
+            ...(args.phone !== undefined ? { phone: args.phone } : {}),
+            ...(args.email !== undefined ? { email: args.email } : {}),
+            ...(args.memberType !== undefined ? { memberType: args.memberType } : {}),
+            ...(args.status !== undefined ? { status: args.status } : {}),
+            ...(args.notes !== undefined ? { notes: args.notes } : {}),
+        });
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Update Member",
+            `${member.memberNumber} — ${args.name ?? member.name} updated`
+        );
+        await assertScreenAvailable(ctx, businessId, ["members"]);
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "member.update",
+            targetType: "member",
+            targetId: args.id,
+            metadata: {
+                memberNumber: member.memberNumber,
+                name: args.name ?? member.name,
+                memberType: args.memberType ?? member.memberType,
+                status: args.status ?? member.status,
+            },
+        });
+
+        return args.id;
+    },
+});
+
+/**
+ * Delete a member.
+ *
+ * Refused when the member already has ledger entries, class enrolments or
+ * attendance on record: those rows point at the member, so removing it would
+ * orphan financial history.
+ */
+export const deleteMember = mutation({
+    args: {
+        id: v.id("members"),
+        userId: v.id("users"), businessId: v.optional(v.id("businesses")) },
+    handler: async (ctx, args) => {
+        const tenant = await requireTenant(ctx, args.businessId);
+        const businessId = tenant.businessId;
+        await requirePermission(ctx, businessId, "members.manage");
+
+        const member = await ctx.db.get(args.id);
+        if (!member) throw new ConvexError("Member not found");
+        if (member.businessId !== businessId) {
+            throw new ConvexError("Forbidden: that record belongs to another business.");
+        }
+
+        const transactions = await ctx.db.query("memberTransactions").collect();
+        const ledger = transactions.find((t) => t.businessId === businessId && t.memberId === args.id);
+        if (ledger) {
+            throw new ConvexError(
+                `${member.name} has transactions on record. The ledger must be kept — set the member to exited instead.`
+            );
+        await assertScreenAvailable(ctx, businessId, ["members"]);
+        }
+
+        const enrolments = await ctx.db.query("classEnrolments").collect();
+        const enrolled = enrolments.find((e) => e.businessId === businessId && e.studentId === args.id);
+        if (enrolled) {
+            throw new ConvexError(`${member.name} is enrolled in a class. Remove the enrolment first.`);
+        }
+
+        const attendance = await ctx.db.query("attendance").collect();
+        const marked = attendance.find((a) => a.businessId === businessId && a.personId === args.id);
+        if (marked) {
+            throw new ConvexError(`${member.name} has attendance on record and cannot be deleted.`);
+        }
+
+        await ctx.db.delete(args.id);
+
+        await logActivity(
+            ctx,
+            businessId,
+            tenant.user._id,
+            "Delete Member",
+            `${member.memberNumber} — ${member.name} deleted`
+        );
+        await writeAudit(ctx, {
+            businessId,
+            actorUserId: tenant.user._id,
+            actorRole: tenant.membership.role,
+            action: "member.delete",
+            targetType: "member",
+            targetId: args.id,
+            metadata: { memberNumber: member.memberNumber, name: member.name, memberType: member.memberType },
+        });
+
+        return args.id;
     },
 });

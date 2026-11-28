@@ -19,6 +19,15 @@ const eslintConfig = defineConfig([
     "convex/_generated/**",
     // Scratch output from the QA audit. Not part of the application.
     ".qa-audit/**",
+    // The bundles the test runner writes before handing them to Node. They
+    // are generated from the tests on every run, so linting them reports
+    // thousands of problems in code nobody wrote and can never fix.
+    ".test-build/**",
+    // One-off scripts kept while a fix was being made.
+    ".scratch/**",
+    // The profile and the screenshots a local browser run leaves behind.
+    ".tmp-chrome-profile/**",
+    ".tmp-shots*/**",
   ]),
 ]);
 

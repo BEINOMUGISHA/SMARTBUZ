@@ -7,9 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { format, startOfDay, endOfDay, parseISO } from "date-fns";
 import { ReportTable } from "./reports-table";
 import { ReportFilters } from "./ReportFilters";
+import { useT } from "@/i18n/provider";
 
 export function ActivityLogView() {
-    const [reportMode, setReportMode] = useState<"daily" | "range">("daily");
+    
+    const t = useT();const [reportMode, setReportMode] = useState<"daily" | "range">("daily");
     const [dateRange, setDateRange] = useState({
         from: format(new Date(), "yyyy-MM-dd"),
         to: format(new Date(), "yyyy-MM-dd")
@@ -53,8 +55,8 @@ export function ActivityLogView() {
             </div>
 
             <ReportTable
-                title="System Activity Log"
-                subtitle="Audit trail of all system actions and changes."
+                title={t("System Activity Log")}
+                subtitle={t("Audit trail of all system actions and changes.")}
                 data={results || []}
                 isLoading={isLoading}
                 search={searchTerm}
@@ -79,8 +81,8 @@ export function ActivityLogView() {
                     {
                         header: "Timestamp",
                         accessor: (log: any) => (
-                            <div className="font-mono text-[10px] leading-tight flex flex-col">
-                                <span className="font-black">{format(new Date(log.timestamp), "dd MMM yyyy")}</span>
+                            <div className="font-mono text-xs leading-tight flex flex-col">
+                                <span className="font-semibold">{format(new Date(log.timestamp), "dd MMM yyyy")}</span>
                                 <span className="text-muted-foreground">{format(new Date(log.timestamp), "HH:mm:ss")}</span>
                             </div>
                         ),
@@ -89,8 +91,8 @@ export function ActivityLogView() {
                     {
                         header: "Action",
                         accessor: (log: any) => (
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 uppercase text-[9px] font-black">
-                                {log.action}
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-eyebrow uppercase tracking-eyebrow">
+                                {t(log.action)}
                             </Badge>
                         ),
                         className: "w-[120px]"
@@ -98,12 +100,12 @@ export function ActivityLogView() {
                     {
                         header: "Details",
                         accessor: "details",
-                        className: "text-[11px] font-medium"
+                        className: "text-xs font-medium"
                     },
                     {
                         header: "User",
                         accessor: (log: any) => (
-                            <span className="font-mono text-[10px] text-muted-foreground uppercase opacity-70">
+                            <span className="font-mono text-muted-foreground opacity-70 text-eyebrow uppercase tracking-eyebrow">
                                 {log.userId.slice(-6)}
                             </span>
                         ),
@@ -114,7 +116,7 @@ export function ActivityLogView() {
                     <div className="p-4 bg-muted/5 border-t">
                         <div className="flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-[10px] font-black uppercase text-muted-foreground">Live System Audit Enabled</span>
+                            <span className="text-muted-foreground text-eyebrow uppercase tracking-eyebrow">{t("Live System Audit Enabled")}</span>
                         </div>
                     </div>
                 }

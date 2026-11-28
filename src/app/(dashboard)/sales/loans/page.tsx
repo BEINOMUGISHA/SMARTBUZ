@@ -8,14 +8,16 @@
  */
 
 import { LoansView } from "../loans-view";
+import { useT } from "@/i18n/provider";
 
 export default function LoansPage() {
-    return (
+    
+    const t = useT();return (
         <div className="space-y-6">
             <div className="flex flex-col gap-4">
-                <h1 className="text-3xl font-black tracking-tight text-foreground">Loans</h1>
+                <h1 className="text-3xl font-semibold tracking-tight text-foreground">{t("Loans")}</h1>
                 <p className="text-muted-foreground">
-                    What customers owe you, and the repayments you have recorded.
+                    {t("What customers owe you, and the repayments you have recorded.")}
                 </p>
             </div>
 

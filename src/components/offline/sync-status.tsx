@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useSync } from "./sync-provider";
 import { OfflineTransactionsDialog } from "./offline-transactions";
+import { useT } from "@/i18n/provider";
 
 /** "just now", "4 minutes ago", "2 hours ago"… */
 function ago(iso?: string): string | null {
@@ -36,11 +37,43 @@ function ago(iso?: string): string | null {
 }
 
 export function OfflineStatusBanner() {
-    const { status, syncNow } = useSync();
+    
+    const t = useT();const { status, syncNow } = useSync();
     const [open, setOpen] = useState(false);
 
     const waiting = status.pending;
     const trouble = status.failed + status.conflicts;
+    const blocked = status.deviceBlocked;
+
+    /**
+     * A till the server will not accept is not the same as a till that is
+     * offline. Offline sales are safe on the till and go up when the network
+     * returns. A refused till cannot push at all, so the cashier has to know
+     * before they take the next payment.
+     */
+    if (blocked) {
+        return (
+            <>
+                <div
+                    className="flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur-md"
+                    title={blocked}
+                >
+                    <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span>{t("Till not registered")}</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setOpen(true)}
+                        className="text-xs font-bold text-muted-foreground underline-offset-2 hover:underline"
+                    >
+                        {t("Queue")}
+                    </button>
+                </div>
+                <OfflineTransactionsDialog open={open} onOpenChange={setOpen} />
+            </>
+        );
+    }
 
     // Nothing to say: online, nothing waiting, nothing wrong.
     if (status.online && waiting === 0 && trouble === 0) return null;
@@ -80,24 +113,24 @@ export function OfflineStatusBanner() {
                 {!status.online ? (
                     <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                         <WifiOff className="h-3.5 w-3.5 animate-pulse" />
-                        <span>Offline</span>
+                        <span>{t("Offline")}</span>
                     </div>
                 ) : status.syncing ? (
                     <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                         <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        <span>Syncing</span>
+                        <span>{t("Syncing")}</span>
                     </div>
                 ) : (
                     <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                         <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>Online</span>
+                        <span>{t("Online")}</span>
                     </div>
                 )}
 
                 {waiting > 0 && (
                     <Badge
                         variant="outline"
-                        className="border-amber-500/30 bg-amber-500/10 px-2 py-0 text-[10px] font-bold text-amber-600 dark:text-amber-400"
+                        className="border-amber-500/30 bg-amber-500/10 px-2 py-0 text-xs font-bold text-amber-600 dark:text-amber-400"
                     >
                         {waiting} waiting
                     </Badge>
@@ -106,7 +139,7 @@ export function OfflineStatusBanner() {
                 {trouble > 0 && (
                     <Badge
                         variant="outline"
-                        className="border-red-500/30 bg-red-500/10 px-2 py-0 text-[10px] font-bold text-red-600 dark:text-red-400"
+                        className="border-red-500/30 bg-red-500/10 px-2 py-0 text-xs font-bold text-red-600 dark:text-red-400"
                     >
                         {trouble} need attention
                     </Badge>
@@ -118,20 +151,20 @@ export function OfflineStatusBanner() {
                         variant="ghost"
                         onClick={handleSync}
                         disabled={status.syncing}
-                        className="h-6 gap-1 rounded-full px-2 text-[10px] text-primary hover:bg-primary/10"
+                        className="h-6 gap-1 rounded-full px-2 text-xs text-primary hover:bg-primary/10"
                     >
                         <CloudUpload className="h-3 w-3" />
-                        <span>Send now</span>
+                        <span>{t("Send now")}</span>
                     </Button>
                 )}
 
                 <button
                     type="button"
                     onClick={() => setOpen(true)}
-                    className="text-[10px] font-bold text-muted-foreground underline-offset-2 hover:underline"
-                    title="Open the local record of sales"
+                    className="text-xs font-bold text-muted-foreground underline-offset-2 hover:underline"
+                    title={t("Open the local record of sales")}
                 >
-                    Queue
+                    {t("Queue")}
                 </button>
             </div>
 
@@ -145,7 +178,8 @@ export function OfflineStatusBanner() {
  * nothing waiting — the cashier should still know they are working offline.
  */
 export function OfflineNotice({ className }: { className?: string }) {
-    const { status } = useSync();
+    
+    const t = useT();const { status } = useSync();
     if (status.online) return null;
 
     return (
@@ -154,11 +188,9 @@ export function OfflineNotice({ className }: { className?: string }) {
         >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <div className="text-xs">
-                <p className="font-bold">Working offline</p>
+                <p className="font-bold">{t("Working offline")}</p>
                 <p className="text-muted-foreground">
-                    Sales are saved on this till and sent to the server when the network
-                    comes back. Nothing is lost. Prices shown are the last ones this till
-                    downloaded.
+                    {t("Sales are saved on this till and sent to the server when the network comes back. Nothing is lost. Prices shown are the last ones this till downloaded.")}
                 </p>
             </div>
         </div>
