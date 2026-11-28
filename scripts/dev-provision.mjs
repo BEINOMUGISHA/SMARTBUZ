@@ -11,6 +11,7 @@
  * against a production one.
  */
 import { convex, ok, errText, ENV, signAccessToken } from "./lib/harness.mjs";
+import { loadMockData } from "./lib/mock-data.mjs";
 
 const DEPLOYMENT = String(ENV.CONVEX_DEPLOYMENT ?? "");
 if (!DEPLOYMENT.startsWith("dev:")) {
@@ -52,16 +53,28 @@ const token = signAccessToken({
 
 const secret = ENV.SMARTBUZ_SERVER_SECRET ?? ENV.RESEND_API_KEY ?? ENV.SESSION_SECRET;
 
-for (const [label, path] of [
-    ["seed", "seed:seedEverything"],
-]) {
-    const res = await convex("mutation", path, { businessId, serverSecret: secret }, token);
-    if (!ok(res)) {
-        console.error(`${label} failed:`, errText(res));
-        console.error(JSON.stringify(res).slice(0, 1200));
-        process.exit(1);
+// The demo data: a real catalogue for the trade, a month of sales recorded
+// by the real sale engine, customers, suppliers, promotions and expenses.
+try {
+    const report = await loadMockData({
+        businessId,
+        token,
+        serverSecret: secret,
+        deployment: DEPLOYMENT,
+        onBatch: (result, batch) => {
+            console.log(`  batch ${batch}: ${result.salesWritten} sales written`);
+        },
+    });
+    console.log(
+        `demo data loaded: ${report.products} products, ${report.customers} customers, ${report.salesPlanned} sales`
+    );
+    for (const person of report.staff ?? []) {
+        console.log(`${person.role}: ${person.email} / ${person.password}`);
     }
-    console.log(`${label} ok:`, JSON.stringify(res.value).slice(0, 300));
+} catch (error) {
+    console.error("seeding failed:", error.message);
+    if (error.response) console.error(JSON.stringify(error.response).slice(0, 1200));
+    process.exit(1);
 }
 
 console.log("\n--- sign in ---");

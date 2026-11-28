@@ -27,6 +27,8 @@ import type * as customers from "../customers.js";
 import type * as dashboard from "../dashboard.js";
 import type * as debug from "../debug.js";
 import type * as defaults from "../defaults.js";
+import type * as devMockCatalogue from "../devMockCatalogue.js";
+import type * as devMockData from "../devMockData.js";
 import type * as emailThrottle from "../emailThrottle.js";
 import type * as employees from "../employees.js";
 import type * as entitlements from "../entitlements.js";
@@ -136,6 +138,8 @@ declare const fullApi: ApiFromModules<{
   dashboard: typeof dashboard;
   debug: typeof debug;
   defaults: typeof defaults;
+  devMockCatalogue: typeof devMockCatalogue;
+  devMockData: typeof devMockData;
   emailThrottle: typeof emailThrottle;
   employees: typeof employees;
   entitlements: typeof entitlements;

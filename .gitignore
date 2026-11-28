@@ -85,6 +85,11 @@ scripts/_tmp-*
 .tmp-shots*/
 .tmp-sweep*.log
 
+# The logs and the scratch folder a local gate run leaves behind: the test
+# output, the production build log, and the audit bundle.
+.tmp-*.log
+.tmp-audit/
+
 # The per-language copies of the recovered words. The combined file,
 # 00-recovered.json, is the one the merge reads; these three are empty
 # placeholders left behind when the merge was given a single combined batch.
